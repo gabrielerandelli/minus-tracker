@@ -24,9 +24,9 @@ interface Transaction {
   quantity: number; // always positive
   pricePerUnit: number; // in original currency
   currency: string; // ISO 4217 (EUR, USD, GBP, CHF)
-  totalLocal: number; // quantity * pricePerUnit (original currency)
-  totalEUR: number; // converted at ECB rate on trade date
-  feesEUR: number; // brokerage costs in EUR
+  totalLocal: number; // signed: negative for BUY (cash outflow), positive for SELL (cash inflow), in original currency
+  totalEUR: number; // |totalLocal| / ecbRate — always positive; converted at ECB rate on trade date
+  feesEUR: number; // brokerage costs in EUR, always positive
   fxRate?: number; // ECB rate used (undefined if currency === EUR)
 }
 
@@ -47,12 +47,13 @@ interface MatchedLot {
 
 interface GainsReport {
   method: LotMethod;
-  plusvalenze: number; // EUR, sum of positive gainLossEUR
-  minusvalenze: number; // EUR, sum of |negative gainLossEUR|
-  netResult: number; // plusvalenze - minusvalenze
+  taxYear: number; // inferred from transaction dates (see Part 6)
+  plusvalenze: number; // EUR, sum of positive gainLossEUR, rounded to 2dp
+  minusvalenze: number; // EUR, sum of |negative gainLossEUR|, rounded to 2dp
+  netResult: number; // plusvalenze - minusvalenze, rounded to 2dp
   lots: MatchedLot[];
   ratesUsed: Record<string, number>; // key: "USD:2023-03-01", value: 1.094
-  warnings: string[];
+  warnings: string[]; // parse-time warnings (from DEGIROParser) + calc-time warnings
   generatedAt: string; // ISO timestamp
 }
 ```
@@ -63,18 +64,36 @@ interface GainsReport {
 class DEGIROParser {
   parse(csv: string): Transaction[];
   // Throws ParseError on structural failures.
-  // Skips unrecognised rows and appends to warnings (surfaced via Calculator).
+  // Skips unrecognised rows; messages available via the warnings getter below.
+
+  get warnings(): string[];
+  // Read after calling parse(). Contains one entry per skipped row.
+  // Empty until parse() has been called.
 }
 ```
+
+Pass `parser.warnings` into the `Calculator` constructor so they surface in `GainsReport.warnings`.
 
 ## Calculator
 
 ```ts
 class Calculator {
-  constructor(transactions: Transaction[]);
+  constructor(transactions: Transaction[], parseWarnings?: string[]);
+  // parseWarnings: pass DEGIROParser.warnings here; they are merged into GainsReport.warnings.
   calculateGains(method: LotMethod): GainsReport;
   // Throws CalculationError if SELL has no matching BUY lots.
 }
+```
+
+Typical usage:
+
+```ts
+const parser = new DEGIROParser();
+const transactions = parser.parse(csvString);
+const report = new Calculator(transactions, parser.warnings).calculateGains(
+  "LIFO",
+);
+// report.warnings contains both parse-time and calc-time warnings
 ```
 
 ## Errors

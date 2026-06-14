@@ -35,14 +35,15 @@ DEGIRO exports two CSVs. The parser targets the **Transactions** export (not Acc
 4. Parse `Date` as DD-MM-YYYY → convert to ISO (YYYY-MM-DD).
 5. Look up ECB rate for `Local value currency` on `Date` (see [Part 4](04-ecb-rates.md)).
 6. If ECB rate not found → emit warning, skip row.
-7. `totalEUR = |Local value| * ecbRate`
-8. `feesEUR = |Transaction costs|` (already in EUR; use 0 if blank).
-9. Rows with `Local value currency = EUR` → `fxRate` is `undefined`.
+7. `totalLocal = Local value` (signed: negative for BUY, positive for SELL, as exported by DEGIRO).
+8. `totalEUR = |Local value| / ecbRate` (rate = foreign currency per 1 EUR; see Part 4 for formula).
+9. `feesEUR = |Transaction costs|` (already in EUR; use 0 if blank).
+10. Rows with `Local value currency = EUR` → `fxRate` is `undefined`.
 
 ### Hard errors (throw ParseError)
 
 - File is not valid CSV
-- Header row missing required columns (`ISIN`, `Quantity`, `Price`, `Date`)
+- Header row missing required columns (`ISIN`, `Quantity`, `Price`, `Date`, `Local value`, `Local value currency`)
 
 ### Soft warnings (skip row, append to report.warnings)
 

@@ -43,16 +43,25 @@ FIFO: same, but pop from the **start** of the array.
 ## Cost basis calculation
 
 ```
+sellPricePerUnitEUR = sell.totalEUR / sell.quantity   // derived; not a stored field
+
 buyCostEUR      = (lot.pricePerUnitEUR * matchedQty) + allocatedBuyFeesEUR
-sellProceedsEUR = (sell.pricePerUnitEUR * matchedQty) - allocatedSellFeesEUR
+sellProceedsEUR = (sellPricePerUnitEUR * matchedQty) - allocatedSellFeesEUR
 gainLossEUR     = sellProceedsEUR - buyCostEUR
 ```
 
 Fee allocation (proportional to matched quantity):
 
 ```
-allocatedFees = lot.feesEUR * (matchedQty / originalLotQty)
+// BUY fee: allocated from the BUY lot, relative to original lot size
+allocatedBuyFeesEUR  = lot.feesEUR  * (matchedQty / originalBuyLotQty)
+
+// SELL fee: allocated from the SELL transaction, relative to total sell quantity
+allocatedSellFeesEUR = sell.feesEUR * (matchedQty / sell.quantity)
 ```
+
+When a single SELL matches multiple BUY lots, SELL fees are split proportionally across each
+matched lot using the same formula, where `sell.quantity` is the total original sell quantity.
 
 ## Report aggregation
 
@@ -61,6 +70,17 @@ plusvalenze  = sum of gainLossEUR where gainLossEUR > 0
 minusvalenze = sum of |gainLossEUR| where gainLossEUR < 0
 netResult    = plusvalenze - minusvalenze
 ```
+
+## Rounding rules
+
+All intermediate values (`buyCostEUR`, `sellProceedsEUR`, `gainLossEUR`, allocated fees) are
+carried at full floating-point precision. Rounding to **2 decimal places** (half-up) is applied
+only when writing final output fields in `GainsReport` and in CLI rendering:
+
+- `MatchedLot.buyCostEUR`, `MatchedLot.sellProceedsEUR`, `MatchedLot.gainLossEUR`
+- `GainsReport.plusvalenze`, `GainsReport.minusvalenze`, `GainsReport.netResult`
+
+"Half-up" means: 0.005 rounds to 0.01 (towards positive infinity for positive values).
 
 ## Sorting guarantee
 

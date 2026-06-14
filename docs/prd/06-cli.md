@@ -15,8 +15,14 @@ minus-tracker calc [options] <file.csv>
 
 Options:
   --method <LIFO|FIFO>   Lot matching method (default: LIFO)
+  --year <YYYY>          Tax year to display (default: inferred from transaction dates)
   --json                 Output machine-readable JSON instead of table
 ```
+
+**Tax year inference (when `--year` is omitted):** the CLI derives the year from the most
+frequently occurring calendar year across all transaction dates. If more than one year is present
+in the CSV, a warning is appended:
+`"CSV contains transactions from multiple years — filter to a single year for accurate reporting."`
 
 **Default output (table):**
 
@@ -78,12 +84,21 @@ minus-tracker rates --check
 # Gaps: none
 
 minus-tracker rates --update
-# Fetching ECB SDMX... done. Added 45 new dates. Snapshot updated.
-# (writes to src/data/ecb-rates.json in the local package)
+# Fetching ECB SDMX... done. Added 45 new dates.
+# Snapshot written to ~/.config/minus-tracker/ecb-rates.json
 ```
 
-`--update` requires network access and writes to the package's data file.
-Intended for maintainers, not end users.
+`--update` requires network access. It writes the merged snapshot to
+`~/.config/minus-tracker/ecb-rates.json` (XDG user config directory), **not** to the package
+installation. This file persists across `npm install`/`npm update`.
+
+**Rate lookup priority at runtime:**
+
+1. `~/.config/minus-tracker/ecb-rates.json` (user-updated snapshot, if present)
+2. Bundled `src/data/ecb-rates.json` (shipped with the package)
+
+The bundled snapshot is updated by repo maintainers before each release and committed to source.
+End users who need rates beyond the bundled snapshot can run `rates --update` to extend coverage.
 
 ## Exit codes
 

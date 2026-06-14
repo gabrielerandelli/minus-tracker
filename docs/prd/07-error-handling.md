@@ -12,11 +12,11 @@
 
 Thrown by `DEGIROParser.parse()`:
 
-| Trigger                                                                       | Message                             |
-| ----------------------------------------------------------------------------- | ----------------------------------- |
-| File is not valid CSV                                                         | `"Invalid CSV: unable to parse"`    |
-| Header missing required column                                                | `"Missing required column: <name>"` |
-| Required columns: `ISIN`, `Quantity`, `Price`, `Date`, `Local value currency` |                                     |
+| Trigger                                                                                      | Message                             |
+| -------------------------------------------------------------------------------------------- | ----------------------------------- |
+| File is not valid CSV                                                                        | `"Invalid CSV: unable to parse"`    |
+| Header missing required column                                                               | `"Missing required column: <name>"` |
+| Required columns: `ISIN`, `Quantity`, `Price`, `Date`, `Local value`, `Local value currency` |                                     |
 
 ## Hard errors — CalculationError
 

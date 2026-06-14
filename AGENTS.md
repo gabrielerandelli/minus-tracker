@@ -13,7 +13,7 @@ Core scope (v0.5.0):
 
 - LIFO/FIFO lot matching (configurable)
 - Multi-currency normalization with historical ECB rates (EUR, USD, GBP, CHF)
-- Broker-CSV parsing — DEGIRO first, extensible to other brokers
+- DEGIRO **Transactions export** parser (not the Account Statement export) — extensible to other brokers via community PRs
 - Outputs _plusvalenze_ (gains) / _minusvalenze_ (losses)
 
 The intended public API (the contract Olos integrates against — do not break it):

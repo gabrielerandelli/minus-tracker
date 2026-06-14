@@ -9,7 +9,7 @@ _plusvalenze_/_minusvalenze_ reports for the _Regime Dichiarativo_.
 
 - LIFO and FIFO lot matching (configurable, default LIFO)
 - Multi-currency normalisation via bundled ECB historical rates (EUR, USD, GBP, CHF)
-- DEGIRO CSV parser (Account Statement format)
+- DEGIRO CSV parser (Transactions export format)
 - Asset classes: **stocks and ETFs only**
 - Tax year scope: **single year** — caller filters input; library calculates whatever is in the file
 - Full audit trail output (per-lot detail + rates used + warnings)
@@ -34,5 +34,7 @@ _plusvalenze_/_minusvalenze_ reports for the _Regime Dichiarativo_.
 
 - Zero mandatory runtime dependencies (ECB rates bundled; no network at runtime)
 - Tree-shakeable: consumers who only import `Calculator` do not bundle the parser
+- npm package must publish **dual ESM + CJS** output via the `exports` field in `package.json`.
+  ESM is required for tree-shaking in bundlers; CJS maintains compatibility with older Node toolchains.
 - Outputs and docs use Italian domain terminology (_plusvalenze_, _minusvalenze_)
 - All user-facing text must include: _"minus-tracker è un ausilio al calcolo, non consulenza fiscale."_
