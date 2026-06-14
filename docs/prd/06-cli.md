@@ -17,34 +17,36 @@ Options:
   --method <LIFO|FIFO>   Lot matching method (default: LIFO)
   --year <YYYY>          Tax year to display (default: inferred from transaction dates)
   --json                 Output machine-readable JSON instead of table
+  --lang <it|en>         Locale for this run only (default: from config, falls back to it)
 ```
 
 **Tax year inference (when `--year` is omitted):** the CLI derives the year from the most
 frequently occurring calendar year across all transaction dates. If more than one year is present
-in the CSV, a warning is appended:
-`"CSV contains transactions from multiple years — filter to a single year for accurate reporting."`
+in the CSV, a warning is appended (in the active locale).
 
-**Default output (table):**
+**Default output (table) — Italian locale (default):**
 
 ```
 minus-tracker calc trades.csv
 
-METHOD: LIFO | TAX YEAR: 2023
+METODO: LIFO | ANNO FISCALE: 2023
 
-ISIN          PRODUCT          QTY  BUY DATE    SELL DATE   BUY EUR   SELL EUR  GAIN/LOSS
-US0378331005  Apple Inc         10  2023-03-01  2023-11-15  1,234.00  1,500.00   +266.00
-IE00B4L5Y983  iShares MSCI W.   5  2023-01-10  2023-09-20    800.00    750.00    -50.00
+ISIN          TITOLO           QTÀ  DATA ACQUISTO  DATA VENDITA  ACQUISTO EUR  VENDITA EUR  GUADAGNO/PERDITA
+US0378331005  Apple Inc         10  2023-03-01     2023-11-15      1.234,00      1.500,00          +266,00
+IE00B4L5Y983  iShares MSCI W.   5  2023-01-10     2023-09-20        800,00        750,00           -50,00
 
 ────────────────────────────────────────────────────────────────────────
-PLUSVALENZE:    266.00 EUR
-MINUSVALENZE:    50.00 EUR
-RISULTATO NETTO: 216.00 EUR
+PLUSVALENZE:     266,00 EUR
+MINUSVALENZE:     50,00 EUR
+RISULTATO NETTO: 216,00 EUR
 
 AVVERTENZE: 0
-Generated: 2024-01-15T10:32:00Z
+Generato: 2024-01-15T10:32:00Z
 
 minus-tracker è un ausilio al calcolo, non consulenza fiscale.
 ```
+
+_Full string catalog for both locales: see [Part 9](09-i18n.md)._
 
 **JSON output (`--json`):**
 
@@ -66,10 +68,14 @@ minus-tracker è un ausilio al calcolo, non consulenza fiscale.
 ### `validate` — check CSV without calculating
 
 ```
-minus-tracker validate <file.csv>
+minus-tracker validate [--lang <it|en>] <file.csv>
+```
 
-OK: 143 transactions parsed, 0 hard errors
-WARN: 2 rows skipped (no ECB rate for CHF on 2023-12-24)
+**Example output (Italian locale, default):**
+
+```
+OK: 143 transazioni analizzate, 0 errori gravi
+AVVISO: 2 righe ignorate (nessun tasso BCE per CHF in data 2023-12-24)
 ```
 
 Exit code 0 if no hard errors; 1 if any hard error.
@@ -79,13 +85,20 @@ Exit code 0 if no hard errors; 1 if any hard error.
 ### `rates` — manage bundled ECB snapshot
 
 ```
+minus-tracker rates --check [--lang <it|en>]
+minus-tracker rates --update [--lang <it|en>]
+```
+
+**Example output (Italian locale, default):**
+
+```
 minus-tracker rates --check
-# Coverage: 2019-01-01 → 2024-01-12 | Currencies: USD, GBP, CHF
-# Gaps: none
+# Copertura: 2019-01-01 → 2024-01-12 | Valute: USD, GBP, CHF
+# Lacune: nessuna
 
 minus-tracker rates --update
-# Fetching ECB SDMX... done. Added 45 new dates.
-# Snapshot written to ~/.config/minus-tracker/ecb-rates.json
+# Recupero dati BCE SDMX in corso... Completato. Aggiunte 45 nuove date.
+# Snapshot scritto in ~/.config/minus-tracker/ecb-rates.json
 ```
 
 `--update` requires network access. It writes the merged snapshot to
@@ -100,10 +113,36 @@ installation. This file persists across `npm install`/`npm update`.
 The bundled snapshot is updated by repo maintainers before each release and committed to source.
 End users who need rates beyond the bundled snapshot can run `rates --update` to extend coverage.
 
+---
+
+### `config` — manage persistent settings
+
+```
+minus-tracker config --lang <it|en>   Persist locale preference to settings file
+minus-tracker config --show           Print current effective configuration
+```
+
+**Example — set language to English:**
+
+```
+$ minus-tracker config --lang en
+Language set to: en
+```
+
+**Example — show current config (Italian locale active):**
+
+```
+$ minus-tracker config --show
+Lingua corrente: it
+```
+
+Settings are written to `~/.config/minus-tracker/config.json` (see [Part 9](09-i18n.md) for
+path resolution on all platforms and the full locale priority order).
+
 ## Exit codes
 
-| Code | Meaning                                        |
-| ---- | ---------------------------------------------- |
-| 0    | Success                                        |
-| 1    | Hard error (ParseError or CalculationError)    |
-| 2    | Invalid CLI usage (unknown flag, missing file) |
+| Code | Meaning                                                                    |
+| ---- | -------------------------------------------------------------------------- |
+| 0    | Success                                                                    |
+| 1    | Hard error (ParseError or CalculationError)                                |
+| 2    | Invalid CLI usage (unknown flag, missing file, unsupported `--lang` value) |
