@@ -13,7 +13,8 @@ _plusvalenze_/_minusvalenze_ reports for the _Regime Dichiarativo_.
 - Asset classes: **stocks and ETFs only**
 - Tax year scope: **single year** — caller filters input; library calculates whatever is in the file
 - Full audit trail output (per-lot detail + rates used + warnings)
-- CLI: `calc`, `validate`, `rates` commands
+- CLI: `calc`, `validate`, `rates`, `config` commands
+- Bilingual CLI output: Italian (default) and English; language stored in `~/.config/minus-tracker/config.json`
 - npm package + programmatic API
 
 ## Out of scope (v0.5.0)
@@ -38,3 +39,9 @@ _plusvalenze_/_minusvalenze_ reports for the _Regime Dichiarativo_.
   ESM is required for tree-shaking in bundlers; CJS maintains compatibility with older Node toolchains.
 - Outputs and docs use Italian domain terminology (_plusvalenze_, _minusvalenze_)
 - All user-facing text must include: _"minus-tracker è un ausilio al calcolo, non consulenza fiscale."_
+- Italian (`it`) is the primary and default CLI locale; English (`en`) is secondary. Active
+  locale is resolved in priority order: `--lang` flag > `MINUS_TRACKER_LANG` env var >
+  `~/.config/minus-tracker/config.json` > default `it`
+- The programmatic library API (error `.message` strings, `GainsReport.warnings[]`) is always
+  in English for stability; localisation is a CLI-layer concern only
+- `src/i18n/` is only imported by `src/cli/`; library consumers bundle zero locale code
