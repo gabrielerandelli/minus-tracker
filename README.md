@@ -7,9 +7,7 @@ for the _Regime Dichiarativo_ — LIFO/FIFO lot matching, multi-currency normali
 ECB rates), and broker-CSV parsing — turning raw trades into _plusvalenze_/_minusvalenze_ ready
 for a commercialista.
 
-> **Status:** Pre-spec bootstrap. The engine is being specced and built via the workflow in
-> `.claude/commands/` (`spec_brainstorm` → `write_test_plan` → `write_impl_plan` →
-> `do_impl_plan`). See [`docs/idea.md`](./docs/idea.md) for the vision.
+> **Status:** Pre-spec bootstrap. See [`docs/idea.md`](./docs/idea.md) for the vision.
 
 ## What it does
 

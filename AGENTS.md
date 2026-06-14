@@ -36,18 +36,14 @@ such as Vitest). Update this section with the real commands at that point.
 
 ## Spec-first workflow
 
-This project is built spec-first using the slash commands in `.claude/commands/` (run in order):
+This project is built spec-first. The design pipeline runs in order:
 
-1. `/spec_brainstorm` — from `docs/idea.md`, write the spec at `docs/PRD.md`
-2. `/spec_review` — review and harden the PRD (analysis only; no implementation)
-3. `/write_test_plan` — derive `docs/test_plan.md` from the PRD
-4. `/write_impl_plan` — derive `docs/impl_plan.md` from the spec + test plan
-5. `/do_impl_plan` — execute the impl plan (one Task per item, sub-agent per task, dependency waves)
-6. `/run_test_plan` — verify against the test plan (one sub-agent at a time, ≤3 fix attempts/TC)
-
-Note: `spec_brainstorm`/`spec_review` were copied from Olos and reference Olos-specific artifacts
-(`CONTEXT.md`, evolving an existing app). Here the engine starts from `docs/idea.md` — treat those
-Olos references as not-applicable unless the corresponding files exist.
+1. Brainstorm spec — from `docs/idea.md`, produce `docs/PRD.md`
+2. Review and harden the PRD (analysis only; no implementation)
+3. Derive `docs/test_plan.md` from the PRD
+4. Derive `docs/impl_plan.md` from the spec + test plan
+5. Execute the impl plan (one task per item, sub-agent per task, dependency waves)
+6. Verify against the test plan (one sub-agent at a time, ≤3 fix attempts per test case)
 
 ## Conventions
 
