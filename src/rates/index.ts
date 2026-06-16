@@ -1,0 +1,84 @@
+import { fileURLToPath } from "node:url";
+import * as path from "node:path";
+import * as fs from "node:fs";
+
+export type RatesSnapshot = Record<string, Record<string, number>>;
+
+// Load the bundled snapshot lazily
+let _bundled: RatesSnapshot | null = null;
+
+function getBundledSnapshot(): RatesSnapshot {
+  if (_bundled) return _bundled;
+  // Use import.meta.url-relative path to locate the bundled JSON
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const bundledPath = path.join(__dirname, "../data/ecb-rates.json");
+  _bundled = JSON.parse(fs.readFileSync(bundledPath, "utf8")) as RatesSnapshot;
+  return _bundled;
+}
+
+function getUserSnapshot(): RatesSnapshot | null {
+  const platform = process.platform;
+  let configDir: string;
+  if (platform === "win32") {
+    configDir =
+      process.env.APPDATA ??
+      path.join(process.env.USERPROFILE ?? "~", "AppData", "Roaming");
+  } else {
+    configDir =
+      process.env.XDG_CONFIG_HOME ??
+      path.join(process.env.HOME ?? "~", ".config");
+  }
+  const userPath = path.join(configDir, "minus-tracker", "ecb-rates.json");
+  try {
+    return JSON.parse(fs.readFileSync(userPath, "utf8")) as RatesSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+export function getActiveSnapshot(): RatesSnapshot {
+  const bundled = getBundledSnapshot();
+  const user = getUserSnapshot();
+  if (!user) return bundled;
+  // Merge: user entries override bundled for same date keys
+  const merged: RatesSnapshot = {};
+  for (const ccy of new Set([...Object.keys(bundled), ...Object.keys(user)])) {
+    merged[ccy] = { ...(bundled[ccy] ?? {}), ...(user[ccy] ?? {}) };
+  }
+  return merged;
+}
+
+function subtractDays(isoDate: string, days: number): string {
+  const d = new Date(isoDate + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Look up ECB rate for a currency on a given date.
+ * Returns 1.0 for EUR. Walks back up to 3 calendar days for weekend/holiday gaps.
+ * Returns null if not found within the window.
+ *
+ * @param currency ISO 4217 currency code
+ * @param date     YYYY-MM-DD trade date
+ * @param snapshot Optional override (used in tests to inject stub data)
+ */
+export function lookupRate(
+  currency: string,
+  date: string,
+  snapshot?: RatesSnapshot,
+): number | null {
+  if (currency === "EUR") return 1.0;
+
+  const s = snapshot ?? getActiveSnapshot();
+  const currencyRates = s[currency];
+  if (!currencyRates) return null; // unsupported currency
+
+  for (let i = 0; i <= 3; i++) {
+    const d = i === 0 ? date : subtractDays(date, i);
+    if (currencyRates[d] !== undefined) {
+      return currencyRates[d];
+    }
+  }
+  return null;
+}

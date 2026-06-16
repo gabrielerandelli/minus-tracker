@@ -1,0 +1,4 @@
+Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID
+02-01-2024,09:00,Test Stock C,TEST000000003,XNAS,XNAS,10,100.00,-1000.00,EUR,-1000.00,EUR,1,-2.00,EUR,-1002.00,EUR,ae03-buy1
+01-03-2024,09:00,Test Stock C,TEST000000003,XNAS,XNAS,10,120.00,-1200.00,EUR,-1200.00,EUR,1,-2.00,EUR,-1202.00,EUR,ae03-buy2
+03-06-2024,10:00,Test Stock C,TEST000000003,XNAS,XNAS,-10,130.00,1300.00,EUR,1300.00,EUR,1,-2.00,EUR,1298.00,EUR,ae03-sell

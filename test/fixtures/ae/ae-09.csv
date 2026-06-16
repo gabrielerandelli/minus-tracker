@@ -1,0 +1,5 @@
+Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID
+02-01-2024,09:00,Stock A,AAA000000001,XNAS,XNAS,10,100.00,-1000.00,EUR,-1000.00,EUR,1,-2.00,EUR,-1002.00,EUR,ae09-a-buy
+03-06-2024,10:00,Stock A,AAA000000001,XNAS,XNAS,-10,150.00,1500.00,EUR,1500.00,EUR,1,-2.00,EUR,1498.00,EUR,ae09-a-sell
+02-01-2024,09:00,Stock B,BBB000000002,XNAS,XNAS,5,200.00,-1000.00,EUR,-1000.00,EUR,1,-1.00,EUR,-1001.00,EUR,ae09-b-buy
+03-06-2024,10:00,Stock B,BBB000000002,XNAS,XNAS,-5,180.00,900.00,EUR,900.00,EUR,1,-1.00,EUR,899.00,EUR,ae09-b-sell

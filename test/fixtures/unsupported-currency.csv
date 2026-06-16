@@ -1,0 +1,2 @@
+Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID
+14-01-2024,09:05,Toyota Corp,JP3633400001,XTKS,XTKS,10,1500.00,-15000.00,JPY,-15000.00,EUR,0.0064,-2.00,EUR,-15002.00,EUR,abc-789
