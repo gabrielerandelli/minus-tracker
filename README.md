@@ -10,7 +10,7 @@ normalizzazione multi-valuta con tassi BCE storici, parsing del CSV DEGIRO.
 > calculation** (_Regime Dichiarativo_) — LIFO/FIFO lot matching, multi-currency
 > normalisation (historical ECB rates), and DEGIRO CSV parsing.
 
-> **Stato / Status:** Pre-spec bootstrap. Vedi [`docs/idea.md`](./docs/idea.md) per la visione.
+> **Stato / Status:** Pre-spec bootstrap. Vedi [`docs/PRD.md`](./docs/PRD.md) per la specifica tecnica.
 
 ---
 
