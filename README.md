@@ -32,8 +32,6 @@ const report = new Calculator(transactions).calculateGains("LIFO"); // o "FIFO"
 ```
 
 minus-tracker è **solo calcolo fiscale** — nessuna UI, autenticazione, database o PDF.
-È il motore standalone del Tax Hub di [Olos](https://github.com/gabrielerandelli/Olos),
-ma funziona in modo indipendente.
 
 ### CLI
 
@@ -94,9 +92,7 @@ const transactions = new DEGIROParser().parse(csv);
 const report = new Calculator(transactions).calculateGains("LIFO"); // or "FIFO"
 ```
 
-minus-tracker is **pure tax math** — no UI, auth, database, or PDF. It is the standalone
-engine behind [Olos](https://github.com/gabrielerandelli/Olos)'s Tax Hub, but works
-independently.
+minus-tracker is **pure tax math** — no UI, auth, database, or PDF.
 
 ### CLI
 
