@@ -88,6 +88,11 @@ export class DEGIROParser {
   parse(csv: string): Transaction[] {
     this._warningEntries = [];
 
+    // Binary content (null bytes) is not valid CSV
+    if (typeof csv !== "string" || csv.includes("\x00")) {
+      throw new ParseError("INVALID_CSV");
+    }
+
     let rows: string[][];
     try {
       rows = parseCSV(csv);
