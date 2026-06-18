@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **Stato:** Specifica tecnica completata. Implementazione in corso.
+> **Status:** v0.5.0 — published on GitHub Packages as `@gabrielerandelli/minus-tracker`.
 
 ---
 
@@ -25,7 +25,7 @@ normalizzazione multi-valuta con tassi BCE storici, parsing del CSV DEGIRO.
 ### Utilizzo rapido
 
 ```ts
-import { DEGIROParser, Calculator } from "minus-tracker";
+import { DEGIROParser, Calculator } from "@gabrielerandelli/minus-tracker";
 
 const transactions = new DEGIROParser().parse(csv);
 const report = new Calculator(transactions).calculateGains("LIFO"); // o "FIFO"
@@ -56,10 +56,11 @@ minus-tracker rates --update
 ### Installazione
 
 ```bash
-npm install minus-tracker
-```
+# Configurazione una-tantum: indirizza lo scope @gabrielerandelli a GitHub Packages
+echo "@gabrielerandelli:registry=https://npm.pkg.github.com" >> ~/.npmrc
 
-_Non ancora pubblicato — in arrivo con v0.5.0._
+npm install @gabrielerandelli/minus-tracker
+```
 
 ### Avvertenza
 
@@ -86,7 +87,7 @@ normalisation (historical ECB rates), and DEGIRO CSV parsing.
 ### Quick start
 
 ```ts
-import { DEGIROParser, Calculator } from "minus-tracker";
+import { DEGIROParser, Calculator } from "@gabrielerandelli/minus-tracker";
 
 const transactions = new DEGIROParser().parse(csv);
 const report = new Calculator(transactions).calculateGains("LIFO"); // or "FIFO"
@@ -117,10 +118,11 @@ minus-tracker rates --update
 ### Installation
 
 ```bash
-npm install minus-tracker
-```
+# One-time setup: point the @gabrielerandelli scope to GitHub Packages
+echo "@gabrielerandelli:registry=https://npm.pkg.github.com" >> ~/.npmrc
 
-_Not yet published — coming with v0.5.0._
+npm install @gabrielerandelli/minus-tracker
+```
 
 ### Disclaimer
 
