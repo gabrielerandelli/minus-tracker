@@ -55,6 +55,8 @@ minus-tracker rates --update
 
 ### Installazione
 
+**Prerequisiti:** Node.js ≥ 24 ([nodejs.org](https://nodejs.org))
+
 ```bash
 # Configurazione una-tantum: indirizza lo scope @gabrielerandelli a GitHub Packages
 echo "@gabrielerandelli:registry=https://npm.pkg.github.com" >> ~/.npmrc
@@ -116,6 +118,8 @@ minus-tracker rates --update
 ```
 
 ### Installation
+
+**Prerequisites:** Node.js ≥ 24 ([nodejs.org](https://nodejs.org))
 
 ```bash
 # One-time setup: point the @gabrielerandelli scope to GitHub Packages
