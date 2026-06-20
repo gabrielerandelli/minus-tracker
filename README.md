@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **Status:** v0.5.0 — published on GitHub Packages as `@gabrielerandelli/minus-tracker`.
+> **Status:** v0.5.0 — published on npm as `@gabrielerandelli/minus-tracker`.
 
 ---
 
@@ -58,9 +58,6 @@ minus-tracker rates --update
 **Prerequisiti:** Node.js ≥ 24 ([nodejs.org](https://nodejs.org))
 
 ```bash
-# Configurazione una-tantum: indirizza lo scope @gabrielerandelli a GitHub Packages
-echo "@gabrielerandelli:registry=https://npm.pkg.github.com" >> ~/.npmrc
-
 npm install @gabrielerandelli/minus-tracker
 ```
 
@@ -122,9 +119,6 @@ minus-tracker rates --update
 **Prerequisites:** Node.js ≥ 24 ([nodejs.org](https://nodejs.org))
 
 ```bash
-# One-time setup: point the @gabrielerandelli scope to GitHub Packages
-echo "@gabrielerandelli:registry=https://npm.pkg.github.com" >> ~/.npmrc
-
 npm install @gabrielerandelli/minus-tracker
 ```
 
