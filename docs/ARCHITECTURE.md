@@ -251,6 +251,34 @@ rendered in Italian regardless of the active locale.
 
 ---
 
+## Release & Publishing
+
+Releases are fully automated via GitHub Actions (`.github/workflows/release.yml`).
+
+**Trigger:** pushing a `vX.Y.Z` tag to the repository.
+
+**Pipeline (3 sequential jobs):**
+
+| Job            | Steps                                                             |
+| -------------- | ----------------------------------------------------------------- |
+| test-and-build | `npm ci` → `npm run build` → `npm test` → upload `dist/` artifact |
+| publish        | Download `dist/` → `npm publish --provenance --access public`     |
+| create-release | Auto-generate GitHub Release notes                                |
+
+**Authentication:** npm [trusted publishing](https://docs.npmjs.com/generating-provenance-statements) via OIDC — no stored tokens or secrets required. The workflow requests `id-token: write` and npm verifies the GitHub Actions identity directly.
+
+**To cut a release:**
+
+```bash
+# 1. Bump version in package.json and README status badge, then commit and push
+# 2. Tag and push — this triggers the workflow
+git tag v0.5.4 && git push origin v0.5.4
+```
+
+The published package is available at `https://www.npmjs.com/package/@gabrielerandelli/minus-tracker`.
+
+---
+
 ## Adding a Broker Parser
 
 To add support for a new broker (e.g. IBKR):
