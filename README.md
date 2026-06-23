@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **Status:** v0.5.1 — published on npm as `@gabrielerandelli/minus-tracker`.
+> **Status:** v0.5.3 — published on npm as `@gabrielerandelli/minus-tracker`.
 
 ---
 

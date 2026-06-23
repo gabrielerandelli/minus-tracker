@@ -33,7 +33,8 @@ describe("TC-040 — Release workflow YAML exists and has expected structure", (
   it("Step 6: auto-generated release notes", () =>
     expect(content).toContain("generate_release_notes: true"));
 
-  it("Step 7: NPM_TOKEN secret", () => expect(content).toContain("NPM_TOKEN"));
+  it("Step 7: OIDC trusted publishing permission", () =>
+    expect(content).toContain("id-token: write"));
 
   it("Step 8: contents: write permission", () =>
     expect(content).toContain("contents: write"));
