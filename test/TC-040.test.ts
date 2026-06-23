@@ -21,8 +21,8 @@ describe("TC-040 — Release workflow YAML exists and has expected structure", (
     expect(content).toContain("v*");
   });
 
-  it("Step 3: GitHub Packages registry URL", () =>
-    expect(content).toContain("npm.pkg.github.com"));
+  it("Step 3: npm registry URL", () =>
+    expect(content).toContain("registry.npmjs.org"));
 
   it("Step 4: npm publish step", () =>
     expect(content).toContain("npm publish"));
@@ -33,8 +33,7 @@ describe("TC-040 — Release workflow YAML exists and has expected structure", (
   it("Step 6: auto-generated release notes", () =>
     expect(content).toContain("generate_release_notes: true"));
 
-  it("Step 7: packages: write permission", () =>
-    expect(content).toContain("packages: write"));
+  it("Step 7: NPM_TOKEN secret", () => expect(content).toContain("NPM_TOKEN"));
 
   it("Step 8: contents: write permission", () =>
     expect(content).toContain("contents: write"));
