@@ -5,7 +5,7 @@ import * as https from "node:https";
 import { getActiveSnapshot, type RatesSnapshot } from "../../rates/index.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 
-function getSnapshotPath(): string {
+export function getSnapshotPath(): string {
   const platform = process.platform;
   let configDir: string;
   if (platform === "win32") {
@@ -37,7 +37,9 @@ function getCoverage(snapshot: RatesSnapshot): {
   return { start, end, currencies: currencies.sort().join(", ") };
 }
 
-async function fetchEcbData(currency: string): Promise<Record<string, number>> {
+export async function fetchEcbData(
+  currency: string,
+): Promise<Record<string, number>> {
   return new Promise((resolve, reject) => {
     const url = `https://data-api.ecb.europa.eu/service/data/EXR/D.${currency}.EUR.SP00.A?format=csvdata&startPeriod=2019-01-01`;
     https
@@ -67,6 +69,50 @@ async function fetchEcbData(currency: string): Promise<Record<string, number>> {
   });
 }
 
+export async function updateRates(
+  snapshotPath: string,
+  stdout: NodeJS.WritableStream,
+  stderr: NodeJS.WritableStream,
+  s: LocaleStrings,
+): Promise<void> {
+  stdout.write(s.ratesUpdateFetching + "\n");
+
+  let existing: RatesSnapshot = {};
+  try {
+    existing = JSON.parse(
+      fs.readFileSync(snapshotPath, "utf8"),
+    ) as RatesSnapshot;
+  } catch {
+    /* file doesn't exist yet */
+  }
+
+  let addedCount = 0;
+  for (const currency of ["USD", "GBP", "CHF"]) {
+    try {
+      const newRates = await fetchEcbData(currency);
+      const existing_ccy = existing[currency] ?? {};
+      let added = 0;
+      for (const [date, rate] of Object.entries(newRates)) {
+        if (!existing_ccy[date]) added++;
+        existing_ccy[date] = rate;
+      }
+      existing[currency] = existing_ccy;
+      addedCount += added;
+    } catch {
+      stderr.write(`Failed to fetch ${currency} rates\n`);
+    }
+  }
+
+  fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+  fs.writeFileSync(
+    snapshotPath,
+    JSON.stringify(existing, null, 2) + "\n",
+    "utf8",
+  );
+  stdout.write(s.ratesUpdateDone(addedCount) + "\n");
+  stdout.write(s.ratesSnapshotWritten(snapshotPath) + "\n");
+}
+
 export async function runRates(
   positional: string[],
   flags: Record<string, string | boolean>,
@@ -83,43 +129,7 @@ export async function runRates(
   }
 
   if (flags["update"]) {
-    stdout.write(s.ratesUpdateFetching + "\n");
-    const snapshotPath = getSnapshotPath();
-
-    let existing: RatesSnapshot = {};
-    try {
-      existing = JSON.parse(
-        fs.readFileSync(snapshotPath, "utf8"),
-      ) as RatesSnapshot;
-    } catch {
-      /* file doesn't exist yet */
-    }
-
-    let addedCount = 0;
-    for (const currency of ["USD", "GBP", "CHF"]) {
-      try {
-        const newRates = await fetchEcbData(currency);
-        const existing_ccy = existing[currency] ?? {};
-        let added = 0;
-        for (const [date, rate] of Object.entries(newRates)) {
-          if (!existing_ccy[date]) added++;
-          existing_ccy[date] = rate;
-        }
-        existing[currency] = existing_ccy;
-        addedCount += added;
-      } catch {
-        stderr.write(`Failed to fetch ${currency} rates\n`);
-      }
-    }
-
-    fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
-    fs.writeFileSync(
-      snapshotPath,
-      JSON.stringify(existing, null, 2) + "\n",
-      "utf8",
-    );
-    stdout.write(s.ratesUpdateDone(addedCount) + "\n");
-    stdout.write(s.ratesSnapshotWritten(snapshotPath) + "\n");
+    await updateRates(getSnapshotPath(), stdout, stderr, s);
     return 0;
   }
 

@@ -59,6 +59,24 @@ export function getActiveSnapshot(): RatesSnapshot {
   return merged;
 }
 
+export function isSnapshotStale(
+  snapshot: RatesSnapshot,
+  today?: string,
+): boolean {
+  const todayStr = today ?? new Date().toISOString().slice(0, 10);
+  let maxDate = "0000-01-01";
+  for (const dates of Object.values(snapshot)) {
+    for (const d of Object.keys(dates)) {
+      if (d > maxDate) maxDate = d;
+    }
+  }
+  if (maxDate === "0000-01-01") return true;
+  const diffDays =
+    (new Date(todayStr).getTime() - new Date(maxDate).getTime()) /
+    (1000 * 60 * 60 * 24);
+  return diffDays >= 7;
+}
+
 function subtractDays(isoDate: string, days: number): string {
   const d = new Date(isoDate + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() - days);

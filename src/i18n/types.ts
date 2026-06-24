@@ -52,6 +52,8 @@ export interface LocaleStrings {
   ratesUpdateFetching: string;
   ratesUpdateDone: (addedCount: number) => string;
   ratesSnapshotWritten: (filePath: string) => string;
+  ratesAutoUpdateStart: string;
+  ratesAutoUpdateFailed: string;
 
   // config command
   configLangSet: (lang: SupportedLocale) => string;

@@ -47,6 +47,10 @@ export const it: LocaleStrings = {
   ratesUpdateFetching: "Recupero dati BCE SDMX in corso...",
   ratesUpdateDone: (n) => `Completato. Aggiunte ${n} nuove date.`,
   ratesSnapshotWritten: (path) => `Snapshot scritto in ${path}`,
+  ratesAutoUpdateStart:
+    "Le rate BCE non sono aggiornate. Aggiornamento automatico in corso...",
+  ratesAutoUpdateFailed:
+    "Aggiornamento automatico fallito. Si procede con le rate disponibili.",
 
   configLangSet: (lang) => `Lingua impostata su: ${lang}`,
   configCurrentLang: (lang) => `Lingua corrente: ${lang}`,

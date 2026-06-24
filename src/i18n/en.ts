@@ -45,6 +45,8 @@ export const en: LocaleStrings = {
   ratesUpdateFetching: "Fetching ECB SDMX...",
   ratesUpdateDone: (n) => `Done. Added ${n} new dates.`,
   ratesSnapshotWritten: (path) => `Snapshot written to ${path}`,
+  ratesAutoUpdateStart: "ECB rates are stale. Auto-updating…",
+  ratesAutoUpdateFailed: "Auto-update failed. Proceeding with available rates.",
 
   configLangSet: (lang) => `Language set to: ${lang}`,
   configCurrentLang: (lang) => `Current language: ${lang}`,
