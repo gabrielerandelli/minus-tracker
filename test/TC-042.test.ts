@@ -56,8 +56,8 @@ describe("TC-042: sample-trades.csv end-to-end smoke test", () => {
     expect(report.plusvalenze).toBeCloseTo(744.8, 1);
   });
 
-  it("Step 5: minusvalenze > 0 (AAPL USD loss)", () => {
-    expect(report.minusvalenze).toBeGreaterThan(0);
+  it("Step 5: minusvalenze ≈ 15.81 (AAPL USD loss)", () => {
+    expect(report.minusvalenze).toBeCloseTo(15.81, 1);
   });
 
   it("Step 6: netResult > 0 (gains exceed loss)", () => {

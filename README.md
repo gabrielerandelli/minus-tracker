@@ -34,10 +34,10 @@ curl -O https://raw.githubusercontent.com/gabrielerandelli/minus-tracker/main/sa
 npx @gabrielerandelli/minus-tracker calc sample-trades.csv
 ```
 
-**Se hai già installato il pacchetto come libreria:**
+**Se hai già installato il pacchetto localmente:**
 
 ```bash
-minus-tracker calc node_modules/@gabrielerandelli/minus-tracker/samples/sample-trades.csv
+./node_modules/.bin/minus-tracker calc node_modules/@gabrielerandelli/minus-tracker/samples/sample-trades.csv
 ```
 
 Il file contiene 5 operazioni fittizie (Apple Inc in USD + ASML Holding in EUR) e mostra
@@ -131,10 +131,10 @@ curl -O https://raw.githubusercontent.com/gabrielerandelli/minus-tracker/main/sa
 npx @gabrielerandelli/minus-tracker calc sample-trades.csv
 ```
 
-**If you have already installed the package as a library:**
+**If you have already installed the package locally:**
 
 ```bash
-minus-tracker calc node_modules/@gabrielerandelli/minus-tracker/samples/sample-trades.csv
+./node_modules/.bin/minus-tracker calc node_modules/@gabrielerandelli/minus-tracker/samples/sample-trades.csv
 ```
 
 The file contains 5 fictional trades (Apple Inc in USD + ASML Holding in EUR) and
