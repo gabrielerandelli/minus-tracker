@@ -23,6 +23,26 @@ Carica dati seguendo il formato CSV adottato da DEGIRO.
 - L'ouput può essere restituito in **italiano** (predefinito) o **inglese** (`--lang en`)
 - minus-tracker è un package NPM con supporto CLI
 
+### Avvio rapido
+
+Non hai ancora un export DEGIRO? Usa il file di esempio incluso nel pacchetto.
+
+**Via npx (senza installazione globale):**
+
+```bash
+curl -O https://raw.githubusercontent.com/gabrielerandelli/minus-tracker/main/samples/sample-trades.csv
+npx @gabrielerandelli/minus-tracker calc sample-trades.csv
+```
+
+**Se hai già installato il pacchetto come libreria:**
+
+```bash
+minus-tracker calc node_modules/@gabrielerandelli/minus-tracker/samples/sample-trades.csv
+```
+
+Il file contiene 5 operazioni fittizie (Apple Inc in USD + ASML Holding in EUR) e mostra
+abbinamento LIFO parziale, conversione valuta e un risultato netto positivo.
+
 ### Installazione CLI
 
 **Installazione globale** (comando disponibile da qualsiasi directory):
@@ -99,6 +119,26 @@ It loads data following the CSV format used by DEGIRO.
 - Test suite based on **Agenzia Entrate FAQ**
 - Output in **Italian** (default) or **English** (`--lang en`)
 - minus-tracker is an NPM package with CLI support
+
+### Quick Start
+
+Don't have a DEGIRO export yet? Use the sample file bundled with the package.
+
+**Via npx (no global install needed):**
+
+```bash
+curl -O https://raw.githubusercontent.com/gabrielerandelli/minus-tracker/main/samples/sample-trades.csv
+npx @gabrielerandelli/minus-tracker calc sample-trades.csv
+```
+
+**If you have already installed the package as a library:**
+
+```bash
+minus-tracker calc node_modules/@gabrielerandelli/minus-tracker/samples/sample-trades.csv
+```
+
+The file contains 5 fictional trades (Apple Inc in USD + ASML Holding in EUR) and
+demonstrates partial LIFO matching, currency conversion, and a positive net result.
 
 ### CLI Installation
 
