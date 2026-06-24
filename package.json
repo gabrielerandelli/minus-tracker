@@ -13,7 +13,8 @@
     "minus-tracker": "./dist/cli/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "samples"
   ],
   "scripts": {
     "build": "tsup && node scripts/copy-assets.js",
