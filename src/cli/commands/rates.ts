@@ -47,13 +47,16 @@ async function fetchEcbData(currency: string): Promise<Record<string, number>> {
         res.on("end", () => {
           const rates: Record<string, number> = {};
           const lines = data.split("\n");
+          // ECB SDMX csvdata format:
+          // KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE,...
+          // DATE is column index 6, rate is column index 7
           for (const line of lines) {
-            // Simple parsing: look for lines matching YYYY-MM-DD in the expected ECB CSV layout
-            const dateMatch = line.match(
-              /^(\d{4}-\d{2}-\d{2}),.*?,.*?,.*?,.*?,([\d.]+)/,
-            );
-            if (dateMatch) {
-              rates[dateMatch[1]] = parseFloat(dateMatch[2]);
+            const parts = line.split(",");
+            if (parts.length < 8) continue;
+            const date = parts[6].trim();
+            const rate = parseFloat(parts[7].trim());
+            if (/^\d{4}-\d{2}-\d{2}$/.test(date) && !isNaN(rate) && rate > 0) {
+              rates[date] = rate;
             }
           }
           resolve(rates);
