@@ -1,6 +1,6 @@
 {
   "name": "@gabrielerandelli/minus-tracker",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Italian capital-gains/loss calculator for the Regime Dichiarativo",
   "type": "module",
   "exports": {
@@ -16,7 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/copy-assets.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -192,6 +192,10 @@ netResult    = plusvalenze − minusvalenze
 
 ## CLI
 
+The package registers the binary `minus-tracker` via the `bin` field in `package.json`.
+Install globally (`npm install -g @gabrielerandelli/minus-tracker`) to use it as a system
+command, or invoke without a global install via `npx @gabrielerandelli/minus-tracker`.
+
 Four commands, all accepting `--lang <it|en>` for a one-shot locale override:
 
 | Command                    | Purpose                                                            |
