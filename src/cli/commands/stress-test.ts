@@ -1,0 +1,124 @@
+/**
+ * stress-test CLI command handler
+ * Runs all (or a range of) stress test scenarios against the CLI binary.
+ */
+
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { generateCsv } from "../../stress/generator.js";
+import { runScenario } from "../../stress/runner.js";
+import { buildReport, formatTable, formatJson } from "../../stress/reporter.js";
+import type { StressManifest } from "../../stress/generator.js";
+
+export async function runStressTest(
+  _positionals: string[],
+  flags: Record<string, string | boolean>,
+  stdout: NodeJS.WritableStream,
+  stderr: NodeJS.WritableStream,
+): Promise<number> {
+  // 1. Parse --range flag
+  const rangeStr = (flags["range"] as string | undefined) ?? "1-100";
+  const rangeParts = rangeStr.split("-");
+  if (rangeParts.length !== 2) {
+    stderr.write(
+      `Error: --range must be in the form N-M (e.g. 1-100), got: "${rangeStr}"\n`,
+    );
+    return 2;
+  }
+  const rangeStart = parseInt(rangeParts[0], 10);
+  const rangeEnd = parseInt(rangeParts[1], 10);
+  if (
+    isNaN(rangeStart) ||
+    isNaN(rangeEnd) ||
+    rangeStart <= 0 ||
+    rangeEnd <= 0 ||
+    rangeStart > rangeEnd ||
+    rangeStart > 100 ||
+    rangeEnd > 100
+  ) {
+    stderr.write(
+      `Error: --range values must be positive integers between 1 and 100 with start ≤ end, got: "${rangeStr}"\n`,
+    );
+    return 2;
+  }
+
+  // 2. Resolve manifest path
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const manifestPath = path.join(__dirname, "../../data/stress-manifest.json");
+
+  // 3. Load manifest
+  let manifest: StressManifest;
+  try {
+    const raw = fs.readFileSync(manifestPath, "utf8");
+    manifest = JSON.parse(raw) as StressManifest;
+  } catch {
+    stderr.write(`Error: could not load stress manifest at ${manifestPath}\n`);
+    return 1;
+  }
+
+  // 4. Resolve CLI binary
+  const cliBin = process.argv[1];
+
+  // 5. Create output directory
+  let outputDir: string;
+  const outputDirFlag = flags["output-dir"] as string | undefined;
+  if (outputDirFlag) {
+    outputDir = outputDirFlag;
+    fs.mkdirSync(outputDir, { recursive: true });
+  } else {
+    outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "minus-tracker-stress-"));
+  }
+
+  // 8. Run global checks before scenarios
+  const ratesCheck = spawnSync("node", [cliBin, "rates", "--check"], {
+    encoding: "utf8",
+    timeout: 15000,
+  });
+  if ((ratesCheck.status ?? 1) !== 0) {
+    stderr.write("Warning: rates --check failed; ECB rates may be stale.\n");
+  }
+
+  const configShow = spawnSync("node", [cliBin, "config", "--show"], {
+    encoding: "utf8",
+    timeout: 15000,
+  });
+  if ((configShow.status ?? 1) !== 0) {
+    stderr.write("Warning: config --show failed.\n");
+  }
+
+  // 6. Filter scenarios by range
+  const scenarios = manifest.scenarios.filter((s) => {
+    const id = parseInt(s.id, 10);
+    return id >= rangeStart && id <= rangeEnd;
+  });
+
+  // 7. Run each scenario
+  const results = [];
+  for (const scenario of scenarios) {
+    const csv = generateCsv(scenario);
+    const result = runScenario(scenario, csv, outputDir, cliBin);
+    results.push(result);
+    stdout.write(
+      `  [${result.pass ? "✓" : "✗"}] ${scenario.id} ${scenario.slug}\n`,
+    );
+  }
+
+  // 9. Build and output report
+  const report = buildReport(results, rangeStart, rangeEnd);
+  if (flags["json"]) {
+    stdout.write(formatJson(report) + "\n");
+  } else {
+    stdout.write(formatTable(report) + "\n");
+  }
+
+  // 10. Cleanup unless --keep
+  if (!flags["keep"]) {
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+
+  // 11. Return exit code
+  return report.failed === 0 ? 0 : 1;
+}
