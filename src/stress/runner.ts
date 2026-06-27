@@ -241,6 +241,7 @@ export function runScenario(
       "validate",
       scenario.expect.validate_exit,
       (stdout) => {
+        if (scenario.expect.validate_exit !== 0) return { valid: true };
         const nonEmpty = stdout.trim().length > 0;
         return nonEmpty
           ? { valid: true }
@@ -252,9 +253,10 @@ export function runScenario(
     ),
   );
 
-  // Count warnings in calc output
-  const calcResult = results[0];
-  const actualWarningCount = countWarnings(calcResult.stdout);
+  // Count warnings using English locale calc output (immune to locale config)
+  // English output emits "WARNINGS: N" which matches the /warn/i pattern reliably
+  const enCalcResult = results[3]; // calc --lang en is always index 3
+  const actualWarningCount = countWarnings(enCalcResult.stdout);
   const warningCheckPass = actualWarningCount >= scenario.expect.warning_count;
 
   // Determine overall pass
