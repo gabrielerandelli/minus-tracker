@@ -37,13 +37,14 @@ export interface ScenarioResult {
 }
 
 /**
- * Count warning lines in text (lines containing ⚠, WARNING, WARN, avviso, or attenzione)
+ * Extract the warning count from calc output.
+ * The English renderer emits "WARNINGS: N" and the Italian renderer emits "AVVERTENZE: N".
+ * We parse that numeric value directly rather than counting matching lines.
  */
 function countWarnings(text: string): number {
   if (!text) return 0;
-  const lines = text.split("\n");
-  return lines.filter((line) => /⚠|warning|warn|avviso|attenzione/i.test(line))
-    .length;
+  const match = text.match(/(?:warnings|avvertenze)\s*:\s*(\d+)/i);
+  return match ? parseInt(match[1], 10) : 0;
 }
 
 /**

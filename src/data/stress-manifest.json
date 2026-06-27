@@ -7158,6 +7158,15 @@
           "fee": 2.0
         },
         {
+          "date": "2024-01-12",
+          "product": "GbCorp094",
+          "isin": "GB0000000201",
+          "qty": 10,
+          "price": 68.0,
+          "currency": "GBP",
+          "fee": 2.0
+        },
+        {
           "date": "2024-07-01",
           "product": "GbCorp094",
           "isin": "GB0000000201",

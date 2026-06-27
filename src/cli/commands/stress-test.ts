@@ -47,7 +47,7 @@ export async function runStressTest(
 
   // 2. Resolve manifest path
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const manifestPath = path.join(__dirname, "../../data/stress-manifest.json");
+  const manifestPath = path.join(__dirname, "../data/stress-manifest.json");
 
   // 3. Load manifest
   let manifest: StressManifest;
