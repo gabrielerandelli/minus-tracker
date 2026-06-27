@@ -101,7 +101,7 @@ export function formatTable(report: StressReport): string {
       // Check warning count
       if (!result.warningCheckPass) {
         lines.push(
-          `   → avvertenze: attese ≥${result.actualWarningCount}, trovate ${result.actualWarningCount}`,
+          `   → avvertenze: attese ≥${result.expectedWarningCount}, trovate ${result.actualWarningCount}`,
         );
       }
     }

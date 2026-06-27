@@ -32,6 +32,7 @@ export interface ScenarioResult {
   results: CommandResult[];
   pass: boolean;
   warningCheckPass: boolean;
+  expectedWarningCount: number;
   actualWarningCount: number;
 }
 
@@ -268,6 +269,7 @@ export function runScenario(
     results,
     pass,
     warningCheckPass,
+    expectedWarningCount: scenario.expect.warning_count,
     actualWarningCount,
   };
 }
