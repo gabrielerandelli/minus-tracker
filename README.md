@@ -200,6 +200,64 @@ and handoff to a qualified commercialista.
 
 ---
 
+## Suite di Test di Stress
+
+Esegui la suite di test integrata per verificare che l'installazione gestisca correttamente tutti
+gli scenari supportati:
+
+```bash
+minus-tracker stress-test
+```
+
+Il comando genera 100 file CSV in una directory temporanea, esegue tutti i comandi CLI su ciascuno
+e riporta i risultati senza toccare i tuoi file di progetto.
+
+### Opzioni
+
+| Flag                  | Predefinito                       | Descrizione                                    |
+| --------------------- | --------------------------------- | ---------------------------------------------- |
+| `--range N-M`         | `1-100`                           | Esegui solo gli scenari da N a M               |
+| `--keep`              | disattivo                         | Mantieni i file CSV generati dopo l'esecuzione |
+| `--json`              | disattivo                         | Output dei risultati in formato JSON           |
+| `--output-dir <path>` | `/tmp/minus-tracker-stress-<ts>/` | Directory di output personalizzata             |
+
+### Scenari
+
+100 scenari che coprono: azioni EUR/USD/GBP/CHF, divergenza LIFO vs FIFO, consumo parziale
+dei lotti, portafogli multi-ISIN, fallback BCE nei fine settimana, scenari di avvertenza ed
+errore, operazioni same-day, casi limite di arrotondamento e portafogli grandi (fino a 200
+transazioni).
+
+---
+
+## Stress Test Suite
+
+Run the built-in stress test to verify your installation handles all supported scenarios:
+
+```bash
+minus-tracker stress-test
+```
+
+This generates 100 sample CSV files in a temporary directory, runs all CLI commands on each,
+and reports pass/fail results without touching your project files.
+
+### Options
+
+| Flag                  | Default                           | Description                            |
+| --------------------- | --------------------------------- | -------------------------------------- |
+| `--range N-M`         | `1-100`                           | Run only scenarios N through M         |
+| `--keep`              | off                               | Keep generated CSV files after the run |
+| `--json`              | off                               | Output results as JSON                 |
+| `--output-dir <path>` | `/tmp/minus-tracker-stress-<ts>/` | Override temp directory                |
+
+### Scenarios
+
+100 scenarios covering: EUR/USD/GBP/CHF stocks, LIFO vs FIFO divergence, partial lot
+consumption, multi-ISIN portfolios, ECB weekend fallback, warning and error cases,
+same-day trades, rounding edge cases, and large portfolios (up to 200 transactions).
+
+---
+
 ## License
 
 [MIT](./LICENSE) © 2026 Gabriele Randelli
