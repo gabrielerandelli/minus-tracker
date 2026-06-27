@@ -116,7 +116,7 @@ export function generateCsv(scenario: ManifestScenario): string {
   };
 
   // Build header
-  const header = buildRow({}, columns);
+  const header = columns.join(",");
   const rows = [header];
 
   // Build data rows
