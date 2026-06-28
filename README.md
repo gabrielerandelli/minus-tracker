@@ -413,12 +413,12 @@ The CSV contains a SELL for a position that has no prior BUY in the same file. T
 Run `minus-tracker rates --update`. The `calc` command also auto-updates if the snapshot is more than 7 days old.
 
 **LIFO or FIFO?**
-LIFO is the standard lot-matching method under Italian tax law for the Regime Dichiarativo. FIFO is available for comparison or other jurisdictions. Consult your commercialista for confirmation.
+LIFO is the standard lot-matching method under Italian tax law for the Regime Dichiarativo. FIFO is available for comparison or other jurisdictions. Consult your tax advisor for confirmation.
 
 ### Disclaimer
 
 minus-tracker is a **calculation aid, not tax advice**. Outputs are intended for review
-and handoff to a qualified commercialista.
+and handoff to a qualified tax advisor.
 
 ---
 
