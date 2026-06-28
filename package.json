@@ -1,6 +1,6 @@
 {
   "name": "@gabrielerandelli/minus-tracker",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "Italian capital-gains/loss calculator for the Regime Dichiarativo",
   "type": "module",
   "exports": {
