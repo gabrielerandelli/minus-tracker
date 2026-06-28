@@ -37,15 +37,33 @@ function inferTaxYear(transactions: Transaction[]): {
   return { year, multipleYears: years.length > 1 };
 }
 
+/**
+ * Computes Italian capital gains and losses from a list of parsed transactions.
+ *
+ * Uses LIFO or FIFO lot matching and converts all amounts to EUR via ECB rates.
+ */
 export class Calculator {
   private readonly _transactions: Transaction[];
   private readonly _parseWarnings: string[];
 
+  /**
+   * @param transactions - Normalised Transaction objects from the CSV import step.
+   * @param parseWarnings - Warnings collected during the import step; forwarded into the report.
+   */
   constructor(transactions: Transaction[], parseWarnings?: string[]) {
     this._transactions = transactions;
     this._parseWarnings = parseWarnings ?? [];
   }
 
+  /**
+   * Run LIFO or FIFO lot-matching over the transaction list.
+   *
+   * @param method - `"LIFO"` or `"FIFO"`.
+   * @returns GainsReport with `plusvalenze`, `minusvalenze`, `netResult`, per-lot breakdown,
+   *          ECB rates used, and any accumulated warnings.
+   * @throws {CalculationError} when a SELL has no matching open buy lots.
+   *         `error.isin` and `error.date` identify the problematic transaction.
+   */
   calculateGains(method: LotMethod): GainsReport {
     const warnings: string[] = [...this._parseWarnings];
 

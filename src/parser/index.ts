@@ -77,6 +77,12 @@ function parseDate(ddmmyyyy: string): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/**
+ * Parses a DEGIRO Transactions CSV export into normalised Transaction objects.
+ *
+ * Export from Activity → Transactions in the DEGIRO UI (not the Account Statement).
+ * Supported currencies: EUR, USD, GBP, CHF. ECB historical rates are used for conversion.
+ */
 export class DEGIROParser {
   private _warningEntries: WarningEntry[] = [];
   private _snapshot?: RatesSnapshot;
@@ -85,6 +91,17 @@ export class DEGIROParser {
     this._snapshot = snapshot;
   }
 
+  /**
+   * Parse a DEGIRO Transactions CSV export string.
+   *
+   * @param csv - Raw UTF-8 string from the DEGIRO Transactions export.
+   * @returns Array of normalised Transaction objects. Empty if no data rows are found.
+   * @throws {ParseError} code `"INVALID_CSV"` — malformed CSV or binary content.
+   * @throws {ParseError} code `"MISSING_COLUMN"` (+ `columnName`) — required column absent.
+   *
+   * Rows with missing ISIN, unsupported currency, zero quantity, or no ECB rate within
+   * 3 trading days are skipped silently. Inspect `parser.warnings` for details.
+   */
   parse(csv: string): Transaction[] {
     this._warningEntries = [];
 

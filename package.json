@@ -28,6 +28,23 @@
     "vitest": "^2.0.0"
   },
   "license": "MIT",
+  "keywords": [
+    "capital-gains",
+    "plusvalenze",
+    "minusvalenze",
+    "regime-dichiarativo",
+    "degiro",
+    "tax",
+    "italy",
+    "csv",
+    "lifo",
+    "fifo",
+    "typescript"
+  ],
+  "homepage": "https://github.com/gabrielerandelli/minus-tracker#readme",
+  "bugs": {
+    "url": "https://github.com/gabrielerandelli/minus-tracker/issues"
+  },
   "engines": {
     "node": ">=24.0.0"
   },
