@@ -194,6 +194,15 @@ Esegui `minus-tracker rates --update`. Il comando `calc` esegue l'aggiornamento 
 **LIFO o FIFO?**
 Il Regime Dichiarativo utilizza il LIFO come metodo predefinito ai sensi della normativa fiscale italiana. Il FIFO è disponibile per confronto. Consulta il tuo commercialista per conferma.
 
+### Limitazioni note
+
+minus-tracker aggrega le plusvalenze e le minusvalenze di **tutti gli strumenti finanziari in un'unica somma**, indipendentemente dalla loro categoria fiscale.
+
+La normativa italiana prevede che i **redditi diversi** (azioni, derivati, certificati — Art. 67 TUIR) e i **redditi di capitale** (ETF/fondi UCITS — Art. 44 TUIR) non possano essere compensati tra loro: una minusvalenza su un ETF non può ridurre la plusvalenza su un'azione, e viceversa.
+
+**Portafogli con soli titoli azionari o soli ETF:** il calcolo è corretto.
+**Portafogli misti (azioni + ETF):** il risultato netto riportato non è direttamente utilizzabile ai fini dichiarativi. In questo caso è necessario separare manualmente i lotti per categoria fiscale prima di presentare la dichiarazione, con l'assistenza di un commercialista.
+
 ### Avvertenza
 
 minus-tracker è un **progetto personale** sviluppato a titolo privato e **non è in alcun modo affiliato, sponsorizzato o rappresentativo del datore di lavoro dell'autore o di qualsiasi altra organizzazione**.
@@ -418,6 +427,15 @@ Run `minus-tracker rates --update`. The `calc` command also auto-updates if the 
 
 **LIFO or FIFO?**
 LIFO is the standard lot-matching method under Italian tax law for the Regime Dichiarativo. FIFO is available for comparison or other jurisdictions. Consult your tax advisor for confirmation.
+
+### Known Limitations
+
+minus-tracker aggregates gains and losses from **all financial instruments into a single total**, regardless of their tax category.
+
+Italian law requires that **redditi diversi** (individual stocks, derivatives, certificates — Art. 67 TUIR) and **redditi di capitale** (ETFs / UCITS funds — Art. 44 TUIR) be kept separate: a loss on an ETF cannot offset a gain on a stock, and vice versa.
+
+**Portfolios holding only stocks or only ETFs:** the calculation is correct.
+**Mixed portfolios (stocks + ETFs):** the reported net result cannot be used directly for tax filing. In this case, lots must be manually separated by tax category before filing, with the help of a qualified tax advisor.
 
 ### Disclaimer
 
