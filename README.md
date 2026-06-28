@@ -196,7 +196,11 @@ Il Regime Dichiarativo utilizza il LIFO come metodo predefinito ai sensi della n
 
 ### Avvertenza
 
-minus-tracker è un **ausilio al calcolo e non costituisce in alcun modo consulenza fiscale**. I report generati sono pensati per essere verificati e consegnati a un commercialista o a un professionista qualificato.
+minus-tracker è un **progetto personale** sviluppato a titolo privato e **non è in alcun modo affiliato, sponsorizzato o rappresentativo del datore di lavoro dell'autore o di qualsiasi altra organizzazione**.
+
+Il tool è fornito **esclusivamente come ausilio al calcolo** e **non costituisce consulenza fiscale, legale o finanziaria**. L'autore **declina ogni responsabilità** per eventuali errori nei calcoli, per un utilizzo improprio dello strumento o per le decisioni prese dall'utente finale sulla base dei report generati.
+
+Si raccomanda **sempre** di verificare i risultati con un commercialista o professionista fiscale qualificato prima di presentare qualsiasi dichiarazione.
 
 ---
 
@@ -417,8 +421,11 @@ LIFO is the standard lot-matching method under Italian tax law for the Regime Di
 
 ### Disclaimer
 
-minus-tracker is a **calculation aid, not tax advice**. Outputs are intended for review
-and handoff to a qualified tax advisor.
+minus-tracker is a **personal project** developed in a private capacity and is **not affiliated with, endorsed by, or representative of the author's employer or any other organisation**.
+
+This tool is provided **solely as a calculation aid** and **does not constitute tax, legal, or financial advice**. The author **accepts no liability** for errors in the output, misuse of the tool, or any decisions made by end users based on the generated reports.
+
+You are **always** encouraged to review results with a qualified tax advisor before filing any return.
 
 ---
 
