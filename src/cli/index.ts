@@ -5,6 +5,7 @@ import { runCalc } from "./commands/calc.js";
 import { runValidate } from "./commands/validate.js";
 import { runRates } from "./commands/rates.js";
 import { runConfig } from "./commands/config.js";
+import { runStressTest } from "./commands/stress-test.js";
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -17,6 +18,9 @@ async function main(): Promise<void> {
       check: { type: "boolean", default: false },
       update: { type: "boolean", default: false },
       show: { type: "boolean", default: false },
+      range: { type: "string" },
+      keep: { type: "boolean", default: false },
+      "output-dir": { type: "string" },
     },
     allowPositionals: true,
     strict: false,
@@ -49,9 +53,12 @@ async function main(): Promise<void> {
       case "config":
         exitCode = await runConfig(restPositionals, flags, s, stdout, stderr);
         break;
+      case "stress-test":
+        exitCode = await runStressTest(restPositionals, flags, stdout, stderr);
+        break;
       default:
         stderr.write(
-          "Usage: minus-tracker <calc|validate|rates|config> [options] [file]\n",
+          "Usage: minus-tracker <calc|validate|rates|config|stress-test> [options] [file]\n",
         );
         exitCode = 2;
     }
