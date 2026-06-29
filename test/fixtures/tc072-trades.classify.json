@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "classifications": {
+    "US0378331005": {
+      "product": "Apple Inc",
+      "assetClass": "Stock",
+      "bucketGain": "B",
+      "bucketLoss": "B",
+      "taxRate": 0.26,
+      "whiteListed": null,
+      "confirmedByUser": true,
+      "source": "user"
+    }
+  }
+}

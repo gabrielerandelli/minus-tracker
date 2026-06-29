@@ -55,5 +55,41 @@ export const it: LocaleStrings = {
   configLangSet: (lang) => `Lingua impostata su: ${lang}`,
   configCurrentLang: (lang) => `Lingua corrente: ${lang}`,
 
+  classifyStarting: (n) => `Classificazione ISIN in corso... (${n} strumenti)`,
+  classifyDetected: (isin, product, bucket, rate) =>
+    `Rilevato: ${product} (${isin}) → ${bucket} | ${rate}`,
+  classifyConfirm: "[Y/n/?]: ",
+  classifyOverridePrompt: "Tipo di strumento:",
+  classifyDone: (confirmed, total) =>
+    `Classificazione completata (${confirmed}/${total} confermati).`,
+  classifyWritten: (path) => `Scritto: ${path}`,
+  classifyMergePrompt: (existing) =>
+    `File già esistente (${existing} ISIN confermati). Aggiungere i nuovi ISIN? [Y/n]: `,
+  classifyOfflineWarning: "Modalità offline: ricerca OpenFIGI saltata.",
+  classifyUnknownType: (type) =>
+    `Tipo non riconosciuto: ${type}. Classificare manualmente.`,
+  classifyNonTtyError:
+    "Modalità interattiva richiede un terminale (TTY). Usa --offline per classificare senza terminale.",
+
+  bucketAHeader: "BUCKET A — REDDITI DA CAPITALE (non compensabili)",
+  bucketBHeader: "BUCKET B — REDDITI DIVERSI",
+  bucketAEtf: "ETF (OICR)",
+  bucketABtpWl: "BTP/WL",
+  bucketATotalTax: "TOTALE IMPOSTA",
+  bucketBCarryApplied: (year) => `RIPORTO ${year}`,
+  bucketBResult: "RISULTATO",
+  bucketBCarryNote: "(riportabile ai prossimi 4 anni)",
+  warnMixedBuckets:
+    "Le perdite in Bucket B non compensano le plusvalenze in Bucket A.",
+  warnMixedAssets:
+    "AVVISO: CSV contiene tipi di strumenti misti (es. ETF + Azioni).\n" +
+    "   Il calcolo a bucket unico può non essere fiscalmente corretto.\n" +
+    "   Esegui: minus-tracker classify trades.csv",
+  headerBucket: "BUCKET",
+  warnUnclassifiedIsin: (isin) =>
+    `ISIN ${isin} non trovato nella mappa di classificazione — assegnato a Bucket B.`,
+  carryForwardInvalidFormat:
+    "Formato --carry-forward non valido. Usa: AAAA:importo (es. 2023:2500)",
+
   disclaimer: "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
 };

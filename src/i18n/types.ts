@@ -59,6 +59,38 @@ export interface LocaleStrings {
   configLangSet: (lang: SupportedLocale) => string;
   configCurrentLang: (lang: SupportedLocale) => string;
 
+  // classify command (Part 11)
+  classifyStarting: (count: number) => string;
+  classifyDetected: (
+    isin: string,
+    product: string,
+    bucket: string,
+    rate: string,
+  ) => string;
+  classifyConfirm: string;
+  classifyOverridePrompt: string;
+  classifyDone: (confirmed: number, total: number) => string;
+  classifyWritten: (path: string) => string;
+  classifyMergePrompt: (existing: number) => string;
+  classifyOfflineWarning: string;
+  classifyUnknownType: (type: string) => string;
+  classifyNonTtyError: string;
+
+  // two-bucket output (Part 12)
+  bucketAHeader: string;
+  bucketBHeader: string;
+  bucketAEtf: string;
+  bucketABtpWl: string;
+  bucketATotalTax: string;
+  bucketBCarryApplied: (year: number) => string;
+  bucketBResult: string;
+  bucketBCarryNote: string;
+  warnMixedBuckets: string;
+  warnMixedAssets: string;
+  headerBucket: string;
+  warnUnclassifiedIsin: (isin: string) => string;
+  carryForwardInvalidFormat: string;
+
   // Legal disclaimer — always Italian
   disclaimer: string;
 }

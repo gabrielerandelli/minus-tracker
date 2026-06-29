@@ -3,6 +3,10 @@ import type {
   MatchedLot,
   GainsReport,
   LotMethod,
+  CalculatorOptions,
+  AssetClass,
+  BucketAReport,
+  BucketBReport,
 } from "../types.js";
 import { CalculationError } from "../errors.js";
 
@@ -45,14 +49,16 @@ function inferTaxYear(transactions: Transaction[]): {
 export class Calculator {
   private readonly _transactions: Transaction[];
   private readonly _parseWarnings: string[];
+  private readonly _options: CalculatorOptions;
 
-  /**
-   * @param transactions - Normalised Transaction objects from the CSV import step.
-   * @param parseWarnings - Warnings collected during the import step; forwarded into the report.
-   */
-  constructor(transactions: Transaction[], parseWarnings?: string[]) {
+  constructor(
+    transactions: Transaction[],
+    parseWarnings?: string[],
+    options?: CalculatorOptions,
+  ) {
     this._transactions = transactions;
     this._parseWarnings = parseWarnings ?? [];
+    this._options = options ?? {};
   }
 
   /**
@@ -171,6 +177,121 @@ export class Calculator {
     for (const lot of matchedLots) {
       if (lot.gainLossEUR > 0) plusvalenze += lot.gainLossEUR;
       else minusvalenze += Math.abs(lot.gainLossEUR);
+    }
+
+    // Two-bucket routing (only when classification map provided)
+    if (this._options.classification) {
+      const classification = this._options.classification;
+      const unclassifiedIsins = new Set<string>();
+
+      for (const lot of matchedLots) {
+        const entry = classification[lot.isin];
+        if (!entry) {
+          lot.bucket = "B";
+          unclassifiedIsins.add(lot.isin);
+        } else if (entry.bucketGain === "A" && lot.gainLossEUR >= 0) {
+          lot.bucket = "A";
+        } else {
+          lot.bucket = "B";
+        }
+      }
+
+      for (const isin of unclassifiedIsins) {
+        warnings.push(
+          `ISIN ${isin} not found in classification map — assigned to Bucket B.`,
+        );
+      }
+
+      // Bucket A computation
+      const bucketALots = matchedLots.filter((l) => l.bucket === "A");
+      const groupsByRate = new Map<
+        number,
+        { assetClasses: Set<string>; plusvalenze: number }
+      >();
+      for (const lot of bucketALots) {
+        const entry = classification[lot.isin]!;
+        const rate = entry.taxRate;
+        if (!groupsByRate.has(rate))
+          groupsByRate.set(rate, { assetClasses: new Set(), plusvalenze: 0 });
+        const g = groupsByRate.get(rate)!;
+        g.assetClasses.add(entry.assetClass);
+        g.plusvalenze += lot.gainLossEUR;
+      }
+      const bucketAGroups = [...groupsByRate.entries()].map(([taxRate, g]) => ({
+        taxRate,
+        assetClasses: [...g.assetClasses] as AssetClass[],
+        plusvalenze: roundHalfUp(g.plusvalenze),
+        imposta: roundHalfUp(g.plusvalenze * taxRate),
+      }));
+      const bucketAReport: BucketAReport = {
+        groups: bucketAGroups,
+        totalImposta: roundHalfUp(
+          bucketAGroups.reduce((s, g) => s + g.imposta, 0),
+        ),
+      };
+
+      // Bucket B computation
+      const bucketBLots = matchedLots.filter((l) => l.bucket === "B");
+      let bPlusvalenze = 0;
+      let bMinusvalenze = 0;
+      for (const lot of bucketBLots) {
+        if (lot.gainLossEUR >= 0) bPlusvalenze += lot.gainLossEUR;
+        else bMinusvalenze += Math.abs(lot.gainLossEUR);
+      }
+      bPlusvalenze = roundHalfUp(bPlusvalenze);
+      bMinusvalenze = roundHalfUp(bMinusvalenze);
+
+      const carryForwards = [...(this._options.carryForward ?? [])].sort(
+        (a, b) => a.year - b.year,
+      );
+      let remaining = bPlusvalenze - bMinusvalenze;
+      let carryForwardApplied = 0;
+      for (const entry of carryForwards) {
+        if (taxYear - entry.year > 4) continue;
+        if (remaining <= 0) break;
+        const consumed = Math.min(entry.amount, remaining);
+        carryForwardApplied += consumed;
+        remaining -= consumed;
+      }
+      carryForwardApplied = roundHalfUp(carryForwardApplied);
+      const bNetResult = roundHalfUp(
+        bPlusvalenze - bMinusvalenze - carryForwardApplied,
+      );
+      const carryForwardRemaining = roundHalfUp(Math.max(0, -bNetResult));
+
+      const bucketBReport: BucketBReport = {
+        plusvalenze: bPlusvalenze,
+        minusvalenze: bMinusvalenze,
+        carryForwardApplied,
+        carryForwardRemaining,
+        netResult: bNetResult,
+      };
+
+      return {
+        method,
+        taxYear,
+        plusvalenze: roundHalfUp(plusvalenze),
+        minusvalenze: roundHalfUp(minusvalenze),
+        netResult: roundHalfUp(plusvalenze - minusvalenze),
+        lots: matchedLots,
+        ratesUsed,
+        warnings,
+        generatedAt: new Date().toISOString(),
+        bucketA: bucketAGroups.length > 0 ? bucketAReport : undefined,
+        bucketB: bucketBReport,
+      };
+    } else {
+      // Mixed-asset heuristic (no classification map)
+      const allIsins = [...new Set(this._transactions.map((t) => t.isin))];
+      const hasIePrefix = allIsins.some((isin) => isin.startsWith("IE"));
+      const hasOther = allIsins.some((isin) => !isin.startsWith("IE"));
+      if (hasIePrefix && hasOther) {
+        warnings.push(
+          "AVVISO: CSV contiene tipi di strumenti misti (es. ETF + Azioni).\n" +
+            "   Il calcolo a bucket unico può non essere fiscalmente corretto.\n" +
+            "   Esegui: minus-tracker classify trades.csv",
+        );
+      }
     }
 
     return {

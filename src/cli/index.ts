@@ -6,6 +6,8 @@ import { runValidate } from "./commands/validate.js";
 import { runRates } from "./commands/rates.js";
 import { runConfig } from "./commands/config.js";
 import { runStressTest } from "./commands/stress-test.js";
+import { runClassify } from "./commands/classify.js";
+import { ClassificationError } from "../errors.js";
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -21,6 +23,7 @@ async function main(): Promise<void> {
       range: { type: "string" },
       keep: { type: "boolean", default: false },
       "output-dir": { type: "string" },
+      offline: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -56,14 +59,20 @@ async function main(): Promise<void> {
       case "stress-test":
         exitCode = await runStressTest(restPositionals, flags, stdout, stderr);
         break;
+      case "classify":
+        exitCode = await runClassify(restPositionals, flags, s, stdout, stderr);
+        break;
       default:
         stderr.write(
-          "Usage: minus-tracker <calc|validate|rates|config|stress-test> [options] [file]\n",
+          "Usage: minus-tracker <calc|validate|rates|config|stress-test|classify> [options] [file]\n",
         );
         exitCode = 2;
     }
   } catch (err) {
-    if (err instanceof ParseError) {
+    if (err instanceof ClassificationError) {
+      stderr.write(err.message + "\n");
+      exitCode = 1;
+    } else if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
         stderr.write(s.errorInvalidCsv + "\n");
       } else {

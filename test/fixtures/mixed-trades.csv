@@ -1,0 +1,5 @@
+Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID
+10-01-2024,09:00,iShares MSCI World ETF,IE00B4L5Y983,XETRA,XETRA,10,100.00,-1000.00,EUR,-1000.00,EUR,1,-1.00,EUR,-1001.00,EUR,mix-buy-001
+20-06-2024,15:00,iShares MSCI World ETF,IE00B4L5Y983,XETRA,XETRA,-10,150.00,1500.00,EUR,1500.00,EUR,1,-1.00,EUR,1499.00,EUR,mix-sell-001
+14-01-2024,09:05,Apple Inc,US0378331005,XNAS,XNAS,10,150.00,-1500.00,EUR,-1500.00,EUR,1,-2.00,EUR,-1502.00,EUR,mix-buy-002
+15-03-2024,14:20,Apple Inc,US0378331005,XNAS,XNAS,-10,180.00,1800.00,EUR,1800.00,EUR,1,-2.00,EUR,1798.00,EUR,mix-sell-002

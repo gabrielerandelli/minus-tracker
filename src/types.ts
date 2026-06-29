@@ -1,5 +1,59 @@
 export type LotMethod = "LIFO" | "FIFO";
 
+export type AssetClass =
+  | "ETF"
+  | "Stock"
+  | "ETC"
+  | "GovtBondWL"
+  | "GovtBondOther"
+  | "CorpBond"
+  | "Derivative"
+  | "LeverageCert"
+  | "CapProtectedCert";
+
+export interface ClassificationEntry {
+  product: string;
+  assetClass: AssetClass;
+  bucketGain: "A" | "B";
+  bucketLoss: "A" | "B";
+  taxRate: number;
+  whiteListed: boolean | null;
+  confirmedByUser: boolean;
+  source: "openfigi" | "user";
+}
+
+export type ClassificationMap = Record<string, ClassificationEntry>;
+
+export interface BucketAGroup {
+  taxRate: number;
+  assetClasses: AssetClass[];
+  plusvalenze: number;
+  imposta: number;
+}
+
+export interface BucketAReport {
+  groups: BucketAGroup[];
+  totalImposta: number;
+}
+
+export interface BucketBReport {
+  plusvalenze: number;
+  minusvalenze: number;
+  carryForwardApplied: number;
+  carryForwardRemaining: number;
+  netResult: number;
+}
+
+export interface CarryForward {
+  year: number;
+  amount: number;
+}
+
+export interface CalculatorOptions {
+  classification?: ClassificationMap;
+  carryForward?: CarryForward[];
+}
+
 export interface Transaction {
   isin: string;
   product: string;
@@ -27,6 +81,7 @@ export interface MatchedLot {
   gainLossEUR: number; // sellProceedsEUR - buyCostEUR
   buyFxRate?: number;
   sellFxRate?: number;
+  bucket?: "A" | "B";
 }
 
 export interface GainsReport {
@@ -39,4 +94,6 @@ export interface GainsReport {
   ratesUsed: Record<string, number>; // key: "USD:2023-03-01", value: 1.094
   warnings: string[];
   generatedAt: string; // ISO timestamp
+  bucketA?: BucketAReport;
+  bucketB?: BucketBReport;
 }

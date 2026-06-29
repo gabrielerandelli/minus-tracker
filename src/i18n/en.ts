@@ -51,5 +51,40 @@ export const en: LocaleStrings = {
   configLangSet: (lang) => `Language set to: ${lang}`,
   configCurrentLang: (lang) => `Current language: ${lang}`,
 
+  classifyStarting: (n) => `Classifying ISINs... (${n} instruments)`,
+  classifyDetected: (isin, product, bucket, rate) =>
+    `Detected: ${product} (${isin}) → ${bucket} | ${rate}`,
+  classifyConfirm: "[Y/n/?]: ",
+  classifyOverridePrompt: "Instrument type:",
+  classifyDone: (confirmed, total) =>
+    `Classification complete (${confirmed}/${total} confirmed).`,
+  classifyWritten: (path) => `Written: ${path}`,
+  classifyMergePrompt: (existing) =>
+    `File already exists (${existing} confirmed ISINs). Add new ISINs? [Y/n]: `,
+  classifyOfflineWarning: "Offline mode: OpenFIGI lookup skipped.",
+  classifyUnknownType: (type) =>
+    `Unrecognized type: ${type}. Please classify manually.`,
+  classifyNonTtyError:
+    "Interactive mode requires a TTY. Use --offline to classify without a terminal.",
+
+  bucketAHeader: "BUCKET A — CAPITAL INCOME (non-offsettable)",
+  bucketBHeader: "BUCKET B — MISCELLANEOUS INCOME",
+  bucketAEtf: "ETF (OICR)",
+  bucketABtpWl: "Govt Bond WL",
+  bucketATotalTax: "TOTAL TAX",
+  bucketBCarryApplied: (year) => `CARRY ${year}`,
+  bucketBResult: "RESULT",
+  bucketBCarryNote: "(carriable over the next 4 years)",
+  warnMixedBuckets: "Bucket B losses do not offset Bucket A plusvalenze.",
+  warnMixedAssets:
+    "WARNING: CSV contains mixed instrument types (e.g. ETFs + Stocks).\n" +
+    "   Single-bucket calculation may not be fiscally correct.\n" +
+    "   Run: minus-tracker classify trades.csv",
+  headerBucket: "BUCKET",
+  warnUnclassifiedIsin: (isin) =>
+    `ISIN ${isin} not found in classification map — assigned to Bucket B.`,
+  carryForwardInvalidFormat:
+    "Invalid --carry-forward format. Use: YYYY:amount (e.g. 2023:2500)",
+
   disclaimer: "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
 };

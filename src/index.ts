@@ -7,3 +7,19 @@ export type {
   GainsReport,
   LotMethod,
 } from "./types.js";
+
+// v0.6.0 value exports
+export { Classifier } from "./classifier/index.js";
+export { ClassificationError } from "./errors.js";
+
+// v0.6.0 type exports
+export type {
+  AssetClass,
+  ClassificationEntry,
+  ClassificationMap,
+  BucketAGroup,
+  BucketAReport,
+  BucketBReport,
+  CarryForward,
+  CalculatorOptions,
+} from "./types.js";

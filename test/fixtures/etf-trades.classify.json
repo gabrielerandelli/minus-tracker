@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "classifications": {
+    "IE00B4L5Y983": {
+      "product": "iShares MSCI World ETF",
+      "assetClass": "ETF",
+      "bucketGain": "A",
+      "bucketLoss": "B",
+      "taxRate": 0.26,
+      "whiteListed": null,
+      "confirmedByUser": true,
+      "source": "openfigi"
+    }
+  }
+}
