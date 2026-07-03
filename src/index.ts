@@ -23,3 +23,14 @@ export type {
   CarryForward,
   CalculatorOptions,
 } from "./types.js";
+
+// v0.7.0 type exports
+export type {
+  IncomeRow,
+  CarryForwardEntry,
+  DividendEntry,
+  CedolaEntry,
+  QuadroRTReport,
+  QuadroRMReport,
+  DichiarazioneReport,
+} from "./types.js";

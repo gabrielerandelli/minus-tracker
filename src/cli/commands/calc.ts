@@ -77,6 +77,20 @@ export async function runCalc(
     }
   }
 
+  // --export-dichiarazione flag parsing (optional path value)
+  const exportFlagRaw = flags["export-dichiarazione"];
+  const exportRequested =
+    exportFlagRaw !== undefined && exportFlagRaw !== false;
+  const exportPath =
+    typeof exportFlagRaw === "string"
+      ? exportFlagRaw
+      : filePath.replace(/\.csv$/i, "") + ".dichiarazione.json";
+
+  if (exportRequested && classification === undefined) {
+    stderr.write(s.warnNoDichiarazioneSidecar + "\n");
+    return 1;
+  }
+
   // --carry-forward flag parsing
   const rawCf: unknown = flags["carry-forward"];
   const rawCarryForwards: string[] = Array.isArray(rawCf)
@@ -144,13 +158,33 @@ export async function runCalc(
   const calculator = new Calculator(transactions, parser.warnings, {
     classification,
     carryForward: carryForward.length > 0 ? carryForward : undefined,
+    incomeRows: parser.incomeRows,
   });
   const report = calculator.calculateGains(method);
+  const carryForwardWasProvided = carryForward.length > 0;
+
+  if (exportRequested) {
+    try {
+      await report.dichiarazione!.exportTo(exportPath);
+    } catch {
+      stderr.write(`Cannot write dichiarazione export: ${exportPath}\n`);
+      return 1;
+    }
+  }
 
   if (flags["json"]) {
-    stdout.write(JSON.stringify(report, null, 2) + "\n");
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { dichiarazione: _dichiarazione, ...jsonReport } = report;
+    stdout.write(JSON.stringify(jsonReport, null, 2) + "\n");
   } else {
-    stdout.write(renderReport(report, s) + "\n");
+    stdout.write(renderReport(report, s, carryForwardWasProvided) + "\n");
   }
+
+  if (exportRequested) {
+    stdout.write(s.classifyWritten(exportPath) + "\n");
+  } else if (!report.dichiarazione) {
+    stderr.write(s.warnNoDichiarazioneSidecar + "\n");
+  }
+
   return 0;
 }

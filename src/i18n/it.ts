@@ -14,6 +14,10 @@ export const it: LocaleStrings = {
   warnNoEcbRate: (row, currency, date) =>
     `Riga ${row}: nessun tasso BCE per ${currency} in data ${date} — riga ignorata`,
   warnQuantityZero: (row) => `Riga ${row}: quantità pari a 0 — riga ignorata`,
+  warnMissingIsinIncome: (row) =>
+    `Riga ${row}: ISIN mancante su riga di reddito — riga ignorata`,
+  warnOrphanWithholding: (isin, date) =>
+    `Riga di ritenuta su ${isin}/${date} senza riga di reddito corrispondente — riga ignorata`,
 
   warnMultipleYears:
     "Il CSV contiene transazioni di più anni — filtra per un singolo anno per un calcolo accurato.",
@@ -92,4 +96,32 @@ export const it: LocaleStrings = {
     "Formato --carry-forward non valido. Usa: AAAA:importo (es. 2023:2500)",
 
   disclaimer: "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
+
+  // v0.7.0 dichiarazione section
+  dichiarazioneHeader: (anno) =>
+    `── MODELLO REDDITI PF [ANNO D'IMPOSTA: ${anno}]`,
+  dichiarazioneNota:
+    "Nota: i valori riportano i codici riga indicativi — verificare la modulistica ufficiale.",
+  dichiarazioneWarningRow:
+    "⚠  I codici riga tra parentesi quadre sono indicativi. Verificare la versione corrente del modello.",
+  quadroRTHeader: "QUADRO RT — SEZIONE II (redditi diversi)",
+  quadroRTPlusvalenze: "[RT-P]  Plusvalenze totali",
+  quadroRTMinusvalenze: "[RT-M]  Minusvalenze totali",
+  quadroRTDifferenza: "[RT-D]  Differenza",
+  quadroRTRiporto: (anno) => `[RT-C*] Riporto ${anno} (consumato)`,
+  quadroRTImponibile: "[RT-N]  Imponibile netto",
+  quadroRTImposta: "[RT-I]  Imposta (26%)",
+  quadroRTRiportabile: "[RT-R]  Minusvalenze da riportare",
+  quadroRTPerdita: "perdita netta:",
+  quadroRMHeader: "QUADRO RM (redditi da capitale)",
+  quadroRMEtf26: "[RM-A1] ETF/OICR plusvalenze (26%)",
+  quadroRMImposta: "Imposta sostitutiva",
+  quadroRMBtp: "[RM-A2] BTP/WL plusvalenze (12,5%)",
+  quadroRMDividendi: "[RM-D]  Dividendi esteri lordi",
+  quadroRMRitenuta: "Ritenuta estera (credito)",
+  quadroRMCedole: "[RM-C]  Cedole obbligazionarie",
+  dichiarazioneDisclaimer:
+    "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
+  warnNoDichiarazioneSidecar: "Eseguire prima: minus-tracker classify <file>",
+  warnNoCarryForwardProvided: "(eventuali perdite pregresse non applicate)",
 };

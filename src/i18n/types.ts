@@ -18,6 +18,8 @@ export interface LocaleStrings {
   warnUnsupportedCurrency: (row: number, currency: string) => string;
   warnNoEcbRate: (row: number, currency: string, date: string) => string;
   warnQuantityZero: (row: number) => string;
+  warnMissingIsinIncome: (row: number) => string;
+  warnOrphanWithholding: (isin: string, date: string) => string;
 
   // calc command: multi-year warning
   warnMultipleYears: string;
@@ -93,4 +95,28 @@ export interface LocaleStrings {
 
   // Legal disclaimer — always Italian
   disclaimer: string;
+
+  // v0.7.0 dichiarazione section
+  dichiarazioneHeader(anno: number): string;
+  dichiarazioneNota: string;
+  dichiarazioneWarningRow: string;
+  quadroRTHeader: string;
+  quadroRTPlusvalenze: string;
+  quadroRTMinusvalenze: string;
+  quadroRTDifferenza: string;
+  quadroRTRiporto(anno: number): string;
+  quadroRTImponibile: string;
+  quadroRTImposta: string;
+  quadroRTRiportabile: string;
+  quadroRTPerdita: string;
+  quadroRMHeader: string;
+  quadroRMEtf26: string;
+  quadroRMImposta: string;
+  quadroRMBtp: string;
+  quadroRMDividendi: string;
+  quadroRMRitenuta: string;
+  quadroRMCedole: string;
+  dichiarazioneDisclaimer: string;
+  warnNoDichiarazioneSidecar: string;
+  warnNoCarryForwardProvided: string;
 }

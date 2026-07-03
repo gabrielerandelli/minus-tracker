@@ -1,4 +1,4 @@
-import { Transaction } from "../types.js";
+import { Transaction, IncomeRow } from "../types.js";
 import { ParseError } from "../errors.js";
 import {
   lookupRate,
@@ -18,6 +18,28 @@ const REQUIRED_COLUMNS = [
   "Transaction costs currency",
   "Product",
 ] as const;
+
+// Income-row product keyword matching (case-insensitive substring match).
+// Tax keywords are checked first because "DIVIDEND TAX" also contains "DIVIDEND".
+const INCOME_KEYWORDS = ["DIVIDEND", "COUPON", "INTEREST", "CEDOLA"] as const;
+const TAX_KEYWORDS = ["DIVIDEND TAX", "WITHHOLDING", "RITENUTA"] as const;
+
+interface IncomeCandidate {
+  isin: string;
+  product: string;
+  date: string;
+  incomeType: "dividend" | "coupon";
+  localValue: number;
+  currency: string;
+  row: number;
+}
+
+interface WithholdingCandidate {
+  isin: string;
+  date: string;
+  amount: number; // absolute value, in source currency
+  row: number;
+}
 
 /**
  * Parse a single CSV line, respecting RFC-4180-style double-quote escaping.
@@ -86,6 +108,7 @@ function parseDate(ddmmyyyy: string): string {
 export class DEGIROParser {
   private _warningEntries: WarningEntry[] = [];
   private _snapshot?: RatesSnapshot;
+  private _incomeRows: IncomeRow[] = [];
 
   constructor(snapshot?: RatesSnapshot) {
     this._snapshot = snapshot;
@@ -104,6 +127,7 @@ export class DEGIROParser {
    */
   parse(csv: string): Transaction[] {
     this._warningEntries = [];
+    this._incomeRows = [];
 
     // Binary content (null bytes) is not valid CSV
     if (typeof csv !== "string" || csv.includes("\x00")) {
@@ -139,6 +163,8 @@ export class DEGIROParser {
     const snapshot: RatesSnapshot = this._snapshot ?? getActiveSnapshot();
 
     const transactions: Transaction[] = [];
+    const incomeCandidates: IncomeCandidate[] = [];
+    const withholdingCandidates: WithholdingCandidate[] = [];
 
     for (let r = 1; r < rows.length; r++) {
       const row = rows[r];
@@ -151,15 +177,78 @@ export class DEGIROParser {
 
       const get = (col: string): string => (row[colIndex[col]] ?? "").trim();
 
-      // --- ISIN ---
       const isin = get("ISIN");
+      const product = get("Product");
+      const qtyStr = get("Quantity");
+      const rawQty = parseFloat(qtyStr);
+      const qtyIsZeroOrBlank = qtyStr === "" || isNaN(rawQty) || rawQty === 0;
+
+      // --- Income-row detection (Quantity == 0 or blank) ---
+      if (qtyIsZeroOrBlank) {
+        const upperProduct = product.toUpperCase();
+        const isTaxKeyword = TAX_KEYWORDS.some((k) => upperProduct.includes(k));
+        const isIncomeKeyword =
+          !isTaxKeyword &&
+          INCOME_KEYWORDS.some((k) => upperProduct.includes(k));
+
+        if (isTaxKeyword || isIncomeKeyword) {
+          const rawLocalValue = parseFloat(get("Local value"));
+          const localValue = isNaN(rawLocalValue) ? 0 : rawLocalValue;
+          const isoDate = parseDate(get("Date"));
+
+          if (isTaxKeyword && localValue < 0) {
+            if (!isin) {
+              this._warningEntries.push({
+                code: "MISSING_ISIN_INCOME",
+                row: rowIndex,
+              });
+              continue;
+            }
+            withholdingCandidates.push({
+              isin,
+              date: isoDate,
+              amount: Math.abs(localValue),
+              row: rowIndex,
+            });
+            continue;
+          }
+
+          if (isIncomeKeyword && localValue > 0) {
+            if (!isin) {
+              this._warningEntries.push({
+                code: "MISSING_ISIN_INCOME",
+                row: rowIndex,
+              });
+              continue;
+            }
+            const incomeType: "dividend" | "coupon" = upperProduct.includes(
+              "DIVIDEND",
+            )
+              ? "dividend"
+              : "coupon";
+            incomeCandidates.push({
+              isin,
+              product,
+              date: isoDate,
+              incomeType,
+              localValue,
+              currency: get("Local value currency"),
+              row: rowIndex,
+            });
+            continue;
+          }
+          // Keyword matched but sign doesn't match the expected direction —
+          // fall through to standard transaction handling below.
+        }
+      }
+
+      // --- ISIN ---
       if (!isin) {
         this._warningEntries.push({ code: "MISSING_ISIN", row: rowIndex });
         continue;
       }
 
       // --- Quantity ---
-      const rawQty = parseFloat(get("Quantity"));
       if (isNaN(rawQty) || rawQty === 0) {
         this._warningEntries.push({ code: "QUANTITY_ZERO", row: rowIndex });
         continue;
@@ -211,7 +300,6 @@ export class DEGIROParser {
 
       // --- Remaining fields ---
       const pricePerUnit = parseFloat(get("Price"));
-      const product = get("Product");
 
       transactions.push({
         isin,
@@ -228,6 +316,89 @@ export class DEGIROParser {
       });
     }
 
+    // --- Pair withholding candidates with income candidates by (ISIN, date) ---
+    // Order-independent: candidates were collected regardless of CSV row order.
+    const withholdingByKey = new Map<
+      string,
+      { isin: string; date: string; amount: number }
+    >();
+    for (const w of withholdingCandidates) {
+      const key = `${w.isin}|${w.date}`;
+      const existing = withholdingByKey.get(key);
+      withholdingByKey.set(key, {
+        isin: w.isin,
+        date: w.date,
+        amount: (existing?.amount ?? 0) + w.amount,
+      });
+    }
+    const consumedKeys = new Set<string>();
+
+    const incomeRows: IncomeRow[] = [];
+    for (const c of incomeCandidates) {
+      const key = `${c.isin}|${c.date}`;
+      const matchedWithholding = withholdingByKey.get(key);
+
+      let grossAmount: number;
+      let withholdingTax: number;
+      let fxRate: number | undefined;
+
+      if (c.currency === "EUR") {
+        grossAmount = Math.abs(c.localValue);
+        withholdingTax = matchedWithholding?.amount ?? 0;
+        fxRate = undefined;
+      } else {
+        const rate = lookupRate(c.currency, c.date, snapshot);
+        if (rate === null) {
+          if (snapshot[c.currency] === undefined) {
+            this._warningEntries.push({
+              code: "UNSUPPORTED_CURRENCY",
+              row: c.row,
+              currency: c.currency,
+            });
+          } else {
+            this._warningEntries.push({
+              code: "NO_ECB_RATE",
+              row: c.row,
+              currency: c.currency,
+              date: c.date,
+            });
+          }
+          continue;
+        }
+        grossAmount = Math.abs(c.localValue) / rate;
+        withholdingTax = matchedWithholding
+          ? matchedWithholding.amount / rate
+          : 0;
+        fxRate = rate;
+      }
+
+      if (matchedWithholding) consumedKeys.add(key);
+
+      incomeRows.push({
+        isin: c.isin,
+        product: c.product,
+        date: c.date,
+        incomeType: c.incomeType,
+        grossAmount,
+        withholdingTax,
+        currency: c.currency,
+        fxRate,
+      });
+    }
+
+    // Orphan withholding candidates — no matching income row for (ISIN, date)
+    for (const [key, w] of withholdingByKey) {
+      if (!consumedKeys.has(key)) {
+        this._warningEntries.push({
+          code: "ORPHAN_WITHHOLDING",
+          isin: w.isin,
+          date: w.date,
+        });
+      }
+    }
+
+    this._incomeRows = incomeRows;
+
     return transactions;
   }
 
@@ -237,5 +408,9 @@ export class DEGIROParser {
 
   get warningEntries(): WarningEntry[] {
     return this._warningEntries;
+  }
+
+  get incomeRows(): IncomeRow[] {
+    return this._incomeRows;
   }
 }

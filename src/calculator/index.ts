@@ -9,6 +9,11 @@ import type {
   BucketBReport,
 } from "../types.js";
 import { CalculationError } from "../errors.js";
+import {
+  buildQuadroRT,
+  buildQuadroRM,
+  buildDichiarazioneReport,
+} from "../dichiarazione/engine.js";
 
 interface Lot {
   date: string;
@@ -267,6 +272,31 @@ export class Calculator {
         netResult: bNetResult,
       };
 
+      // Filter income rows to the tax year and build the dichiarazione report
+      const allIncomeRows = this._options.incomeRows ?? [];
+      const filteredIncomeRows = allIncomeRows.filter(
+        (row) => new Date(row.date).getFullYear() === taxYear,
+      );
+      if (filteredIncomeRows.length < allIncomeRows.length) {
+        warnings.push(`Income rows outside tax year ${taxYear} were skipped.`);
+      }
+
+      const quadroRT = buildQuadroRT(
+        bucketBReport,
+        this._options.carryForward ?? [],
+        taxYear,
+      );
+      const quadroRM = buildQuadroRM(
+        bucketAGroups.length > 0 ? bucketAReport : undefined,
+        filteredIncomeRows,
+        taxYear,
+      );
+      const dichiarazioneReport = buildDichiarazioneReport(
+        quadroRT,
+        quadroRM,
+        taxYear,
+      );
+
       return {
         method,
         taxYear,
@@ -279,6 +309,7 @@ export class Calculator {
         generatedAt: new Date().toISOString(),
         bucketA: bucketAGroups.length > 0 ? bucketAReport : undefined,
         bucketB: bucketBReport,
+        dichiarazione: dichiarazioneReport,
       };
     } else {
       // Mixed-asset heuristic (no classification map)

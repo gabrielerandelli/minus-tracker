@@ -13,6 +13,10 @@ export const en: LocaleStrings = {
   warnNoEcbRate: (row, currency, date) =>
     `Row ${row}: no ECB rate for ${currency} on ${date} — skipped`,
   warnQuantityZero: (row) => `Row ${row}: quantity is 0 — skipped`,
+  warnMissingIsinIncome: (row) =>
+    `Row ${row}: income row has blank ISIN — skipped`,
+  warnOrphanWithholding: (isin, date) =>
+    `Withholding row on ${isin}/${date} has no matching income row — skipped`,
 
   warnMultipleYears:
     "CSV contains transactions from multiple years — filter to a single year for accurate reporting.",
@@ -87,4 +91,31 @@ export const en: LocaleStrings = {
     "Invalid --carry-forward format. Use: YYYY:amount (e.g. 2023:2500)",
 
   disclaimer: "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
+
+  // v0.7.0 dichiarazione section
+  dichiarazioneHeader: (anno) => `── MODELLO REDDITI PF [TAX YEAR: ${anno}]`,
+  dichiarazioneNota:
+    "Note: row codes are indicative — verify against the official tax form.",
+  dichiarazioneWarningRow:
+    "⚠  Row codes in square brackets are indicative. Check the current form version.",
+  quadroRTHeader: "QUADRO RT — SECTION II (capital gains)",
+  quadroRTPlusvalenze: "[RT-P]  Total gains",
+  quadroRTMinusvalenze: "[RT-M]  Total losses",
+  quadroRTDifferenza: "[RT-D]  Difference",
+  quadroRTRiporto: (anno) => `[RT-C*] Prior loss ${anno} (applied)`,
+  quadroRTImponibile: "[RT-N]  Net taxable",
+  quadroRTImposta: "[RT-I]  Tax (26%)",
+  quadroRTRiportabile: "[RT-R]  Losses to carry forward",
+  quadroRTPerdita: "net loss:",
+  quadroRMHeader: "QUADRO RM (capital income)",
+  quadroRMEtf26: "[RM-A1] ETF/OICR gains (26%)",
+  quadroRMImposta: "Substitute tax",
+  quadroRMBtp: "[RM-A2] BTP/WL gains (12.5%)",
+  quadroRMDividendi: "[RM-D]  Foreign dividends (gross)",
+  quadroRMRitenuta: "Foreign withholding (credit)",
+  quadroRMCedole: "[RM-C]  Bond coupons",
+  dichiarazioneDisclaimer:
+    "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
+  warnNoDichiarazioneSidecar: "Run first: minus-tracker classify <file>",
+  warnNoCarryForwardProvided: "(prior-year losses not applied)",
 };

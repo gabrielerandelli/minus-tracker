@@ -21,7 +21,101 @@ function assetClassLabel(ac: AssetClass, s: LocaleStrings): string {
   return ac;
 }
 
-export function renderReport(report: GainsReport, s: LocaleStrings): string {
+/**
+ * Renders the "MODELLO REDDITI PF" declaration section (Quadro RT + Quadro RM)
+ * appended to the calc output when a classification sidecar is present.
+ * See docs/prd/14-dichiarazione-engine.md "CLI Output Section".
+ */
+function renderDichiarazione(
+  report: GainsReport,
+  s: LocaleStrings,
+  carryForwardWasProvided: boolean,
+): string {
+  const d = report.dichiarazione!;
+  const rt = d.quadroRT;
+  const rm = d.quadroRM;
+  const fmt = (n: number) => formatEUR(n, s.numberLocale);
+  const lines: string[] = [];
+
+  lines.push(SEPARATOR);
+  lines.push(s.dichiarazioneHeader(d.annoImposta));
+  lines.push(s.dichiarazioneNota);
+  lines.push("");
+
+  // Quadro RT — Sezione II (redditi diversi)
+  lines.push(s.quadroRTHeader);
+  lines.push(`  ${s.quadroRTPlusvalenze}  ${fmt(rt.plusvalenze)}`);
+  lines.push(`  ${s.quadroRTMinusvalenze}  ${fmt(rt.minusvalenze)}`);
+  lines.push(`  ${s.quadroRTDifferenza}  ${fmt(rt.differenza)}`);
+  for (const entry of rt.carryForwardApplied) {
+    lines.push(
+      `  ${s.quadroRTRiporto(entry.annoOrigine)}  ${fmt(entry.importo)}`,
+    );
+  }
+  let rtNLine = `  ${s.quadroRTImponibile}  ${fmt(rt.imponibileNetto)}`;
+  if (rt.differenza < 0) {
+    rtNLine += `   (${s.quadroRTPerdita} ${fmt(Math.abs(rt.differenza))})`;
+  }
+  if (rt.differenza > 0 && !carryForwardWasProvided) {
+    rtNLine += ` ${s.warnNoCarryForwardProvided}`;
+  }
+  lines.push(rtNLine);
+  lines.push(`  ${s.quadroRTImposta}  ${fmt(rt.imposta)}`);
+  if (rt.differenza < 0) {
+    const riportato = rt.carryForwardRiportato.reduce(
+      (sum, e) => sum + e.importo,
+      0,
+    );
+    lines.push(
+      `  ${s.quadroRTRiportabile}  ${fmt(riportato)}  ${s.bucketBCarryNote}`,
+    );
+  }
+  lines.push("");
+
+  // Quadro RM (redditi da capitale)
+  lines.push(s.quadroRMHeader);
+  if (rm.capitaleAliquota26.plusvalenze > 0) {
+    lines.push(
+      `  ${s.quadroRMEtf26}  ${fmt(rm.capitaleAliquota26.plusvalenze)}`,
+    );
+    lines.push(
+      `  [RM-A1] ${s.quadroRMImposta}  ${fmt(rm.capitaleAliquota26.imposta)}`,
+    );
+  }
+  if (rm.capitaleAliquota125.plusvalenze > 0) {
+    lines.push(
+      `  ${s.quadroRMBtp}  ${fmt(rm.capitaleAliquota125.plusvalenze)}`,
+    );
+    lines.push(
+      `  [RM-A2] ${s.quadroRMImposta}  ${fmt(rm.capitaleAliquota125.imposta)}`,
+    );
+  }
+  for (const div of rm.dividendiEsteri) {
+    lines.push(
+      `  ${s.quadroRMDividendi} — ${div.prodotto} (${div.isin})  ${fmt(div.lordo)}`,
+    );
+    lines.push(
+      `  [RM-D]  ${s.quadroRMRitenuta} — ${div.prodotto} (${div.isin})  ${fmt(div.rittenutaEstera)}`,
+    );
+  }
+  for (const c of rm.cedole) {
+    lines.push(
+      `  ${s.quadroRMCedole} — ${c.prodotto} (${c.isin})  ${fmt(c.importo)}`,
+    );
+  }
+  lines.push("");
+
+  lines.push(s.dichiarazioneWarningRow);
+  lines.push(s.dichiarazioneDisclaimer);
+
+  return lines.join("\n");
+}
+
+export function renderReport(
+  report: GainsReport,
+  s: LocaleStrings,
+  carryForwardWasProvided: boolean,
+): string {
   const fmt = (n: number) => formatEUR(n, s.numberLocale);
   const lines: string[] = [];
 
@@ -131,7 +225,11 @@ export function renderReport(report: GainsReport, s: LocaleStrings): string {
     lines.push("");
   }
 
-  lines.push(s.disclaimer);
+  if (report.dichiarazione) {
+    lines.push(renderDichiarazione(report, s, carryForwardWasProvided));
+  } else {
+    lines.push(s.disclaimer);
+  }
 
   return lines.join("\n");
 }

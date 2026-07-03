@@ -57,6 +57,12 @@ export async function runValidate(
       case "QUANTITY_ZERO":
         reason = s.warnQuantityZero(entry.row);
         break;
+      case "MISSING_ISIN_INCOME":
+        reason = s.warnMissingIsinIncome(entry.row);
+        break;
+      case "ORPHAN_WITHHOLDING":
+        reason = s.warnOrphanWithholding(entry.isin, entry.date);
+        break;
     }
     stdout.write(reason + "\n");
   }

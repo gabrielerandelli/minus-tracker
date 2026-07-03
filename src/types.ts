@@ -49,9 +49,67 @@ export interface CarryForward {
   amount: number;
 }
 
+export interface IncomeRow {
+  isin: string;
+  product: string;
+  date: string; // ISO date YYYY-MM-DD
+  incomeType: "dividend" | "coupon";
+  grossAmount: number; // EUR
+  withholdingTax: number; // EUR, always >= 0
+  currency: string; // ISO 4217 of source row
+  fxRate?: number; // ECB rate used; undefined if currency === "EUR"
+}
+
+export interface CarryForwardEntry {
+  annoOrigine: number;
+  importo: number;
+}
+
+export interface DividendEntry {
+  isin: string;
+  prodotto: string;
+  lordo: number;
+  rittenutaEstera: number;
+}
+
+export interface CedolaEntry {
+  isin: string;
+  prodotto: string;
+  importo: number;
+  rittenutaEstera: number;
+}
+
+export interface QuadroRTReport {
+  plusvalenze: number;
+  minusvalenze: number;
+  differenza: number;
+  carryForwardApplied: CarryForwardEntry[];
+  imponibileNetto: number;
+  imposta: number;
+  carryForwardRiportato: CarryForwardEntry[];
+}
+
+export interface QuadroRMReport {
+  capitaleAliquota26: { plusvalenze: number; imposta: number };
+  capitaleAliquota125: { plusvalenze: number; imposta: number };
+  dividendiEsteri: DividendEntry[];
+  cedole: CedolaEntry[];
+}
+
+export interface DichiarazioneReport {
+  version: number;
+  annoImposta: number;
+  modello: "Redditi PF";
+  generatedAt: string;
+  quadroRT: QuadroRTReport;
+  quadroRM: QuadroRMReport;
+  exportTo(path: string): Promise<void>;
+}
+
 export interface CalculatorOptions {
   classification?: ClassificationMap;
   carryForward?: CarryForward[];
+  incomeRows?: IncomeRow[];
 }
 
 export interface Transaction {
@@ -96,4 +154,5 @@ export interface GainsReport {
   generatedAt: string; // ISO timestamp
   bucketA?: BucketAReport;
   bucketB?: BucketBReport;
+  dichiarazione?: DichiarazioneReport;
 }
