@@ -60,8 +60,8 @@ describe("TC-027: calc default — LIFO table output, Italian locale", () => {
     expect(exitCode).toBe(0);
   });
 
-  it("produces no stderr output", () => {
-    expect(stderrOutput).toBe("");
+  it("stderr contains only the no-sidecar soft warning (v0.7.0)", () => {
+    expect(stderrOutput).toBe(itStrings.warnNoDichiarazioneSidecar + "\n");
   });
 
   it('stdout contains "METODO: LIFO"', () => {

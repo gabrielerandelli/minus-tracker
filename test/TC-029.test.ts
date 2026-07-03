@@ -64,8 +64,8 @@ describe("TC-029: calc --json produces machine-readable JSON", () => {
     expect(exitCode).toBe(0);
   });
 
-  it("produces no stderr output", () => {
-    expect(stderrOutput).toBe("");
+  it("stderr contains only the no-sidecar soft warning (v0.7.0)", () => {
+    expect(stderrOutput).toBe(itStrings.warnNoDichiarazioneSidecar + "\n");
   });
 
   it("stdout is valid JSON (does not throw)", () => {

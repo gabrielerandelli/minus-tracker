@@ -1,14 +1,21 @@
 {
   "name": "@gabrielerandelli/minus-tracker",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Italian capital-gains/loss calculator for the Regime Dichiarativo",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
+  "types": "./dist/index.d.ts",
   "bin": {
     "minus-tracker": "./dist/cli/index.js"
   },

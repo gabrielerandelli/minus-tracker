@@ -65,8 +65,8 @@ describe("TC-028 (FIFO): calc --method FIFO selects FIFO lot matching", () => {
     expect(fifoExitCode).toBe(0);
   });
 
-  it("produces no stderr output", () => {
-    expect(fifoStderr).toBe("");
+  it("stderr contains only the no-sidecar soft warning (v0.7.0)", () => {
+    expect(fifoStderr).toBe(itStrings.warnNoDichiarazioneSidecar + "\n");
   });
 
   it('stdout contains "METODO: FIFO"', () => {
@@ -123,8 +123,8 @@ describe("TC-028 (LIFO control): default method is LIFO and produces 96,00", () 
     expect(lifoExitCode).toBe(0);
   });
 
-  it("produces no stderr output", () => {
-    expect(lifoStderr).toBe("");
+  it("stderr contains only the no-sidecar soft warning (v0.7.0)", () => {
+    expect(lifoStderr).toBe(itStrings.warnNoDichiarazioneSidecar + "\n");
   });
 
   it('stdout contains "METODO: LIFO"', () => {

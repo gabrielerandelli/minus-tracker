@@ -6,8 +6,6 @@ import { Calculator } from "../../calculator/index.js";
 import { Classifier } from "../../classifier/index.js";
 import { ParseError } from "../../errors.js";
 import { renderReport } from "../renderer.js";
-import { getActiveSnapshot, isSnapshotStale } from "../../rates/index.js";
-import { updateRates, getSnapshotPath } from "./rates.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import type {
   LotMethod,
@@ -36,26 +34,6 @@ export async function runCalc(
   } catch {
     stderr.write(`Cannot read file: ${filePath}\n`);
     return 1;
-  }
-
-  try {
-    const snapshot = getActiveSnapshot();
-    if (isSnapshotStale(snapshot)) {
-      stderr.write(s.ratesAutoUpdateStart + "\n");
-      try {
-        await updateRates(getSnapshotPath(), stdout, stderr, s);
-      } catch {
-        stderr.write(s.ratesAutoUpdateFailed + "\n");
-      }
-    }
-  } catch {
-    // bundled snapshot missing and no user snapshot — updateRates will handle it
-    stderr.write(s.ratesAutoUpdateStart + "\n");
-    try {
-      await updateRates(getSnapshotPath(), stdout, stderr, s);
-    } catch {
-      stderr.write(s.ratesAutoUpdateFailed + "\n");
-    }
   }
 
   const method = (flags["method"] as LotMethod) ?? "LIFO";
