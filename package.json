@@ -1,7 +1,7 @@
 {
   "name": "@gabrielerandelli/minus-tracker",
   "version": "0.8.0",
-  "description": "Italian capital-gains/loss calculator for the Regime Dichiarativo",
+  "description": "Italian capital-gains/loss calculator (LIFO/FIFO) with CLI and MCP server for AI agents — Regime Dichiarativo",
   "type": "module",
   "exports": {
     ".": {
@@ -52,7 +52,14 @@
     "csv",
     "lifo",
     "fifo",
-    "typescript"
+    "typescript",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai-agent",
+    "llm-tools",
+    "claude",
+    "tax-calculator"
   ],
   "homepage": "https://github.com/gabrielerandelli/minus-tracker#readme",
   "bugs": {

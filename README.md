@@ -2,6 +2,21 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![npm version](https://img.shields.io/npm/v/@gabrielerandelli/minus-tracker.svg)](https://www.npmjs.com/package/@gabrielerandelli/minus-tracker)
+[![npm downloads](https://img.shields.io/npm/dm/@gabrielerandelli/minus-tracker.svg)](https://www.npmjs.com/package/@gabrielerandelli/minus-tracker)
+[![Node](https://img.shields.io/badge/node-%3E%3D24-brightgreen.svg)](https://nodejs.org)
+[![MCP](https://img.shields.io/badge/MCP-server-blueviolet.svg)](https://modelcontextprotocol.io)
+
+⚠️ **Ausilio al calcolo, non consulenza fiscale** — vedi l'[Avvertenza](#avvertenza).
+⚠️ **Calculation aid only, not tax advice** — see the [Disclaimer](#disclaimer).
+
+🤖 **Novità: server MCP** — qualsiasi agente AI può calcolare plusvalenze/minusvalenze italiane direttamente, senza passare dalla CLI.
+🤖 **New: MCP server** — any AI agent can compute Italian capital gains/losses directly, no CLI required.
+
+✅ Validato su tutti i 12 scenari FAQ dell'Agenzia delle Entrate · 120 test automatici · zero dipendenze runtime nella libreria core.
+✅ Validated against all 12 Agenzia delle Entrate FAQ scenarios · 120 automated tests · zero runtime dependencies in the core library.
+
+_L'unico tool open-source che trasforma un export DEGIRO grezzo direttamente in plusvalenze/minusvalenze corrette secondo l'Agenzia delle Entrate — come CLI, libreria, o strumento MCP richiamabile dal tuo agente AI._
+_The only open-source tool that turns a raw DEGIRO export directly into Agenzia-Entrate-correct capital gains/losses — as a CLI, a library, or an MCP tool your AI agent can call._
 
 ---
 
@@ -98,16 +113,16 @@ npx @gabrielerandelli/minus-tracker calc trades.csv
 
 ### Utilizzo CLI
 
-| Comando                | Flag principali                                                                                                      | Note                                                                                                             |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Comando                | Flag principali                                                                                                      | Note                                                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward` | Non aggiorna mai i tassi BCE da solo — esegui `rates --update` periodicamente; usa il sidecar di `classify` se presente |
-| `classify <file.csv>`  | `--offline`                                                                                                          | Classifica gli strumenti (Bucket A/B) e crea/aggiorna il sidecar `*.classify.json`                               |
-| `validate <file.csv>`  | `--lang it\|en`                                                                                                      | Exit 0 con avvisi; exit 1 in caso di errori bloccanti                                                            |
-| `rates --check`        | —                                                                                                                    | Mostra la copertura della snapshot BCE in locale                                                                 |
-| `rates --update`       | —                                                                                                                    | Scarica i tassi aggiornati dall'API BCE                                                                          |
-| `config --lang it\|en` | —                                                                                                                    | Salva la lingua preferita                                                                                        |
-| `config --show`        | —                                                                                                                    | Mostra la lingua correntemente impostata                                                                         |
-| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                    | Documentato in fondo                                                                                             |
+| `classify <file.csv>`  | `--offline`                                                                                                          | Classifica gli strumenti (Bucket A/B) e crea/aggiorna il sidecar `*.classify.json`                                      |
+| `validate <file.csv>`  | `--lang it\|en`                                                                                                      | Exit 0 con avvisi; exit 1 in caso di errori bloccanti                                                                   |
+| `rates --check`        | —                                                                                                                    | Mostra la copertura della snapshot BCE in locale                                                                        |
+| `rates --update`       | —                                                                                                                    | Scarica i tassi aggiornati dall'API BCE                                                                                 |
+| `config --lang it\|en` | —                                                                                                                    | Salva la lingua preferita                                                                                               |
+| `config --show`        | —                                                                                                                    | Mostra la lingua correntemente impostata                                                                                |
+| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                    | Documentato in fondo                                                                                                    |
 
 Precedenza lingua: `--lang` > lingua salvata > italiano (default).
 
@@ -394,16 +409,16 @@ npx @gabrielerandelli/minus-tracker calc trades.csv
 
 ### CLI Usage
 
-| Command                | Key flags                                                                                                            | Notes                                                                                              |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Command                | Key flags                                                                                                            | Notes                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward` | Never fetches ECB rates on its own — run `rates --update` periodically; uses `classify`'s sidecar when present |
-| `classify <file.csv>`  | `--offline`                                                                                                          | Classifies instruments (Bucket A/B) and creates/updates the `*.classify.json` sidecar              |
-| `validate <file.csv>`  | `--lang it\|en`                                                                                                      | Exit 0 with warnings; exit 1 on hard errors                                                        |
-| `rates --check`        | —                                                                                                                    | Shows bundled ECB snapshot coverage                                                                |
-| `rates --update`       | —                                                                                                                    | Fetches fresh rates from the ECB API                                                               |
-| `config --lang it\|en` | —                                                                                                                    | Saves language preference                                                                          |
-| `config --show`        | —                                                                                                                    | Shows current language setting                                                                     |
-| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                    | Documented below                                                                                   |
+| `classify <file.csv>`  | `--offline`                                                                                                          | Classifies instruments (Bucket A/B) and creates/updates the `*.classify.json` sidecar                          |
+| `validate <file.csv>`  | `--lang it\|en`                                                                                                      | Exit 0 with warnings; exit 1 on hard errors                                                                    |
+| `rates --check`        | —                                                                                                                    | Shows bundled ECB snapshot coverage                                                                            |
+| `rates --update`       | —                                                                                                                    | Fetches fresh rates from the ECB API                                                                           |
+| `config --lang it\|en` | —                                                                                                                    | Saves language preference                                                                                      |
+| `config --show`        | —                                                                                                                    | Shows current language setting                                                                                 |
+| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                    | Documented below                                                                                               |
 
 Language precedence: `--lang` flag > saved config > Italian (default).
 
