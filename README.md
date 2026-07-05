@@ -16,8 +16,9 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 - Calcolo di plusvalenze e minusvalenze con gestione dei lotti via **LIFO o FIFO** (configurabile)
 - **Parser integrato** per i file CSV di DEGIRO
 - Gestione **multivaluta** con tassi storici BCE (EUR, USD, GBP, CHF)
-- **Classificazione a due categorie** (Bucket A/B) degli strumenti finanziari — azioni, ETF, titoli
-  di stato, derivati — con classificazione automatica via OpenFIGI e sidecar JSON persistente
+- **Classificazione fiscale degli strumenti finanziari in due categorie** (Bucket A/B) — azioni,
+  ETF, titoli di stato, derivati — con classificazione automatica tramite OpenFIGI e sidecar JSON
+  persistente
 - **Modello Redditi PF**: genera Quadro RT (redditi diversi) e Quadro RM (redditi di capitale) a
   partire dai lotti calcolati, con riporto delle minusvalenze pregresse (regola dei 4 anni)
 - Suite di test allineata alle **FAQ dell'Agenzia delle Entrate**
@@ -27,7 +28,7 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 **Novità in v0.8.0:**
 
 - **Modalità stateless per `Classifier`**: `classify()` può ora funzionare senza alcun accesso al
-  filesystem (nessun sidecar), utile per l'integrazione in agenti/automazioni
+  filesystem (nessun sidecar), utile per l'integrazione con agenti e automazioni
 - **Server MCP** (`minus-tracker-mcp`): espone `parse_transactions`, `classify_instruments` e
   `calculate_gains` come tool MCP su stdio, per l'uso diretto da parte di agenti AI — vedi la
   sezione [Server MCP](#server-mcp) più sotto
@@ -157,7 +158,7 @@ if (parser.warnings.length > 0) {
 // 2. Classificazione (Bucket A/B) — facoltativa, abilita Quadro RT/RM nel report
 const classification = await new Classifier().classify(
   transactions,
-  "trades.classify.json", // sidecar persistente; omettilo per la modalità stateless
+  "trades.classify.json", // sidecar persistente; assente in modalità stateless
 );
 
 // 3. Calcolo
@@ -227,15 +228,15 @@ Configurazione tipica per un client MCP (es. Claude Desktop, `claude_desktop_con
 
 Il server espone 3 tool:
 
-| Tool                   | Descrizione                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------ |
-| `parse_transactions`   | Effettua il parsing di un CSV DEGIRO in `transactions`/`warnings`/`incomeRows` |
-| `classify_instruments` | Classifica gli ISIN in Bucket A/B (modalità stateless — nessun sidecar)        |
-| `calculate_gains`      | Calcola plusvalenze/minusvalenze (LIFO/FIFO) e, se disponibile, Quadro RT/RM   |
+| Tool                   | Descrizione                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `parse_transactions`   | Esegue il parsing di un CSV DEGIRO, restituendo `transactions`/`warnings`/`incomeRows` |
+| `classify_instruments` | Classifica gli ISIN in Bucket A/B (modalità stateless — nessun sidecar)                |
+| `calculate_gains`      | Calcola plusvalenze/minusvalenze (LIFO/FIFO) e, se disponibile, Quadro RT/RM           |
 
 `classify_instruments` supporta `existingClassification`, `overrides` e `offline: true` per
 funzionare senza rete e senza accesso al filesystem — pensato per essere invocato ripetutamente
-da un agente su più chiamate, mantenendo lo stato lato client.
+da un agente in chiamate successive, mantenendo lo stato lato client.
 
 ### Domande frequenti
 
