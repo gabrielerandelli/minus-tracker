@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-07-05
+
+### Fixed
+
+- `--carry-forward` and `--export-dichiarazione` were never registered with `parseArgs`, so an
+  explicit value silently leaked into positionals — corrupting the CSV file path or silently
+  dropping the requested export path in favor of the default. Both flags are now registered and
+  behave as documented.
+- `calc`'s file/sidecar/export error messages were hardcoded in English even in Italian mode; they
+  now go through the locale system like every other message.
+- `rates --check` always reported "no gaps" regardless of actual snapshot coverage; it now
+  detects missing business days per currency.
+- README no longer claims `calc` auto-refreshes ECB rates (removed in v0.7.0).
+
+### Changed
+
+- `package.json` description and keywords now mention the MCP server / AI-agent use case.
+- README front-loads the liability disclaimer, the MCP/AI-agent story, and the FAQ-correctness
+  test signal; adds npm downloads/Node/MCP badges.
+- Added `SECURITY.md` and `CONTRIBUTING.md`.
+
 ## [0.8.0] - 2026-07-05
 
 ### Added
