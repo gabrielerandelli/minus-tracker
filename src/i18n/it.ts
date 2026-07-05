@@ -7,6 +7,10 @@ export const it: LocaleStrings = {
   errorMissingColumn: (col) => `Colonna obbligatoria mancante: ${col}`,
   errorNoOpenLots: (isin, date) =>
     `Nessun lotto aperto per ISIN ${isin} in data ${date}`,
+  errorCannotReadFile: (path) => `Impossibile leggere il file: ${path}`,
+  errorCannotLoadSidecar: (path) => `Impossibile caricare il sidecar: ${path}`,
+  errorCannotWriteExport: (path) =>
+    `Impossibile scrivere l'export della dichiarazione: ${path}`,
 
   warnMissingIsin: (row) => `Riga ${row}: ISIN mancante — riga ignorata`,
   warnUnsupportedCurrency: (row, currency) =>
@@ -122,6 +126,7 @@ export const it: LocaleStrings = {
   quadroRMCedole: "[RM-C]  Cedole obbligazionarie",
   dichiarazioneDisclaimer:
     "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
-  warnNoDichiarazioneSidecar: "Eseguire prima: minus-tracker classify <file>",
+  warnNoDichiarazioneSidecar:
+    "Suggerimento: esegui prima 'minus-tracker classify <file>' per abilitare il Quadro RT/RM.",
   warnNoCarryForwardProvided: "(eventuali perdite pregresse non applicate)",
 };

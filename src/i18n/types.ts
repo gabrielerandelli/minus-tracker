@@ -12,6 +12,9 @@ export interface LocaleStrings {
   errorInvalidCsv: string;
   errorMissingColumn: (columnName: string) => string;
   errorNoOpenLots: (isin: string, date: string) => string;
+  errorCannotReadFile: (path: string) => string;
+  errorCannotLoadSidecar: (path: string) => string;
+  errorCannotWriteExport: (path: string) => string;
 
   // Soft warnings (per-row)
   warnMissingIsin: (row: number) => string;

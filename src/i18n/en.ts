@@ -6,6 +6,10 @@ export const en: LocaleStrings = {
   errorInvalidCsv: "Invalid CSV: unable to parse",
   errorMissingColumn: (col) => `Missing required column: ${col}`,
   errorNoOpenLots: (isin, date) => `No open lots for ISIN ${isin} on ${date}`,
+  errorCannotReadFile: (path) => `Cannot read file: ${path}`,
+  errorCannotLoadSidecar: (path) => `Cannot load sidecar: ${path}`,
+  errorCannotWriteExport: (path) =>
+    `Cannot write dichiarazione export: ${path}`,
 
   warnMissingIsin: (row) => `Row ${row}: missing ISIN — skipped`,
   warnUnsupportedCurrency: (row, currency) =>
@@ -116,6 +120,7 @@ export const en: LocaleStrings = {
   quadroRMCedole: "[RM-C]  Bond coupons",
   dichiarazioneDisclaimer:
     "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
-  warnNoDichiarazioneSidecar: "Run first: minus-tracker classify <file>",
+  warnNoDichiarazioneSidecar:
+    "Tip: run 'minus-tracker classify <file>' first to enable Quadro RT/RM.",
   warnNoCarryForwardProvided: "(prior-year losses not applied)",
 };

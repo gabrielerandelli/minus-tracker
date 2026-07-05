@@ -32,7 +32,7 @@ export async function runCalc(
   try {
     csv = fs.readFileSync(filePath, "utf8");
   } catch {
-    stderr.write(`Cannot read file: ${filePath}\n`);
+    stderr.write(s.errorCannotReadFile(filePath) + "\n");
     return 1;
   }
 
@@ -50,7 +50,7 @@ export async function runCalc(
       const classifier = new Classifier({ interactive: false });
       classification = await classifier.load(sidecarPath);
     } catch {
-      stderr.write(`Cannot load sidecar: ${sidecarPath}\n`);
+      stderr.write(s.errorCannotLoadSidecar(sidecarPath) + "\n");
       return 1;
     }
   }
@@ -145,7 +145,7 @@ export async function runCalc(
     try {
       await report.dichiarazione!.exportTo(exportPath);
     } catch {
-      stderr.write(`Cannot write dichiarazione export: ${exportPath}\n`);
+      stderr.write(s.errorCannotWriteExport(exportPath) + "\n");
       return 1;
     }
   }

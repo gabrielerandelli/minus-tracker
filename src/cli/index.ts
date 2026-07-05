@@ -24,6 +24,8 @@ async function main(): Promise<void> {
       keep: { type: "boolean", default: false },
       "output-dir": { type: "string" },
       offline: { type: "boolean", default: false },
+      "carry-forward": { type: "string", multiple: true },
+      "export-dichiarazione": { type: "string" },
     },
     allowPositionals: true,
     strict: false,

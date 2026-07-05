@@ -100,7 +100,7 @@ npx @gabrielerandelli/minus-tracker calc trades.csv
 
 | Comando                | Flag principali                                                                                                      | Note                                                                                                             |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward` | Aggiorna i tassi BCE automaticamente se la snapshot ha più di 7 giorni; usa il sidecar di `classify` se presente |
+| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward` | Non aggiorna mai i tassi BCE da solo — esegui `rates --update` periodicamente; usa il sidecar di `classify` se presente |
 | `classify <file.csv>`  | `--offline`                                                                                                          | Classifica gli strumenti (Bucket A/B) e crea/aggiorna il sidecar `*.classify.json`                               |
 | `validate <file.csv>`  | `--lang it\|en`                                                                                                      | Exit 0 con avvisi; exit 1 in caso di errori bloccanti                                                            |
 | `rates --check`        | —                                                                                                                    | Mostra la copertura della snapshot BCE in locale                                                                 |
@@ -250,7 +250,7 @@ Le righe vengono saltate (senza bloccare il calcolo) quando: l'ISIN è vuoto, la
 Il CSV contiene una vendita per un titolo senza un acquisto precedente nel file. L'acquisto potrebbe essere in un export di un anno precedente non incluso. Usa `validate` per esaminare le transazioni parsate.
 
 **I tassi BCE sono scaduti**
-Esegui `minus-tracker rates --update`. Il comando `calc` esegue l'aggiornamento automaticamente se la snapshot ha più di 7 giorni.
+Esegui `minus-tracker rates --update`. Il comando `calc` non aggiorna mai i tassi da solo: l'aggiornamento è sempre un'azione esplicita.
 
 **LIFO o FIFO?**
 Il Regime Dichiarativo utilizza il LIFO come metodo predefinito ai sensi della normativa fiscale italiana. Il FIFO è disponibile per confronto. Consulta il tuo commercialista per conferma.
@@ -396,7 +396,7 @@ npx @gabrielerandelli/minus-tracker calc trades.csv
 
 | Command                | Key flags                                                                                                            | Notes                                                                                              |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward` | Auto-fetches ECB rates if snapshot is more than 7 days old; uses `classify`'s sidecar when present |
+| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward` | Never fetches ECB rates on its own — run `rates --update` periodically; uses `classify`'s sidecar when present |
 | `classify <file.csv>`  | `--offline`                                                                                                          | Classifies instruments (Bucket A/B) and creates/updates the `*.classify.json` sidecar              |
 | `validate <file.csv>`  | `--lang it\|en`                                                                                                      | Exit 0 with warnings; exit 1 on hard errors                                                        |
 | `rates --check`        | —                                                                                                                    | Shows bundled ECB snapshot coverage                                                                |
@@ -544,7 +544,7 @@ Rows are skipped (without aborting the calculation) when: the ISIN is empty, the
 The CSV contains a SELL for a position that has no prior BUY in the same file. The BUY may be in a prior year's export that was not included. Use `validate` to inspect the parsed transactions.
 
 **ECB rates are outdated**
-Run `minus-tracker rates --update`. The `calc` command also auto-updates if the snapshot is more than 7 days old.
+Run `minus-tracker rates --update`. The `calc` command never fetches rates on its own — refreshing is always an explicit, user-invoked action.
 
 **LIFO or FIFO?**
 LIFO is the standard lot-matching method under Italian tax law for the Regime Dichiarativo. FIFO is available for comparison or other jurisdictions. Consult your tax advisor for confirmation.

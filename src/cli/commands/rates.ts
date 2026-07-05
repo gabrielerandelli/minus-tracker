@@ -18,23 +18,56 @@ export function getSnapshotPath(): string {
   return path.join(configDir, "minus-tracker", "ecb-rates.json");
 }
 
+function countMissingBusinessDays(
+  startDate: string,
+  endDate: string,
+  dates: Record<string, number>,
+): number {
+  let missing = 0;
+  const cursor = new Date(startDate + "T00:00:00Z");
+  const end = new Date(endDate + "T00:00:00Z");
+  while (cursor <= end) {
+    const day = cursor.getUTCDay();
+    const iso = cursor.toISOString().slice(0, 10);
+    if (day !== 0 && day !== 6 && dates[iso] === undefined) missing++;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return missing;
+}
+
 function getCoverage(snapshot: RatesSnapshot): {
   start: string;
   end: string;
   currencies: string;
+  gaps: string;
 } {
   let start = "9999-12-31";
   let end = "0000-01-01";
   const currencies: string[] = [];
+  const gapEntries: string[] = [];
 
   for (const [ccy, dates] of Object.entries(snapshot)) {
     currencies.push(ccy);
-    for (const d of Object.keys(dates)) {
+    const keys = Object.keys(dates).sort();
+    for (const d of keys) {
       if (d < start) start = d;
       if (d > end) end = d;
     }
+    if (keys.length > 0) {
+      const missing = countMissingBusinessDays(
+        keys[0],
+        keys[keys.length - 1],
+        dates,
+      );
+      if (missing > 0) gapEntries.push(`${ccy}: ${missing}`);
+    }
   }
-  return { start, end, currencies: currencies.sort().join(", ") };
+  return {
+    start,
+    end,
+    currencies: currencies.sort().join(", "),
+    gaps: gapEntries.sort().join(", "),
+  };
 }
 
 export async function fetchEcbData(
@@ -122,9 +155,9 @@ export async function runRates(
 ): Promise<number> {
   if (flags["check"]) {
     const snapshot = getActiveSnapshot();
-    const { start, end, currencies } = getCoverage(snapshot);
+    const { start, end, currencies, gaps } = getCoverage(snapshot);
     stdout.write(s.ratesCoverage(start, end, currencies) + "\n");
-    stdout.write(s.ratesGapsNone + "\n");
+    stdout.write((gaps ? s.ratesGaps(gaps) : s.ratesGapsNone) + "\n");
     return 0;
   }
 
