@@ -7,10 +7,11 @@ import { Calculator } from "../src/calculator/index.js";
  *
  * Calculator is created WITHOUT a classification map.
  * Transactions include IE00B4L5Y983 (IE prefix = ETF) AND US0378331005 (non-IE prefix).
- * The heuristic detects mixed assets and adds an AVVISO warning.
+ * The heuristic detects mixed assets and adds a WARNING (always English, like every
+ * other Calculator-level warning — Calculator itself is not locale-aware).
  *
  * Expected:
- *   report.warnings includes text starting with "AVVISO:"
+ *   report.warnings includes text starting with "WARNING:"
  *   report.bucketA === undefined
  *   report.bucketB === undefined
  */
@@ -74,9 +75,9 @@ describe("TC-060 (TC-B8): No classification + mixed ISINs → warnMixedAssets", 
   // No options passed — no classification map
   const report = new Calculator(transactions).calculateGains("LIFO");
 
-  it("warnings contains an AVVISO about mixed assets", () => {
-    const hasAvviso = report.warnings.some((w) => w.startsWith("AVVISO:"));
-    expect(hasAvviso).toBe(true);
+  it("warnings contains a WARNING about mixed assets", () => {
+    const hasWarning = report.warnings.some((w) => w.startsWith("WARNING:"));
+    expect(hasWarning).toBe(true);
   });
 
   it("bucketA is undefined (no classification)", () => {

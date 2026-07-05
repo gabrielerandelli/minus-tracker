@@ -40,7 +40,21 @@ export interface BucketBReport {
   plusvalenze: number;
   minusvalenze: number;
   carryForwardApplied: number;
+  /**
+   * This year's Bucket B loss not covered by the supplied `carryForward`
+   * entries (i.e. `Math.max(0, -netResult)`) — NOT the unused balance of
+   * past `carryForward` entries. For the per-entry unused balance still
+   * available for future years, see `carryForwardEntriesRemaining`.
+   */
   carryForwardRemaining: number;
+  /**
+   * Per supplied `carryForward` entry, how much of its original `amount` was
+   * NOT consumed this year and is still within its 4-year carry window —
+   * i.e. what a caller should feed back in as `carryForward` for next year's
+   * calculation. Entries already past the 4-year cutoff are omitted (they
+   * were never eligible to be applied, so they're expired, not "remaining").
+   */
+  carryForwardEntriesRemaining: CarryForwardEntry[];
   netResult: number;
 }
 

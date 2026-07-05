@@ -136,6 +136,7 @@ describe("TC-113: calculate_gains — full pipeline output includes bucketA/B/di
       minusvalenze: 300,
       carryForwardApplied: 0,
       carryForwardRemaining: 300,
+      carryForwardEntriesRemaining: [{ annoOrigine: 2023, importo: 100 }],
       netResult: -300,
     });
 

@@ -4,7 +4,6 @@ import { DEGIROParser } from "../../parser/index.js";
 import { Classifier } from "../../classifier/index.js";
 import { ParseError } from "../../errors.js";
 import type { LocaleStrings } from "../../i18n/types.js";
-import type { ClassificationMap } from "../../types.js";
 
 export async function runClassify(
   positional: string[],
@@ -56,49 +55,13 @@ export async function runClassify(
   const sidecarPath = base + ".classify.json";
 
   if (offline) {
-    // Offline mode: skip OpenFIGI; write stub user-confirmed entries for each unique ISIN
+    // Offline mode: skip OpenFIGI; Classifier stubs unresolved ISINs as
+    // unconfirmed and writes the sidecar itself (same logic the MCP path uses).
     stdout.write(s.classifyOfflineWarning + "\n");
 
-    const isinToProduct = new Map<string, string>();
-    for (const tx of transactions) {
-      if (tx.isin && !isinToProduct.has(tx.isin)) {
-        isinToProduct.set(tx.isin, tx.product);
-      }
-    }
-
-    const classifications: ClassificationMap = {};
-    for (const [isin, product] of isinToProduct.entries()) {
-      classifications[isin] = {
-        product,
-        assetClass: "ETF",
-        bucketGain: "A",
-        bucketLoss: "B",
-        taxRate: 0.26,
-        whiteListed: null,
-        confirmedByUser: true,
-        source: "user",
-      };
-    }
-
-    const sidecarContent = JSON.stringify(
-      {
-        version: 1,
-        generatedAt: new Date().toISOString(),
-        classifications,
-        warnings: [],
-      },
-      null,
-      2,
-    );
-
-    try {
-      fs.writeFileSync(sidecarPath, sidecarContent, "utf-8");
-    } catch {
-      stderr.write(`Cannot write sidecar: ${sidecarPath}\n`);
-      return 1;
-    }
-
-    stdout.write(s.classifyWritten(sidecarPath) + "\n");
+    const classifier = new Classifier({ interactive: false });
+    await classifier.classify(transactions, sidecarPath, { offline: true });
+    stdout.write(s.classifyWritten(path.resolve(sidecarPath)) + "\n");
     return 0;
   }
 

@@ -109,6 +109,41 @@ describe("TC-116 — malformed calculate_gains input rejected pre-handler", () =
 });
 
 /**
+ * TC-124: Unknown tool name returns a JSON-shaped error, like every other
+ * isError:true payload (VALIDATION_ERROR, CALCULATION_ERROR, etc.) — not a
+ * plain string. A client that uniformly JSON.parses content[0].text on any
+ * isError response should not need a special case for this one.
+ */
+describe("TC-124 — unknown tool name returns a JSON-shaped UNKNOWN_TOOL error", () => {
+  it("content[0].text is valid JSON with code:UNKNOWN_TOOL, not a plain string", async () => {
+    const { server } = await import("../../src/mcp/server.js");
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+
+    await Promise.all([
+      client.connect(clientTransport),
+      server.connect(serverTransport),
+    ]);
+
+    const result = await client.callTool({
+      name: "not_a_real_tool",
+      arguments: {},
+    });
+
+    expect(result.isError).toBe(true);
+    const text = (result.content as Array<{ type: string; text: string }>)[0]!
+      .text;
+    const parsed = JSON.parse(text) as { code?: string; message?: string };
+    expect(parsed.code).toBe("UNKNOWN_TOOL");
+    expect(parsed.message).toBe("Unknown tool: not_a_real_tool");
+
+    await client.close();
+    await server.close();
+  });
+});
+
+/**
  * TC-117: Build-time generated input schemas match `types.ts` shapes.
  *
  * Input schemas are generated from src/types.ts by

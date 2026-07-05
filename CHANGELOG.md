@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-07-05
+
+### Fixed
+
+- `classify --offline` no longer mislabels every instrument as an ETF at a flat 26% tax rate —
+  it now delegates to the same `Classifier` offline logic the MCP server already used correctly,
+  producing an unconfirmed, correctly-typed stub for unresolved ISINs instead of a confident
+  wrong guess.
+- The mixed-instrument-type warning (`calc` with no classify sidecar, mixed IE/non-IE ISINs) is
+  now always English, matching every other Calculator-level warning — it previously stayed
+  hardcoded Italian even under `--lang en`.
+- `stress-test --output-dir <dir>` no longer deletes a user-supplied directory. Only the
+  auto-generated temp directory is ever removed automatically; `--keep` now only affects that
+  auto-generated case.
+- The MCP server's unknown-tool-name error is now JSON-shaped (`{code:"UNKNOWN_TOOL", message}`),
+  consistent with every other `isError` payload, instead of a plain string.
+- `parse_transactions`/`calc`/`validate` now correctly reject non-null-byte binary garbage as
+  `INVALID_CSV` instead of falling through to a misleading "missing required column" error.
+
+### Added
+
+- `GainsReport.bucketB.carryForwardEntriesRemaining`: reports, per supplied `carryForward` entry,
+  how much of its original amount is still unused and within its 4-year carry window — the data
+  needed to correctly roll a carry-forward balance into next year's calculation. Additive;
+  `carryForwardRemaining` is unchanged for backward compatibility (it reports a different thing:
+  this year's own uncovered loss, now documented more clearly in `types.ts`).
+
+### Changed
+
+- `README.md`: documented that `classify` requires an interactive terminal (TTY), or the
+  `--offline` flag in scripted/CI contexts.
+
 ## [0.8.1] - 2026-07-05
 
 ### Fixed

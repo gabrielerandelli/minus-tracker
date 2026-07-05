@@ -10,13 +10,15 @@ import { it as itStrings } from "../src/i18n/it.js";
  *
  * When a CSV contains both IE-prefixed ISINs (ETFs) and non-IE ISINs (Stocks)
  * but no sidecar is present, the Calculator emits a warnMixedAssets warning.
- * The renderer must print it prominently BEFORE the lot table.
+ * The renderer must print it prominently BEFORE the lot table. This warning is
+ * always English, like every other Calculator-level warning — Calculator itself
+ * is not locale-aware, even though this test runs the CLI in Italian mode.
  *
  * Fixture: mixed-trades.csv (IE00B4L5Y983 + US0378331005, no sidecar)
  *
  * Expected:
  *   - exit 0
- *   - stdout contains "AVVISO:" warning text before the lot table
+ *   - stdout contains "WARNING:" warning text before the lot table
  *   - stdout does NOT contain "BUCKET A" or "BUCKET B" section headers
  *   - no bucketA/bucketB in the text output
  */
@@ -60,12 +62,12 @@ describe("TC-070: mixed-asset warning without sidecar", () => {
     expect(exitCode).toBe(0);
   });
 
-  it("stdout contains Italian warnMixedAssets warning (AVVISO:)", () => {
-    expect(stdoutOutput).toContain("AVVISO:");
+  it("stdout contains warnMixedAssets warning (WARNING:)", () => {
+    expect(stdoutOutput).toContain("WARNING:");
   });
 
-  it("the AVVISO warning appears before the ISIN column header", () => {
-    const warnPos = stdoutOutput.indexOf("AVVISO:");
+  it("the WARNING appears before the ISIN column header", () => {
+    const warnPos = stdoutOutput.indexOf("WARNING:");
     const tablePos = stdoutOutput.indexOf("ISIN");
     expect(warnPos).toBeGreaterThan(-1);
     expect(tablePos).toBeGreaterThan(-1);

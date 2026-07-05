@@ -13,10 +13,12 @@ import { it as itStrings } from "../src/i18n/it.js";
  * With --offline, the command must:
  *   - skip OpenFIGI (no network)
  *   - print classifyOfflineWarning to stdout
- *   - write a sidecar .classify.json with source:"user", confirmedByUser:true
+ *   - write a sidecar .classify.json with source:"user", confirmedByUser:false
+ *     (unresolved/unconfirmed stub — matches the MCP classify_instruments
+ *     offline path, see Classifier.classify's offline branch)
  *   - return exit code 0
  *
- * This also indirectly validates TC-061 (source:"user", confirmedByUser:true
+ * This also indirectly validates TC-061 (source:"user", confirmedByUser:false
  * entries written by the classify CLI command).
  */
 
@@ -124,7 +126,7 @@ describe("TC-066: classify --offline → warning printed, sidecar written", () =
     expect(fs.existsSync(tempSidecarPath)).toBe(true);
   });
 
-  it("sidecar entries have source:'user' and confirmedByUser:true", async () => {
+  it("sidecar entries have source:'user' and confirmedByUser:false", async () => {
     setupTempCsv();
 
     const mockStdout = new Writable({
@@ -162,7 +164,7 @@ describe("TC-066: classify --offline → warning printed, sidecar written", () =
 
     for (const entry of entries) {
       expect(entry.source).toBe("user");
-      expect(entry.confirmedByUser).toBe(true);
+      expect(entry.confirmedByUser).toBe(false);
     }
   });
 

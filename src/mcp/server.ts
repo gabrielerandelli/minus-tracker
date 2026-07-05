@@ -84,7 +84,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   if (!TOOL_NAMES.has(name)) {
     return {
       isError: true,
-      content: [{ type: "text", text: `Unknown tool: ${name}` }],
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            code: "UNKNOWN_TOOL",
+            message: `Unknown tool: ${name}`,
+          }),
+        },
+      ],
     };
   }
 
@@ -120,7 +128,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     default:
       return {
         isError: true,
-        content: [{ type: "text", text: `Unknown tool: ${name}` }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              code: "UNKNOWN_TOOL",
+              message: `Unknown tool: ${name}`,
+            }),
+          },
+        ],
       };
   }
 });

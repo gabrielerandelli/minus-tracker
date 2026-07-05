@@ -7,6 +7,7 @@ import type {
   AssetClass,
   BucketAReport,
   BucketBReport,
+  CarryForwardEntry,
 } from "../types.js";
 import { CalculationError } from "../errors.js";
 import {
@@ -251,12 +252,19 @@ export class Calculator {
       );
       let remaining = bPlusvalenze - bMinusvalenze;
       let carryForwardApplied = 0;
+      const carryForwardEntriesRemaining: CarryForwardEntry[] = [];
       for (const entry of carryForwards) {
         if (taxYear - entry.year > 4) continue;
-        if (remaining <= 0) break;
-        const consumed = Math.min(entry.amount, remaining);
+        const consumed = remaining > 0 ? Math.min(entry.amount, remaining) : 0;
         carryForwardApplied += consumed;
         remaining -= consumed;
+        const residual = roundHalfUp(entry.amount - consumed);
+        if (residual > 0) {
+          carryForwardEntriesRemaining.push({
+            annoOrigine: entry.year,
+            importo: residual,
+          });
+        }
       }
       carryForwardApplied = roundHalfUp(carryForwardApplied);
       const bNetResult = roundHalfUp(
@@ -269,6 +277,7 @@ export class Calculator {
         minusvalenze: bMinusvalenze,
         carryForwardApplied,
         carryForwardRemaining,
+        carryForwardEntriesRemaining,
         netResult: bNetResult,
       };
 
@@ -318,9 +327,9 @@ export class Calculator {
       const hasOther = allIsins.some((isin) => !isin.startsWith("IE"));
       if (hasIePrefix && hasOther) {
         warnings.push(
-          "AVVISO: CSV contiene tipi di strumenti misti (es. ETF + Azioni).\n" +
-            "   Il calcolo a bucket unico può non essere fiscalmente corretto.\n" +
-            "   Esegui: minus-tracker classify trades.csv",
+          "WARNING: CSV contains mixed instrument types (e.g. ETFs + Stocks).\n" +
+            "   Single-bucket calculation may not be fiscally correct.\n" +
+            "   Run: minus-tracker classify trades.csv",
         );
       }
     }

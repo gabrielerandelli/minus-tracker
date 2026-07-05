@@ -24,6 +24,23 @@ const REQUIRED_COLUMNS = [
 const INCOME_KEYWORDS = ["DIVIDEND", "COUPON", "INTEREST", "CEDOLA"] as const;
 const TAX_KEYWORDS = ["DIVIDEND TAX", "WITHHOLDING", "RITENUTA"] as const;
 
+// Cheap binary-garbage detector: a high ratio of control characters (charCode
+// < 32, excluding tab) in the header-row candidate means the content isn't
+// text/CSV at all, even without a NUL byte. Accented characters (é, à, ...)
+// are charCode >= 128, well above this range, so legitimate product names
+// never trip it.
+const BINARY_GARBAGE_CONTROL_CHAR_RATIO = 0.1;
+
+function looksLikeBinaryGarbage(firstLine: string): boolean {
+  if (firstLine.length === 0) return false;
+  let controlChars = 0;
+  for (let i = 0; i < firstLine.length; i++) {
+    const code = firstLine.charCodeAt(i);
+    if (code < 32 && code !== 9) controlChars++;
+  }
+  return controlChars / firstLine.length > BINARY_GARBAGE_CONTROL_CHAR_RATIO;
+}
+
 interface IncomeCandidate {
   isin: string;
   product: string;
@@ -129,8 +146,13 @@ export class DEGIROParser {
     this._warningEntries = [];
     this._incomeRows = [];
 
-    // Binary content (null bytes) is not valid CSV
+    // Binary content (null bytes, or a header row dense with control
+    // characters) is not valid CSV
     if (typeof csv !== "string" || csv.includes("\x00")) {
+      throw new ParseError("INVALID_CSV");
+    }
+    const firstLine = csv.split("\n", 1)[0] ?? "";
+    if (looksLikeBinaryGarbage(firstLine)) {
       throw new ParseError("INVALID_CSV");
     }
 
