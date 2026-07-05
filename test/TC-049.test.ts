@@ -38,7 +38,7 @@ describe("TC-049: unknown OpenFIGI securityType → source=user, confirmedByUser
     });
 
     const classifier = new Classifier({ interactive: false });
-    const map = await classifier.classify([tx], tempSidecar, mockHttp);
+    const map = await classifier.classify([tx], tempSidecar, undefined, mockHttp);
 
     const entry = map["US1234567890"];
     expect(entry).toBeDefined();
@@ -53,7 +53,7 @@ describe("TC-049: unknown OpenFIGI securityType → source=user, confirmedByUser
     });
 
     const classifier = new Classifier({ interactive: false });
-    await classifier.classify([tx], tempSidecar, mockHttp);
+    await classifier.classify([tx], tempSidecar, undefined, mockHttp);
 
     expect(fs.existsSync(tempSidecar)).toBe(true);
     const raw = fs.readFileSync(tempSidecar, "utf-8");

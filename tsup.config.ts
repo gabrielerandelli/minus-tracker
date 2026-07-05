@@ -19,4 +19,11 @@ export default defineConfig([
     sourcemap: true,
     outDir: "dist",
   },
+  {
+    entry: { "mcp/index": "src/mcp/index.ts" },
+    format: ["esm"],
+    banner: { js: "#!/usr/bin/env node" },
+    sourcemap: true,
+    outDir: "dist",
+  },
 ]);

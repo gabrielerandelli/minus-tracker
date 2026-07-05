@@ -37,7 +37,7 @@ describe("TC-048: headless classify — OpenFIGI ETF response, sidecar written",
     });
 
     const classifier = new Classifier({ interactive: false });
-    const map = await classifier.classify([tx], tempSidecar, mockHttp);
+    const map = await classifier.classify([tx], tempSidecar, undefined, mockHttp);
 
     const entry = map["IE00B4L5Y983"];
     expect(entry).toBeDefined();
@@ -56,7 +56,7 @@ describe("TC-048: headless classify — OpenFIGI ETF response, sidecar written",
     });
 
     const classifier = new Classifier({ interactive: false });
-    await classifier.classify([tx], tempSidecar, mockHttp);
+    await classifier.classify([tx], tempSidecar, undefined, mockHttp);
 
     expect(fs.existsSync(tempSidecar)).toBe(true);
     const raw = fs.readFileSync(tempSidecar, "utf-8");
@@ -75,7 +75,7 @@ describe("TC-048: headless classify — OpenFIGI ETF response, sidecar written",
     });
 
     const classifier = new Classifier({ interactive: false });
-    const map = await classifier.classify([tx], tempSidecar, mockHttp);
+    const map = await classifier.classify([tx], tempSidecar, undefined, mockHttp);
 
     expect(map["IE00B4L5Y983"]!.product).toBe("iShares MSCI World ETF");
   });

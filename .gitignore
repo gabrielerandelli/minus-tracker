@@ -6,6 +6,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Generated at build time by scripts/generate-mcp-schemas.js
+src/mcp/schemas.generated.ts
+
 # Test / coverage
 coverage/
 .nyc_output/

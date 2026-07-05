@@ -30,7 +30,7 @@ describe("TC-050: persistent 5xx from OpenFIGI → ClassificationError(NETWORK_E
     const classifier = new Classifier({ interactive: false });
 
     await expect(
-      classifier.classify([tx], tempSidecar, mockHttp),
+      classifier.classify([tx], tempSidecar, undefined, mockHttp),
     ).rejects.toMatchObject({
       name: "ClassificationError",
       code: "NETWORK_ERROR",
@@ -43,7 +43,7 @@ describe("TC-050: persistent 5xx from OpenFIGI → ClassificationError(NETWORK_E
     const classifier = new Classifier({ interactive: false });
 
     await expect(
-      classifier.classify([tx], tempSidecar, mockHttp),
+      classifier.classify([tx], tempSidecar, undefined, mockHttp),
     ).rejects.toBeInstanceOf(ClassificationError);
 
     // One initial attempt + one retry = 2 calls total

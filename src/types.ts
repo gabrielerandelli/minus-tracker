@@ -112,6 +112,44 @@ export interface CalculatorOptions {
   incomeRows?: IncomeRow[];
 }
 
+/**
+ * Options for `Classifier.classify()`'s stateless mode (v0.8.0).
+ * Internal — not re-exported from the public `src/index.ts` barrel.
+ */
+export interface ClassifyOptions {
+  existingClassification?: ClassificationMap;
+  overrides?: Record<string, AssetClass>;
+  offline?: boolean;
+  onBatchProgress?: (done: number, total: number) => void;
+}
+
+// Input shapes for the MCP server's 3 tools (v0.8.0). Internal — not
+// re-exported from the public `src/index.ts` barrel. These are the single
+// source of truth `scripts/generate-mcp-schemas.js` points
+// `ts-json-schema-generator` at to produce each tool's `inputSchema`; adding
+// a field here and regenerating must surface it with no hand-maintained
+// schema to fall out of sync.
+
+export interface ParseTransactionsInput {
+  csv: string;
+}
+
+export interface ClassifyInstrumentsInput {
+  transactions: Transaction[];
+  existingClassification?: ClassificationMap;
+  overrides?: Record<string, AssetClass>;
+  offline?: boolean;
+}
+
+export interface CalculateGainsInput {
+  transactions: Transaction[];
+  method: LotMethod;
+  parseWarnings?: string[];
+  classification?: ClassificationMap;
+  carryForward?: CarryForward[];
+  incomeRows?: IncomeRow[];
+}
+
 export interface Transaction {
   isin: string;
   product: string;

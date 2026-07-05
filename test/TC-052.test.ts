@@ -112,6 +112,7 @@ describe("TC-052: sidecar merge — confirmed preserved, unconfirmed re-processe
     const map = await classifier.classify(
       [txA, txB, txC],
       tempSidecar,
+      undefined,
       mockHttp,
     );
 
@@ -136,6 +137,7 @@ describe("TC-052: sidecar merge — confirmed preserved, unconfirmed re-processe
     const map = await classifier.classify(
       [txA, txB, txC],
       tempSidecar,
+      undefined,
       mockHttp,
     );
 
@@ -159,6 +161,7 @@ describe("TC-052: sidecar merge — confirmed preserved, unconfirmed re-processe
     const map = await classifier.classify(
       [txA, txB, txC],
       tempSidecar,
+      undefined,
       mockHttp,
     );
 
@@ -177,7 +180,7 @@ describe("TC-052: sidecar merge — confirmed preserved, unconfirmed re-processe
     });
 
     const classifier = new Classifier({ interactive: false });
-    await classifier.classify([txA, txB, txC], tempSidecar, mockHttp);
+    await classifier.classify([txA, txB, txC], tempSidecar, undefined, mockHttp);
 
     // One batch call with 2 ISINs (B and C); A was not sent
     expect(mockHttp).toHaveBeenCalledTimes(1);

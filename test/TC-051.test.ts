@@ -28,7 +28,7 @@ describe("TC-051: unwritable sidecar path → ClassificationError(WRITE_ERROR)",
     const classifier = new Classifier({ interactive: false });
 
     await expect(
-      classifier.classify([tx], badSidecarPath, mockHttp),
+      classifier.classify([tx], badSidecarPath, undefined, mockHttp),
     ).rejects.toMatchObject({
       name: "ClassificationError",
       code: "WRITE_ERROR",

@@ -73,7 +73,7 @@ describe("TC-061: user override ETF→Stock — sidecar preserved, bucketGain=B"
     });
 
     const classifier = new Classifier({ interactive: false });
-    const map = await classifier.classify([tx], tempSidecar, mockHttp);
+    const map = await classifier.classify([tx], tempSidecar, undefined, mockHttp);
 
     const entry = map[ISIN];
     expect(entry).toBeDefined();
@@ -97,7 +97,7 @@ describe("TC-061: user override ETF→Stock — sidecar preserved, bucketGain=B"
     });
 
     const classifier = new Classifier({ interactive: false });
-    const map = await classifier.classify([tx], tempSidecar, mockHttp);
+    const map = await classifier.classify([tx], tempSidecar, undefined, mockHttp);
 
     expect(map[ISIN]!.bucketGain).toBe("B");
     expect(map[ISIN]!.bucketLoss).toBe("B");
@@ -112,7 +112,7 @@ describe("TC-061: user override ETF→Stock — sidecar preserved, bucketGain=B"
     });
 
     const classifier = new Classifier({ interactive: false });
-    const map = await classifier.classify([tx], tempSidecar, mockHttp);
+    const map = await classifier.classify([tx], tempSidecar, undefined, mockHttp);
 
     expect(map[ISIN]!.assetClass).toBe("Stock");
     expect(map[ISIN]!.bucketGain).toBe("B");
