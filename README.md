@@ -16,9 +16,21 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 - Calcolo di plusvalenze e minusvalenze con gestione dei lotti via **LIFO o FIFO** (configurabile)
 - **Parser integrato** per i file CSV di DEGIRO
 - Gestione **multivaluta** con tassi storici BCE (EUR, USD, GBP, CHF)
+- **Classificazione a due categorie** (Bucket A/B) degli strumenti finanziari — azioni, ETF, titoli
+  di stato, derivati — con classificazione automatica via OpenFIGI e sidecar JSON persistente
+- **Modello Redditi PF**: genera Quadro RT (redditi diversi) e Quadro RM (redditi di capitale) a
+  partire dai lotti calcolati, con riporto delle minusvalenze pregresse (regola dei 4 anni)
 - Suite di test allineata alle **FAQ dell'Agenzia delle Entrate**
 - Output disponibile in **italiano** (default) o **inglese** (`--lang en`)
 - Disponibile come pacchetto NPM con supporto CLI
+
+**Novità in v0.8.0:**
+
+- **Modalità stateless per `Classifier`**: `classify()` può ora funzionare senza alcun accesso al
+  filesystem (nessun sidecar), utile per l'integrazione in agenti/automazioni
+- **Server MCP** (`minus-tracker-mcp`): espone `parse_transactions`, `classify_instruments` e
+  `calculate_gains` come tool MCP su stdio, per l'uso diretto da parte di agenti AI — vedi la
+  sezione [Server MCP](#server-mcp) più sotto
 
 ### Avvio rapido
 
@@ -85,15 +97,16 @@ npx @gabrielerandelli/minus-tracker calc trades.csv
 
 ### Utilizzo CLI
 
-| Comando                | Flag principali                                                  | Note                                                                   |
-| ---------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json` | Aggiorna i tassi BCE automaticamente se la snapshot ha più di 7 giorni |
-| `validate <file.csv>`  | `--lang it\|en`                                                  | Exit 0 con avvisi; exit 1 in caso di errori bloccanti                  |
-| `rates --check`        | —                                                                | Mostra la copertura della snapshot BCE in locale                       |
-| `rates --update`       | —                                                                | Scarica i tassi aggiornati dall'API BCE                                |
-| `config --lang it\|en` | —                                                                | Salva la lingua preferita                                              |
-| `config --show`        | —                                                                | Mostra la lingua correntemente impostata                               |
-| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                | Documentato in fondo                                                   |
+| Comando                | Flag principali                                                                                                      | Note                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward` | Aggiorna i tassi BCE automaticamente se la snapshot ha più di 7 giorni; usa il sidecar di `classify` se presente |
+| `classify <file.csv>`  | `--offline`                                                                                                          | Classifica gli strumenti (Bucket A/B) e crea/aggiorna il sidecar `*.classify.json`                               |
+| `validate <file.csv>`  | `--lang it\|en`                                                                                                      | Exit 0 con avvisi; exit 1 in caso di errori bloccanti                                                            |
+| `rates --check`        | —                                                                                                                    | Mostra la copertura della snapshot BCE in locale                                                                 |
+| `rates --update`       | —                                                                                                                    | Scarica i tassi aggiornati dall'API BCE                                                                          |
+| `config --lang it\|en` | —                                                                                                                    | Salva la lingua preferita                                                                                        |
+| `config --show`        | —                                                                                                                    | Mostra la lingua correntemente impostata                                                                         |
+| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                    | Documentato in fondo                                                                                             |
 
 Precedenza lingua: `--lang` > lingua salvata > italiano (default).
 
@@ -128,6 +141,7 @@ npm install @gabrielerandelli/minus-tracker
 import {
   DEGIROParser,
   Calculator,
+  Classifier,
   ParseError,
   CalculationError,
 } from "@gabrielerandelli/minus-tracker";
@@ -140,19 +154,25 @@ if (parser.warnings.length > 0) {
   console.warn("Righe saltate:", parser.warnings);
 }
 
-// 2. Calcolo
-const method: LotMethod = "LIFO"; // oppure "FIFO"
-const report: GainsReport = new Calculator(
+// 2. Classificazione (Bucket A/B) — facoltativa, abilita Quadro RT/RM nel report
+const classification = await new Classifier().classify(
   transactions,
-  parser.warnings,
-).calculateGains(method);
+  "trades.classify.json", // sidecar persistente; omettilo per la modalità stateless
+);
+
+// 3. Calcolo
+const method: LotMethod = "LIFO"; // oppure "FIFO"
+const report: GainsReport = new Calculator(transactions, parser.warnings, {
+  classification,
+}).calculateGains(method);
 
 console.log(report.plusvalenze); // numero in EUR
 console.log(report.minusvalenze); // numero in EUR (valore assoluto)
 console.log(report.netResult); // plusvalenze - minusvalenze
 console.log(report.lots); // MatchedLot[] — dettaglio per lotto
+console.log(report.dichiarazione); // Quadro RT/RM, se classification è stata passata
 
-// 3. Gestione errori
+// 4. Gestione errori
 try {
   const txs = parser.parse(csvString);
   const r = new Calculator(txs, parser.warnings).calculateGains("LIFO");
@@ -176,6 +196,46 @@ try {
 > 💡 minus-tracker si occupa **esclusivamente del calcolo fiscale** — non include interfacce grafiche (UI), sistemi di autenticazione, database o esportazioni in PDF.
 
 **Prerequisiti:** Node.js ≥ 24 ([nodejs.org](https://nodejs.org))
+
+### Server MCP
+
+A partire dalla v0.8.0, minus-tracker include un binario `minus-tracker-mcp` che espone un
+[server MCP](https://modelcontextprotocol.io) su stdio, pensato per l'uso diretto da parte di
+agenti AI (senza passare dalla CLI):
+
+```bash
+npx -p @gabrielerandelli/minus-tracker minus-tracker-mcp
+```
+
+Configurazione tipica per un client MCP (es. Claude Desktop, `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "minus-tracker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "-p",
+        "@gabrielerandelli/minus-tracker",
+        "minus-tracker-mcp"
+      ]
+    }
+  }
+}
+```
+
+Il server espone 3 tool:
+
+| Tool                   | Descrizione                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `parse_transactions`   | Effettua il parsing di un CSV DEGIRO in `transactions`/`warnings`/`incomeRows` |
+| `classify_instruments` | Classifica gli ISIN in Bucket A/B (modalità stateless — nessun sidecar)        |
+| `calculate_gains`      | Calcola plusvalenze/minusvalenze (LIFO/FIFO) e, se disponibile, Quadro RT/RM   |
+
+`classify_instruments` supporta `existingClassification`, `overrides` e `offline: true` per
+funzionare senza rete e senza accesso al filesystem — pensato per essere invocato ripetutamente
+da un agente su più chiamate, mantenendo lo stato lato client.
 
 ### Domande frequenti
 
@@ -251,9 +311,21 @@ It loads data following the CSV format used by DEGIRO.
 - Capital-gains/loss calculation with configurable **LIFO and FIFO** lot matching
 - **DEGIRO CSV parser**
 - **Multi-currency** handling with historical ECB rates (EUR, USD, GBP, CHF)
+- **Two-bucket classification** (Bucket A/B) of financial instruments — stocks, ETFs, government
+  bonds, derivatives — with automatic OpenFIGI-backed classification and a persistent JSON sidecar
+- **Modello Redditi PF** generation: Quadro RT (capital gains) and Quadro RM (capital income) built
+  from the calculated lots, with prior-year loss carryforward (4-year rule)
 - Test suite based on **Agenzia Entrate FAQ**
 - Output in **Italian** (default) or **English** (`--lang en`)
 - minus-tracker is an NPM package with CLI support
+
+**New in v0.8.0:**
+
+- **Stateless mode for `Classifier`**: `classify()` can now run with zero filesystem access (no
+  sidecar file), useful for embedding in agents/automations
+- **MCP server** (`minus-tracker-mcp`): exposes `parse_transactions`, `classify_instruments`, and
+  `calculate_gains` as MCP tools over stdio, for direct use by AI agents — see the
+  [MCP Server](#mcp-server) section below
 
 ### Quick Start
 
@@ -321,15 +393,16 @@ npx @gabrielerandelli/minus-tracker calc trades.csv
 
 ### CLI Usage
 
-| Command                | Key flags                                                        | Notes                                                      |
-| ---------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------- |
-| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json` | Auto-fetches ECB rates if snapshot is more than 7 days old |
-| `validate <file.csv>`  | `--lang it\|en`                                                  | Exit 0 with warnings; exit 1 on hard errors                |
-| `rates --check`        | —                                                                | Shows bundled ECB snapshot coverage                        |
-| `rates --update`       | —                                                                | Fetches fresh rates from the ECB API                       |
-| `config --lang it\|en` | —                                                                | Saves language preference                                  |
-| `config --show`        | —                                                                | Shows current language setting                             |
-| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                | Documented below                                           |
+| Command                | Key flags                                                                                                            | Notes                                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward` | Auto-fetches ECB rates if snapshot is more than 7 days old; uses `classify`'s sidecar when present |
+| `classify <file.csv>`  | `--offline`                                                                                                          | Classifies instruments (Bucket A/B) and creates/updates the `*.classify.json` sidecar              |
+| `validate <file.csv>`  | `--lang it\|en`                                                                                                      | Exit 0 with warnings; exit 1 on hard errors                                                        |
+| `rates --check`        | —                                                                                                                    | Shows bundled ECB snapshot coverage                                                                |
+| `rates --update`       | —                                                                                                                    | Fetches fresh rates from the ECB API                                                               |
+| `config --lang it\|en` | —                                                                                                                    | Saves language preference                                                                          |
+| `config --show`        | —                                                                                                                    | Shows current language setting                                                                     |
+| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                    | Documented below                                                                                   |
 
 Language precedence: `--lang` flag > saved config > Italian (default).
 
@@ -364,6 +437,7 @@ npm install @gabrielerandelli/minus-tracker
 import {
   DEGIROParser,
   Calculator,
+  Classifier,
   ParseError,
   CalculationError,
 } from "@gabrielerandelli/minus-tracker";
@@ -376,19 +450,25 @@ if (parser.warnings.length > 0) {
   console.warn("Skipped rows:", parser.warnings);
 }
 
-// 2. Calculate
-const method: LotMethod = "LIFO"; // or "FIFO"
-const report: GainsReport = new Calculator(
+// 2. Classify (Bucket A/B) — optional, enables Quadro RT/RM in the report
+const classification = await new Classifier().classify(
   transactions,
-  parser.warnings,
-).calculateGains(method);
+  "trades.classify.json", // persistent sidecar; omit for stateless mode
+);
+
+// 3. Calculate
+const method: LotMethod = "LIFO"; // or "FIFO"
+const report: GainsReport = new Calculator(transactions, parser.warnings, {
+  classification,
+}).calculateGains(method);
 
 console.log(report.plusvalenze); // EUR capital gains (number)
 console.log(report.minusvalenze); // EUR capital losses (number, absolute value)
 console.log(report.netResult); // plusvalenze - minusvalenze
 console.log(report.lots); // MatchedLot[] — per-lot breakdown
+console.log(report.dichiarazione); // Quadro RT/RM, when classification was passed
 
-// 3. Error handling
+// 4. Error handling
 try {
   const txs = parser.parse(csvString);
   const r = new Calculator(txs, parser.warnings).calculateGains("LIFO");
@@ -410,6 +490,46 @@ try {
 minus-tracker is **pure tax math** — no UI, auth, database, or PDF.
 
 **Prerequisites:** Node.js ≥ 24 ([nodejs.org](https://nodejs.org))
+
+### MCP Server
+
+As of v0.8.0, minus-tracker ships a `minus-tracker-mcp` binary exposing an
+[MCP server](https://modelcontextprotocol.io) over stdio, for direct use by AI agents (no need to
+go through the CLI):
+
+```bash
+npx -p @gabrielerandelli/minus-tracker minus-tracker-mcp
+```
+
+Typical MCP client configuration (e.g. Claude Desktop, `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "minus-tracker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "-p",
+        "@gabrielerandelli/minus-tracker",
+        "minus-tracker-mcp"
+      ]
+    }
+  }
+}
+```
+
+The server exposes 3 tools:
+
+| Tool                   | Description                                                           |
+| ---------------------- | --------------------------------------------------------------------- |
+| `parse_transactions`   | Parses a DEGIRO CSV into `transactions`/`warnings`/`incomeRows`       |
+| `classify_instruments` | Classifies ISINs into Bucket A/B (stateless mode — no sidecar file)   |
+| `calculate_gains`      | Calculates gains/losses (LIFO/FIFO) and, when available, Quadro RT/RM |
+
+`classify_instruments` supports `existingClassification`, `overrides`, and `offline: true` to run
+without network access or filesystem access — designed to be called repeatedly by an agent across
+multiple calls, with state kept client-side.
 
 ### FAQ / Troubleshooting
 

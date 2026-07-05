@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-05
+
+### Added
+
+- Stateless `Classifier.classify()` mode: `sidecarPath` is now optional. When omitted, `classify()`
+  performs zero filesystem access and resolves classifications purely from a new `ClassifyOptions`
+  parameter (`existingClassification`, `overrides`, `offline`, `onBatchProgress`) plus OpenFIGI
+  lookups. `overrides` always wins, even over `existingClassification`, and is never sent to
+  OpenFIGI. `offline: true` skips OpenFIGI entirely and stubs unresolved ISINs.
+  `onBatchProgress(done, total)` fires after each completed OpenFIGI batch.
+- `minus-tracker-mcp` binary: a new [MCP](https://modelcontextprotocol.io) server exposing
+  `parse_transactions`, `classify_instruments`, and `calculate_gains` as tools over stdio, so
+  agents can drive the full parse → classify → calculate pipeline headlessly, without shelling out
+  to the CLI. Tool input schemas are generated at build time from `src/types.ts` (no hand-maintained
+  schema to fall out of sync).
+
+### Changed
+
+- `@modelcontextprotocol/sdk` and `ajv` are added as dependencies, scoped to the `mcp` build target
+  only — the core library and CLI bundles remain free of both (zero-runtime-dependency guarantee
+  unaffected outside the new MCP entrypoint).
+
+## [0.6.0] - 2026-06-29
+
+### Added
+
+- Two-bucket tax classification engine: routes matched lots into Bucket A (_redditi diversi_ —
+  stocks, derivatives, certificates, taxed at 26%/12.5%) or Bucket B (_redditi di capitale_ —
+  ETFs/UCITS funds), per Italian tax law (Art. 67 vs Art. 44 TUIR)
+- `Classifier`: `load()`/`classify()` — OpenFIGI-backed instrument classification with a JSON
+  sidecar file (`*.classify.json`) caching resolved/user-confirmed asset classes across runs
+- CLI: `classify` command (interactive and `--offline` modes) to build/update the sidecar
+- CLI: `calc` auto-discovers a sidecar and renders the Bucket A/B breakdown when present
+- `--carry-forward` flag: applies prior-year Bucket B losses (oldest-first, 4-year expiry rule)
+- New type exports: `AssetClass`, `ClassificationEntry`, `ClassificationMap`, `BucketAReport`,
+  `BucketBReport`, `CarryForward`
+
 ## [0.7.0] - 2026-07-03
 
 ### Added
