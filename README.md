@@ -1,3 +1,11 @@
+<p align="center">
+  <img
+    src="./.github/assets/banner.png"
+    alt="minus-tracker — Italian Capital Gains & Losses Tracker / Calcolo Plusvalenze e Minusvalenze"
+    width="100%"
+  />
+</p>
+
 # minus-tracker
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
