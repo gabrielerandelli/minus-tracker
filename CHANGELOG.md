@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `calc` no longer requires running `classify` first: if no `*.classify.json` sidecar is found
+  next to the input CSV, `calc` now classifies automatically before computing gains — interactively
+  (OpenFIGI lookup + confirm prompts) when a terminal is attached, or offline (with a printed
+  notice) when there isn't one, e.g. in scripts/CI. The resulting sidecar is written to disk just
+  like running `classify` manually, so subsequent runs reuse it instantly. `classify` remains
+  available for explicit/interactive use and now accepts the same `--offline` flag on `calc` to
+  force offline classification regardless of TTY.
+
 ## [0.8.3] - 2026-07-16
 
 ### Changed

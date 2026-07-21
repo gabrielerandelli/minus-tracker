@@ -140,10 +140,16 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// TC-094 (TC-D10): Missing sidecar → declaration section absent, soft warning
+// TC-094 (TC-D10): Missing sidecar — calc auto-classifies, declaration present
+//
+// Historically this covered "no sidecar → declaration section absent, soft
+// warning". Since calc now auto-classifies when no sidecar exists, that
+// scenario no longer occurs via the CLI: a classification (offline, since
+// there's no TTY in tests) is always produced, so the declaration section is
+// now always present. Updated to assert the new default behavior.
 // ---------------------------------------------------------------------------
 
-describe("TC-094: missing sidecar — declaration section absent, soft warning", () => {
+describe("TC-094: missing sidecar — calc auto-classifies, declaration section present", () => {
   function writeCsv(dir: string): string {
     const csvPath = path.join(dir, "trades.csv");
     const rows = [
@@ -155,14 +161,14 @@ describe("TC-094: missing sidecar — declaration section absent, soft warning",
     return csvPath;
   }
 
-  it("Step 1+2: stdout has no MODELLO REDDITI PF section; stderr has the soft warning", async () => {
+  it("Step 1+2: stdout has the MODELLO REDDITI PF section; stderr has the auto-classify notice", async () => {
     const dir = makeTmpDir();
     const csvPath = writeCsv(dir);
 
     const result = await runCalcCapture([csvPath], {}, itStrings);
 
-    expect(result.stdout).not.toContain("MODELLO REDDITI PF");
-    expect(result.stderr).toContain(itStrings.warnNoDichiarazioneSidecar);
+    expect(result.stdout).toContain("MODELLO REDDITI PF");
+    expect(result.stderr).toContain(itStrings.autoClassifyOfflineNotice);
   });
 
   it("Step 3: Italian locale text matches the classify-first suggestion", async () => {
@@ -171,10 +177,10 @@ describe("TC-094: missing sidecar — declaration section absent, soft warning",
 
     const result = await runCalcCapture([csvPath], {}, itStrings);
 
-    expect(itStrings.warnNoDichiarazioneSidecar).toContain(
+    expect(itStrings.autoClassifyOfflineNotice).toContain(
       "minus-tracker classify",
     );
-    expect(result.stderr).toContain(itStrings.warnNoDichiarazioneSidecar);
+    expect(result.stderr).toContain(itStrings.autoClassifyOfflineNotice);
   });
 
   it("Step 4: exit code is 0", async () => {
@@ -186,15 +192,40 @@ describe("TC-094: missing sidecar — declaration section absent, soft warning",
     expect(result.exitCode).toBe(0);
   });
 
-  it("Step 5: --lang en equivalent — English warning shown, no declaration section", async () => {
+  it("Step 5: --lang en equivalent — English notice shown, declaration section present", async () => {
     const dir = makeTmpDir();
     const csvPath = writeCsv(dir);
 
     const result = await runCalcCapture([csvPath], {}, enStrings);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).not.toContain("MODELLO REDDITI PF");
-    expect(result.stderr).toContain(enStrings.warnNoDichiarazioneSidecar);
+    expect(result.stdout).toContain("MODELLO REDDITI PF");
+    expect(result.stderr).toContain(enStrings.autoClassifyOfflineNotice);
+  });
+
+  it("writes a .classify.json sidecar next to the CSV", async () => {
+    const dir = makeTmpDir();
+    const csvPath = writeCsv(dir);
+
+    await runCalcCapture([csvPath], {}, itStrings);
+
+    expect(fs.existsSync(path.join(dir, "trades.classify.json"))).toBe(true);
+  });
+
+  it("--offline forces offline mode without printing the no-TTY notice", async () => {
+    const dir = makeTmpDir();
+    const csvPath = writeCsv(dir);
+
+    const result = await runCalcCapture(
+      [csvPath],
+      { offline: true },
+      itStrings,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain(itStrings.autoClassifyOfflineNotice);
+    expect(result.stdout).toContain(itStrings.classifyOfflineWarning);
+    expect(result.stdout).toContain("MODELLO REDDITI PF");
   });
 });
 

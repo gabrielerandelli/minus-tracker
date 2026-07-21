@@ -6,6 +6,7 @@ import { Calculator } from "../../calculator/index.js";
 import { Classifier } from "../../classifier/index.js";
 import { ParseError } from "../../errors.js";
 import { renderReport } from "../renderer.js";
+import { classifyToSidecar } from "./classify-core.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import type {
   LotMethod,
@@ -23,7 +24,7 @@ export async function runCalc(
   const filePath = positional[0];
   if (!filePath) {
     stderr.write(
-      "Usage: minus-tracker calc [--method LIFO|FIFO] [--json] <file.csv>\n",
+      "Usage: minus-tracker calc [--method LIFO|FIFO] [--offline] [--json] <file.csv>\n",
     );
     return 2;
   }
@@ -42,19 +43,6 @@ export async function runCalc(
     return 2;
   }
 
-  // Sidecar auto-discovery
-  const sidecarPath = filePath.replace(/\.csv$/i, "") + ".classify.json";
-  let classification: ClassificationMap | undefined;
-  if (fs.existsSync(sidecarPath)) {
-    try {
-      const classifier = new Classifier({ interactive: false });
-      classification = await classifier.load(sidecarPath);
-    } catch {
-      stderr.write(s.errorCannotLoadSidecar(sidecarPath) + "\n");
-      return 1;
-    }
-  }
-
   // --export-dichiarazione flag parsing (optional path value)
   const exportFlagRaw = flags["export-dichiarazione"];
   const exportRequested =
@@ -63,11 +51,6 @@ export async function runCalc(
     typeof exportFlagRaw === "string"
       ? exportFlagRaw
       : filePath.replace(/\.csv$/i, "") + ".dichiarazione.json";
-
-  if (exportRequested && classification === undefined) {
-    stderr.write(s.warnNoDichiarazioneSidecar + "\n");
-    return 1;
-  }
 
   // --carry-forward flag parsing
   const rawCf: unknown = flags["carry-forward"];
@@ -133,6 +116,38 @@ export async function runCalc(
     throw err;
   }
 
+  // Sidecar auto-discovery — reuse it if present; otherwise auto-classify.
+  const sidecarPath = filePath.replace(/\.csv$/i, "") + ".classify.json";
+  let classification: ClassificationMap | undefined;
+  if (fs.existsSync(sidecarPath)) {
+    try {
+      const classifier = new Classifier({ interactive: false });
+      classification = await classifier.load(sidecarPath);
+    } catch {
+      stderr.write(s.errorCannotLoadSidecar(sidecarPath) + "\n");
+      return 1;
+    }
+  } else {
+    const offlineFlag = Boolean(flags["offline"]);
+    const isTty = process.stdin.isTTY === true;
+    const offline = offlineFlag || !isTty;
+    const interactive = !offline && isTty;
+
+    if (offline && !offlineFlag) {
+      stderr.write(s.autoClassifyOfflineNotice + "\n");
+    }
+
+    // In --json mode, keep classify's human-readable status lines off of
+    // stdout so it stays pure, parseable JSON.
+    classification = await classifyToSidecar(
+      transactions,
+      sidecarPath,
+      { offline, interactive },
+      s,
+      flags["json"] ? stderr : stdout,
+    );
+  }
+
   const calculator = new Calculator(transactions, parser.warnings, {
     classification,
     carryForward: carryForward.length > 0 ? carryForward : undefined,
@@ -160,8 +175,6 @@ export async function runCalc(
 
   if (exportRequested) {
     stdout.write(s.classifyWritten(exportPath) + "\n");
-  } else if (!report.dichiarazione) {
-    stderr.write(s.warnNoDichiarazioneSidecar + "\n");
   }
 
   return 0;

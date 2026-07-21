@@ -78,6 +78,8 @@ export const it: LocaleStrings = {
     `Tipo non riconosciuto: ${type}. Classificare manualmente.`,
   classifyNonTtyError:
     "Modalità interattiva richiede un terminale (TTY). Usa --offline per classificare senza terminale.",
+  autoClassifyOfflineNotice:
+    "Nessun sidecar di classificazione trovato — classificazione offline automatica (nessun terminale rilevato). Esegui 'minus-tracker classify <file>' in seguito per confermare tramite OpenFIGI.",
 
   bucketAHeader: "BUCKET A — REDDITI DA CAPITALE (non compensabili)",
   bucketBHeader: "BUCKET B — REDDITI DIVERSI",
@@ -126,7 +128,5 @@ export const it: LocaleStrings = {
   quadroRMCedole: "[RM-C]  Cedole obbligazionarie",
   dichiarazioneDisclaimer:
     "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
-  warnNoDichiarazioneSidecar:
-    "Suggerimento: esegui prima 'minus-tracker classify <file>' per abilitare il Quadro RT/RM.",
   warnNoCarryForwardProvided: "(eventuali perdite pregresse non applicate)",
 };

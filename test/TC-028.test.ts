@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Writable } from "node:stream";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCalc } from "../src/cli/commands/calc.js";
@@ -8,7 +10,9 @@ import { it as itStrings } from "../src/i18n/it.js";
 /**
  * TC-028: calc --method FIFO selects FIFO lot matching
  *
- * Invokes runCalc() directly with mock streams against ae-03.csv:
+ * Invokes runCalc() directly with mock streams against a private temp copy
+ * of ae-03.csv (isolated so calc's auto-classify sidecar write doesn't land
+ * in the committed test/fixtures/ directory):
  *   BUY 1: 10 shares @ 100.00 EUR, fees=2.00 EUR (2024-01-02)
  *   BUY 2: 10 shares @ 120.00 EUR, fees=2.00 EUR (2024-03-01)
  *   SELL:  10 shares @ 130.00 EUR, fees=2.00 EUR (2024-06-03)
@@ -25,7 +29,20 @@ import { it as itStrings } from "../src/i18n/it.js";
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fixturePath = path.join(__dirname, "fixtures/ae/ae-03.csv");
+const sourceFixture = path.join(__dirname, "fixtures/ae/ae-03.csv");
+
+let tmpDir: string;
+let fixturePath: string;
+
+beforeAll(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tc028-"));
+  fixturePath = path.join(tmpDir, "ae-03.csv");
+  fs.copyFileSync(sourceFixture, fixturePath);
+});
+
+afterAll(() => {
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
 
 // ── FIFO run ────────────────────────────────────────────────────────────────
 
@@ -65,8 +82,8 @@ describe("TC-028 (FIFO): calc --method FIFO selects FIFO lot matching", () => {
     expect(fifoExitCode).toBe(0);
   });
 
-  it("stderr contains only the no-sidecar soft warning (v0.7.0)", () => {
-    expect(fifoStderr).toBe(itStrings.warnNoDichiarazioneSidecar + "\n");
+  it("stderr contains only the auto-classify-offline notice (no TTY, no sidecar)", () => {
+    expect(fifoStderr).toBe(itStrings.autoClassifyOfflineNotice + "\n");
   });
 
   it('stdout contains "METODO: FIFO"', () => {
@@ -93,6 +110,9 @@ let lifoStderr: string;
 
 describe("TC-028 (LIFO control): default method is LIFO and produces 96,00", () => {
   beforeAll(async () => {
+    // A second, separate temp copy: calc already wrote a sidecar for the
+    // FIFO run above, and this run must reuse it (fast path) rather than
+    // reclassify — using the same fixturePath is intentional here.
     lifoStdout = "";
     lifoStderr = "";
 
@@ -123,8 +143,8 @@ describe("TC-028 (LIFO control): default method is LIFO and produces 96,00", () 
     expect(lifoExitCode).toBe(0);
   });
 
-  it("stderr contains only the no-sidecar soft warning (v0.7.0)", () => {
-    expect(lifoStderr).toBe(itStrings.warnNoDichiarazioneSidecar + "\n");
+  it("stderr is empty (sidecar from the FIFO run above is reused, no reclassification)", () => {
+    expect(lifoStderr).toBe("");
   });
 
   it('stdout contains "METODO: LIFO"', () => {

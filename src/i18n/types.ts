@@ -80,6 +80,7 @@ export interface LocaleStrings {
   classifyOfflineWarning: string;
   classifyUnknownType: (type: string) => string;
   classifyNonTtyError: string;
+  autoClassifyOfflineNotice: string;
 
   // two-bucket output (Part 12)
   bucketAHeader: string;
@@ -120,6 +121,5 @@ export interface LocaleStrings {
   quadroRMRitenuta: string;
   quadroRMCedole: string;
   dichiarazioneDisclaimer: string;
-  warnNoDichiarazioneSidecar: string;
   warnNoCarryForwardProvided: string;
 }

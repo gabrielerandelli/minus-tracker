@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Writable } from "node:stream";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCalc } from "../src/cli/commands/calc.js";
@@ -8,28 +10,36 @@ import { it as itStrings } from "../src/i18n/it.js";
 /**
  * TC-027: calc default — LIFO table output, Italian locale
  *
- * Invokes runCalc() directly with mock streams against the shared
- * valid-trades.csv fixture (Apple Inc, 1 BUY 10×150 EUR fees=2,
- * 1 SELL 10×180 EUR fees=2).
+ * Invokes runCalc() directly with mock streams against a private copy of the
+ * shared valid-trades.csv fixture (Apple Inc, 1 BUY 10×150 EUR fees=2,
+ * 1 SELL 10×180 EUR fees=2), isolated to a temp dir so calc's auto-classify
+ * sidecar write doesn't land in the committed test/fixtures/ directory.
  *
  * Expected gain:
  *   sellProceedsEUR = 1800 − 2 = 1798
  *   buyCostEUR      = 1500 + 2 = 1502
  *   gainLossEUR     = 1798 − 1502 = 296.00
  *
- * Default method is LIFO (no --method flag supplied).
+ * Default method is LIFO (no --method flag supplied). No sidecar exists and
+ * there is no TTY, so calc auto-classifies offline and writes one.
  * Numbers must be formatted in Italian locale (comma decimal separator).
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fixturePath = path.join(__dirname, "fixtures/valid-trades.csv");
+const sourceFixture = path.join(__dirname, "fixtures/valid-trades.csv");
 
+let tmpDir: string;
+let fixturePath: string;
 let exitCode: number;
 let stdoutOutput: string;
 let stderrOutput: string;
 
 describe("TC-027: calc default — LIFO table output, Italian locale", () => {
   beforeAll(async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tc027-"));
+    fixturePath = path.join(tmpDir, "valid-trades.csv");
+    fs.copyFileSync(sourceFixture, fixturePath);
+
     stdoutOutput = "";
     stderrOutput = "";
 
@@ -56,12 +66,16 @@ describe("TC-027: calc default — LIFO table output, Italian locale", () => {
     );
   });
 
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it("exits with code 0", () => {
     expect(exitCode).toBe(0);
   });
 
-  it("stderr contains only the no-sidecar soft warning (v0.7.0)", () => {
-    expect(stderrOutput).toBe(itStrings.warnNoDichiarazioneSidecar + "\n");
+  it("stderr contains only the auto-classify-offline notice (no TTY, no sidecar)", () => {
+    expect(stderrOutput).toBe(itStrings.autoClassifyOfflineNotice + "\n");
   });
 
   it('stdout contains "METODO: LIFO"', () => {
@@ -112,5 +126,11 @@ describe("TC-027: calc default — LIFO table output, Italian locale", () => {
 
   it("EUR amounts use Italian locale — gain appears as 296,00", () => {
     expect(stdoutOutput).toContain("296,00");
+  });
+
+  it("writes a .classify.json sidecar next to the CSV", () => {
+    expect(fs.existsSync(path.join(tmpDir, "valid-trades.classify.json"))).toBe(
+      true,
+    );
   });
 });

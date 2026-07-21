@@ -1,37 +1,48 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Writable } from "node:stream";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCalc } from "../src/cli/commands/calc.js";
 import { it as itStrings } from "../src/i18n/it.js";
 
 /**
- * TC-070: mixed-asset warning (no sidecar)
+ * TC-070: mixed-asset CSV, no pre-existing sidecar — calc auto-classifies
  *
- * When a CSV contains both IE-prefixed ISINs (ETFs) and non-IE ISINs (Stocks)
- * but no sidecar is present, the Calculator emits a warnMixedAssets warning.
- * The renderer must print it prominently BEFORE the lot table. This warning is
- * always English, like every other Calculator-level warning — Calculator itself
- * is not locale-aware, even though this test runs the CLI in Italian mode.
+ * Previously (pre-auto-classify), a CSV with both IE-prefixed ISINs (ETFs)
+ * and non-IE ISINs (Stocks) but no sidecar produced a single-bucket fallback
+ * with a soft mixed-asset warning. Now calc always classifies first (offline,
+ * since there's no TTY here), so this fixture instead produces full
+ * two-bucket output — this is the intended behavior change.
  *
- * Fixture: mixed-trades.csv (IE00B4L5Y983 + US0378331005, no sidecar)
+ * Fixture: mixed-trades.csv (IE00B4L5Y983 + US0378331005), copied to a temp
+ * dir so calc's auto-classify sidecar write doesn't land in the committed
+ * test/fixtures/ directory.
  *
  * Expected:
  *   - exit 0
- *   - stdout contains "WARNING:" warning text before the lot table
- *   - stdout does NOT contain "BUCKET A" or "BUCKET B" section headers
- *   - no bucketA/bucketB in the text output
+ *   - stderr contains the auto-classify-offline notice
+ *   - stdout contains "BUCKET B" (offline classification defaults unresolved
+ *     ISINs to Bucket B — see src/classifier/index.ts offline stub path)
+ *   - a .classify.json sidecar is written next to the CSV
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fixturePath = path.join(__dirname, "fixtures/mixed-trades.csv");
+const sourceFixture = path.join(__dirname, "fixtures/mixed-trades.csv");
 
+let tmpDir: string;
+let fixturePath: string;
 let exitCode: number;
 let stdoutOutput: string;
 let stderrOutput: string;
 
-describe("TC-070: mixed-asset warning without sidecar", () => {
+describe("TC-070: mixed-asset CSV without a sidecar — calc auto-classifies", () => {
   beforeAll(async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tc070-"));
+    fixturePath = path.join(tmpDir, "mixed-trades.csv");
+    fs.copyFileSync(sourceFixture, fixturePath);
+
     stdoutOutput = "";
     stderrOutput = "";
 
@@ -58,31 +69,29 @@ describe("TC-070: mixed-asset warning without sidecar", () => {
     );
   });
 
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it("exits with code 0", () => {
     expect(exitCode).toBe(0);
   });
 
-  it("stdout contains warnMixedAssets warning (WARNING:)", () => {
-    expect(stdoutOutput).toContain("WARNING:");
+  it("stderr contains the auto-classify-offline notice", () => {
+    expect(stderrOutput).toBe(itStrings.autoClassifyOfflineNotice + "\n");
   });
 
-  it("the WARNING appears before the ISIN column header", () => {
-    const warnPos = stdoutOutput.indexOf("WARNING:");
-    const tablePos = stdoutOutput.indexOf("ISIN");
-    expect(warnPos).toBeGreaterThan(-1);
-    expect(tablePos).toBeGreaterThan(-1);
-    expect(warnPos).toBeLessThan(tablePos);
-  });
-
-  it('stdout does NOT contain "BUCKET A" section header', () => {
-    expect(stdoutOutput).not.toContain("BUCKET A");
-  });
-
-  it('stdout does NOT contain "BUCKET B" section header', () => {
-    expect(stdoutOutput).not.toContain("BUCKET B");
+  it('stdout contains "BUCKET B" section header (two-bucket output now active)', () => {
+    expect(stdoutOutput).toContain("BUCKET B");
   });
 
   it("stdout contains standard summary PLUSVALENZE", () => {
     expect(stdoutOutput).toContain("PLUSVALENZE:");
+  });
+
+  it("writes a .classify.json sidecar next to the CSV", () => {
+    expect(fs.existsSync(path.join(tmpDir, "mixed-trades.classify.json"))).toBe(
+      true,
+    );
   });
 });

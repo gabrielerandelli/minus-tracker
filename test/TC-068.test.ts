@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Writable } from "node:stream";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCalc } from "../src/cli/commands/calc.js";
@@ -16,11 +18,27 @@ import { it as itStrings } from "../src/i18n/it.js";
  *   "abc:def"   → non-numeric year/amount → exit 2
  *   "2023:"     → missing amount after colon → exit 2
  *   "2023:2500" → valid → exit 0
+ *
+ * The valid case (TC-068d) reaches calc's auto-classify step, which writes a
+ * .classify.json sidecar — use a temp copy of the fixture so that write
+ * doesn't land in the committed test/fixtures/ directory.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Use valid-trades.csv so the CSV parsing succeeds in the happy path
-const fixturePath = path.join(__dirname, "fixtures/valid-trades.csv");
+const sourceFixture = path.join(__dirname, "fixtures/valid-trades.csv");
+
+let tmpDir: string;
+let fixturePath: string;
+
+beforeAll(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tc068-"));
+  fixturePath = path.join(tmpDir, "valid-trades.csv");
+  fs.copyFileSync(sourceFixture, fixturePath);
+});
+
+afterAll(() => {
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
 
 function makeStreams() {
   let out = "";

@@ -74,6 +74,8 @@ export const en: LocaleStrings = {
     `Unrecognized type: ${type}. Please classify manually.`,
   classifyNonTtyError:
     "Interactive mode requires a TTY. Use --offline to classify without a terminal.",
+  autoClassifyOfflineNotice:
+    "No classification sidecar found — classifying offline automatically (no terminal detected). Run 'minus-tracker classify <file>' later to confirm via OpenFIGI.",
 
   bucketAHeader: "BUCKET A — CAPITAL INCOME (non-offsettable)",
   bucketBHeader: "BUCKET B — MISCELLANEOUS INCOME",
@@ -120,7 +122,5 @@ export const en: LocaleStrings = {
   quadroRMCedole: "[RM-C]  Bond coupons",
   dichiarazioneDisclaimer:
     "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
-  warnNoDichiarazioneSidecar:
-    "Tip: run 'minus-tracker classify <file>' first to enable Quadro RT/RM.",
   warnNoCarryForwardProvided: "(prior-year losses not applied)",
 };

@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Writable } from "node:stream";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCalc } from "../src/cli/commands/calc.js";
@@ -8,7 +10,9 @@ import { it as itStrings } from "../src/i18n/it.js";
 /**
  * TC-029: calc --json produces machine-readable JSON
  *
- * Invokes runCalc() with { json: true } and mock streams against valid-trades.csv:
+ * Invokes runCalc() with { json: true } against a private temp copy of
+ * valid-trades.csv (isolated so calc's auto-classify sidecar write doesn't
+ * land in the committed test/fixtures/ directory):
  *   BUY  10 shares Apple @ 150 EUR, fees=2.00 EUR (2024-01-14)
  *   SELL 10 shares Apple @ 180 EUR, fees=2.00 EUR (2024-03-15)
  *
@@ -22,8 +26,10 @@ import { it as itStrings } from "../src/i18n/it.js";
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fixturePath = path.join(__dirname, "fixtures/valid-trades.csv");
+const sourceFixture = path.join(__dirname, "fixtures/valid-trades.csv");
 
+let tmpDir: string;
+let fixturePath: string;
 let exitCode: number;
 let stdoutOutput: string;
 let stderrOutput: string;
@@ -32,6 +38,10 @@ let report: any;
 
 describe("TC-029: calc --json produces machine-readable JSON", () => {
   beforeAll(async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tc029-"));
+    fixturePath = path.join(tmpDir, "valid-trades.csv");
+    fs.copyFileSync(sourceFixture, fixturePath);
+
     stdoutOutput = "";
     stderrOutput = "";
 
@@ -60,12 +70,21 @@ describe("TC-029: calc --json produces machine-readable JSON", () => {
     report = JSON.parse(stdoutOutput);
   });
 
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it("exits with code 0", () => {
     expect(exitCode).toBe(0);
   });
 
-  it("stderr contains only the no-sidecar soft warning (v0.7.0)", () => {
-    expect(stderrOutput).toBe(itStrings.warnNoDichiarazioneSidecar + "\n");
+  it("stderr contains the auto-classify-offline notice (no TTY, no sidecar)", () => {
+    expect(stderrOutput).toContain(itStrings.autoClassifyOfflineNotice);
+  });
+
+  it("--json mode keeps classify's status lines off stdout (stderr instead)", () => {
+    expect(stderrOutput).toContain(itStrings.classifyOfflineWarning);
+    expect(stdoutOutput).not.toContain(itStrings.classifyOfflineWarning);
   });
 
   it("stdout is valid JSON (does not throw)", () => {

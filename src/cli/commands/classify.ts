@@ -1,8 +1,7 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { DEGIROParser } from "../../parser/index.js";
-import { Classifier } from "../../classifier/index.js";
 import { ParseError } from "../../errors.js";
+import { classifyToSidecar } from "./classify-core.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 
 export async function runClassify(
@@ -54,49 +53,12 @@ export async function runClassify(
   const base = csvPath.replace(/\.csv$/i, "");
   const sidecarPath = base + ".classify.json";
 
-  if (offline) {
-    // Offline mode: skip OpenFIGI; Classifier stubs unresolved ISINs as
-    // unconfirmed and writes the sidecar itself (same logic the MCP path uses).
-    stdout.write(s.classifyOfflineWarning + "\n");
-
-    const classifier = new Classifier({ interactive: false });
-    await classifier.classify(transactions, sidecarPath, { offline: true });
-    stdout.write(s.classifyWritten(path.resolve(sidecarPath)) + "\n");
-    return 0;
-  }
-
-  // Online interactive mode
-  const classifier = new Classifier({ interactive: true });
-
-  if (fs.existsSync(sidecarPath)) {
-    const existingMap = await classifier.load(sidecarPath);
-    const confirmedCount = Object.values(existingMap).filter(
-      (e) => e.confirmedByUser,
-    ).length;
-    stdout.write(s.classifyMergePrompt(confirmedCount));
-
-    const answer = await readLine(process.stdin);
-    if (answer.trim().toLowerCase() === "n") {
-      return 0;
-    }
-  }
-
-  await classifier.classify(transactions, sidecarPath);
-  stdout.write(s.classifyWritten(path.resolve(sidecarPath)) + "\n");
+  await classifyToSidecar(
+    transactions,
+    sidecarPath,
+    { offline, interactive: !offline },
+    s,
+    stdout,
+  );
   return 0;
-}
-
-function readLine(stream: NodeJS.ReadableStream): Promise<string> {
-  return new Promise((resolve) => {
-    let buf = "";
-    const onData = (chunk: Buffer | string) => {
-      buf += chunk.toString();
-      const nl = buf.indexOf("\n");
-      if (nl !== -1) {
-        stream.removeListener("data", onData);
-        resolve(buf.slice(0, nl));
-      }
-    };
-    stream.on("data", onData);
-  });
 }
