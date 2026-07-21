@@ -48,6 +48,13 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 - Output disponibile in **italiano** (default) o **inglese** (`--lang en`)
 - Disponibile come pacchetto NPM con supporto CLI
 
+**Novità in v0.9.0:**
+
+- **`calc` classifica automaticamente**: non è più necessario eseguire `classify` a parte —
+  se manca il sidecar `*.classify.json`, `calc` lo genera da sé (interattivo se è collegato un
+  terminale, altrimenti offline con avviso) prima di calcolare. `classify` resta disponibile per
+  l'uso esplicito/interattivo, e `calc` accetta ora anche il flag `--offline`.
+
 **Novità in v0.8.0:**
 
 - **Modalità stateless per `Classifier`**: `classify()` può ora funzionare senza alcun accesso al
@@ -342,6 +349,13 @@ It loads data following the CSV format used by DEGIRO.
 - Test suite based on **Agenzia Entrate FAQ**
 - Output in **Italian** (default) or **English** (`--lang en`)
 - minus-tracker is an NPM package with CLI support
+
+**New in v0.9.0:**
+
+- **`calc` auto-classifies**: no more running `classify` separately first — if the
+  `*.classify.json` sidecar is missing, `calc` now generates it itself (interactively if a
+  terminal is attached, otherwise offline with a warning) before computing gains. `classify`
+  remains available for explicit/interactive use, and `calc` now also accepts `--offline`.
 
 **New in v0.8.0:**
 
