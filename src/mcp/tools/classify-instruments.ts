@@ -101,7 +101,7 @@ export async function handleClassifyInstruments(
         }
       : undefined;
 
-  const classifier = new Classifier({ interactive: false });
+  const classifier = new Classifier();
 
   try {
     const classification = await classifier.classify(

@@ -53,12 +53,6 @@ export async function runClassify(
   const base = csvPath.replace(/\.csv$/i, "");
   const sidecarPath = base + ".classify.json";
 
-  await classifyToSidecar(
-    transactions,
-    sidecarPath,
-    { offline, interactive: !offline },
-    s,
-    stdout,
-  );
+  await classifyToSidecar(transactions, sidecarPath, { offline }, s, stdout);
   return 0;
 }

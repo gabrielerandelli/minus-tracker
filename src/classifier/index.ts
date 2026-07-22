@@ -356,12 +356,6 @@ type OpenFIGIItem = { securityType?: string; securityType2?: string };
 type OpenFIGIResult = { data?: OpenFIGIItem[]; error?: string };
 
 export class Classifier {
-  private readonly interactive: boolean;
-
-  constructor(options?: { interactive?: boolean }) {
-    this.interactive = options?.interactive ?? true;
-  }
-
   async load(sidecarPath: string): Promise<ClassificationMap> {
     if (!fs.existsSync(sidecarPath)) {
       throw new ClassificationError("SIDECAR_NOT_FOUND");

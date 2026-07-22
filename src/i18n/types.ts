@@ -65,16 +65,6 @@ export interface LocaleStrings {
   configCurrentLang: (lang: SupportedLocale) => string;
 
   // classify command (Part 11)
-  classifyStarting: (count: number) => string;
-  classifyDetected: (
-    isin: string,
-    product: string,
-    bucket: string,
-    rate: string,
-  ) => string;
-  classifyConfirm: string;
-  classifyOverridePrompt: string;
-  classifyDone: (confirmed: number, total: number) => string;
   classifyWritten: (path: string) => string;
   classifyMergePrompt: (existing: number) => string;
   classifyOfflineWarning: string;

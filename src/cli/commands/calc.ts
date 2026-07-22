@@ -121,7 +121,7 @@ export async function runCalc(
   let classification: ClassificationMap | undefined;
   if (fs.existsSync(sidecarPath)) {
     try {
-      const classifier = new Classifier({ interactive: false });
+      const classifier = new Classifier();
       classification = await classifier.load(sidecarPath);
     } catch {
       stderr.write(s.errorCannotLoadSidecar(sidecarPath) + "\n");
@@ -131,7 +131,6 @@ export async function runCalc(
     const offlineFlag = Boolean(flags["offline"]);
     const isTty = process.stdin.isTTY === true;
     const offline = offlineFlag || !isTty;
-    const interactive = !offline && isTty;
 
     if (offline && !offlineFlag) {
       stderr.write(s.autoClassifyOfflineNotice + "\n");
@@ -142,7 +141,7 @@ export async function runCalc(
     classification = await classifyToSidecar(
       transactions,
       sidecarPath,
-      { offline, interactive },
+      { offline },
       s,
       flags["json"] ? stderr : stdout,
     );

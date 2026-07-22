@@ -22,20 +22,20 @@ export function readLine(stream: NodeJS.ReadableStream): Promise<string> {
 /**
  * Runs classification and writes the sidecar, shared by `classify` (explicit
  * invocation) and `calc` (automatic invocation). Offline mode skips OpenFIGI;
- * interactive mode prompts before overwriting an existing sidecar's confirmed
+ * otherwise prompts before overwriting an existing sidecar's confirmed
  * entries.
  */
 export async function classifyToSidecar(
   transactions: Transaction[],
   sidecarPath: string,
-  opts: { offline: boolean; interactive: boolean },
+  opts: { offline: boolean },
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stdin: NodeJS.ReadableStream = process.stdin,
 ): Promise<ClassificationMap> {
   if (opts.offline) {
     stdout.write(s.classifyOfflineWarning + "\n");
-    const classifier = new Classifier({ interactive: false });
+    const classifier = new Classifier();
     const classification = await classifier.classify(
       transactions,
       sidecarPath,
@@ -47,7 +47,7 @@ export async function classifyToSidecar(
     return classification;
   }
 
-  const classifier = new Classifier({ interactive: opts.interactive });
+  const classifier = new Classifier();
 
   if (fs.existsSync(sidecarPath)) {
     const existingMap = await classifier.load(sidecarPath);

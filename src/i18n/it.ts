@@ -63,13 +63,6 @@ export const it: LocaleStrings = {
   configLangSet: (lang) => `Lingua impostata su: ${lang}`,
   configCurrentLang: (lang) => `Lingua corrente: ${lang}`,
 
-  classifyStarting: (n) => `Classificazione ISIN in corso... (${n} strumenti)`,
-  classifyDetected: (isin, product, bucket, rate) =>
-    `Rilevato: ${product} (${isin}) → ${bucket} | ${rate}`,
-  classifyConfirm: "[Y/n/?]: ",
-  classifyOverridePrompt: "Tipo di strumento:",
-  classifyDone: (confirmed, total) =>
-    `Classificazione completata (${confirmed}/${total} confermati).`,
   classifyWritten: (path) => `Scritto: ${path}`,
   classifyMergePrompt: (existing) =>
     `File già esistente (${existing} ISIN confermati). Aggiungere i nuovi ISIN? [Y/n]: `,
