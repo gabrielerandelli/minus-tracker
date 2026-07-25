@@ -8,6 +8,9 @@ export interface LocaleStrings {
   // Number formatting
   numberLocale: "it-IT" | "en-US";
 
+  // CLI banner (bare invocation / --help / --version)
+  bannerTagline: string;
+
   // Hard error messages
   errorInvalidCsv: string;
   errorMissingColumn: (columnName: string) => string;

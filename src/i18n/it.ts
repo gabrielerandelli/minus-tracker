@@ -3,6 +3,8 @@ import type { LocaleStrings } from "./types.js";
 export const it: LocaleStrings = {
   numberLocale: "it-IT",
 
+  bannerTagline: "Calcolo Plusvalenze & Minusvalenze",
+
   errorInvalidCsv: "CSV non valido: impossibile analizzare il file",
   errorMissingColumn: (col) => `Colonna obbligatoria mancante: ${col}`,
   errorNoOpenLots: (isin, date) =>
