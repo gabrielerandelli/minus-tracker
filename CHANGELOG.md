@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- CLI: branded ASCII banner (echoing the `minus-tracker` logo's minus→arrow mark, navy→green
+  gradient) shown on bare invocation, `--help`, and the new `--version` flag. Uses a truecolor
+  gradient when attached to a TTY (respects `NO_COLOR`), falls back to a plain borderless layout
+  in narrow terminals or when output is piped/redirected.
+
 ## [0.9.0] - 2026-07-21
 
 ### Changed
