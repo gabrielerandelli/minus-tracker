@@ -48,6 +48,12 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 - Output disponibile in **italiano** (default) o **inglese** (`--lang en`)
 - Disponibile come pacchetto NPM con supporto CLI
 
+**Novità in v0.10.0:**
+
+- **Banner CLI**: `minus-tracker` (senza comando), `--help` e il nuovo flag `--version` mostrano
+  ora un banner ASCII con il logo del progetto (gradiente colore su terminale, testo semplice
+  altrimenti).
+
 **Novità in v0.9.0:**
 
 - **`calc` classifica automaticamente**: non è più necessario eseguire `classify` a parte —
@@ -351,6 +357,11 @@ It loads data following the CSV format used by DEGIRO.
 - Test suite based on **Agenzia Entrate FAQ**
 - Output in **Italian** (default) or **English** (`--lang en`)
 - minus-tracker is an NPM package with CLI support
+
+**New in v0.10.0:**
+
+- **CLI banner**: `minus-tracker` (no command), `--help`, and the new `--version` flag now show
+  an ASCII banner with the project logo (color gradient on a terminal, plain text otherwise).
 
 **New in v0.9.0:**
 
