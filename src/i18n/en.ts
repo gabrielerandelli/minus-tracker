@@ -3,6 +3,8 @@ import type { LocaleStrings } from "./types.js";
 export const en: LocaleStrings = {
   numberLocale: "en-US",
 
+  bannerTagline: "Italian Capital Gains & Losses Tracker",
+
   errorInvalidCsv: "Invalid CSV: unable to parse",
   errorMissingColumn: (col) => `Missing required column: ${col}`,
   errorNoOpenLots: (isin, date) => `No open lots for ISIN ${isin} on ${date}`,
