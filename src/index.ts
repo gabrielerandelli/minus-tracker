@@ -1,4 +1,5 @@
 export { DEGIROParser } from "./parser/index.js";
+export { IBKRParser } from "./parser/ibkr.js";
 export { Calculator } from "./calculator/index.js";
 export { ParseError, CalculationError } from "./errors.js";
 export type {
@@ -6,6 +7,7 @@ export type {
   MatchedLot,
   GainsReport,
   LotMethod,
+  Parser,
 } from "./types.js";
 
 // v0.6.0 value exports

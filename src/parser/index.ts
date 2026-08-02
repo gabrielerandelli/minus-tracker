@@ -1,4 +1,4 @@
-import { Transaction, IncomeRow } from "../types.js";
+import { Transaction, IncomeRow, Parser } from "../types.js";
 import { ParseError } from "../errors.js";
 import {
   lookupRate,
@@ -6,6 +6,12 @@ import {
   RatesSnapshot,
 } from "../rates/index.js";
 import { WarningEntry, warningToEnglish } from "./warnings.js";
+import { parseCSV } from "./csv.js";
+import { stripBom } from "./bom.js";
+import {
+  allocateWithholding,
+  WithholdingJoinCandidate,
+} from "./withholding-join.js";
 
 const REQUIRED_COLUMNS = [
   "ISIN",
@@ -54,58 +60,9 @@ interface IncomeCandidate {
 interface WithholdingCandidate {
   isin: string;
   date: string;
+  currency: string;
   amount: number; // absolute value, in source currency
   row: number;
-}
-
-/**
- * Parse a single CSV line, respecting RFC-4180-style double-quote escaping.
- * Does not support embedded newlines in fields (not needed for DEGIRO exports).
- */
-function parseCSVRow(line: string): string[] {
-  const fields: string[] = [];
-  let i = 0;
-
-  while (i <= line.length) {
-    // End of line — stop (handles trailing comma by not emitting extra empty field)
-    if (i === line.length) break;
-
-    if (line[i] === '"') {
-      // Quoted field
-      let field = "";
-      i++; // skip opening quote
-      while (i < line.length) {
-        if (line[i] === '"' && i + 1 < line.length && line[i + 1] === '"') {
-          // Escaped double-quote
-          field += '"';
-          i += 2;
-        } else if (line[i] === '"') {
-          i++; // skip closing quote
-          break;
-        } else {
-          field += line[i++];
-        }
-      }
-      fields.push(field);
-      if (i < line.length && line[i] === ",") i++; // skip delimiter
-    } else {
-      // Unquoted field
-      const start = i;
-      while (i < line.length && line[i] !== ",") i++;
-      fields.push(line.slice(start, i));
-      if (i < line.length) i++; // skip delimiter
-    }
-  }
-
-  return fields;
-}
-
-/**
- * Parse a full CSV string (CRLF or LF line endings) into a 2-D array of strings.
- */
-function parseCSV(input: string): string[][] {
-  const normalized = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  return normalized.split("\n").map(parseCSVRow);
 }
 
 /**
@@ -122,7 +79,7 @@ function parseDate(ddmmyyyy: string): string {
  * Export from Activity → Transactions in the DEGIRO UI (not the Account Statement).
  * Supported currencies: EUR, USD, GBP, CHF. ECB historical rates are used for conversion.
  */
-export class DEGIROParser {
+export class DEGIROParser implements Parser {
   private _warningEntries: WarningEntry[] = [];
   private _snapshot?: RatesSnapshot;
   private _incomeRows: IncomeRow[] = [];
@@ -148,7 +105,11 @@ export class DEGIROParser {
 
     // Binary content (null bytes, or a header row dense with control
     // characters) is not valid CSV
-    if (typeof csv !== "string" || csv.includes("\x00")) {
+    if (typeof csv !== "string") {
+      throw new ParseError("INVALID_CSV");
+    }
+    csv = stripBom(csv);
+    if (csv.includes("\x00")) {
       throw new ParseError("INVALID_CSV");
     }
     const firstLine = csv.split("\n", 1)[0] ?? "";
@@ -229,6 +190,7 @@ export class DEGIROParser {
             withholdingCandidates.push({
               isin,
               date: isoDate,
+              currency: get("Local value currency"),
               amount: Math.abs(localValue),
               row: rowIndex,
             });
@@ -338,35 +300,54 @@ export class DEGIROParser {
       });
     }
 
-    // --- Pair withholding candidates with income candidates by (ISIN, date) ---
+    // --- Pair withholding candidates with income candidates by (ISIN, date, currency) ---
     // Order-independent: candidates were collected regardless of CSV row order.
     const withholdingByKey = new Map<
       string,
-      { isin: string; date: string; amount: number }
+      { isin: string; date: string; currency: string; amount: number }
     >();
     for (const w of withholdingCandidates) {
-      const key = `${w.isin}|${w.date}`;
+      const key = `${w.isin}|${w.date}|${w.currency}`;
       const existing = withholdingByKey.get(key);
       withholdingByKey.set(key, {
         isin: w.isin,
         date: w.date,
+        currency: w.currency,
         amount: (existing?.amount ?? 0) + w.amount,
       });
     }
-    const consumedKeys = new Set<string>();
 
-    const incomeRows: IncomeRow[] = [];
+    // FX-convert each withholding key's total to EUR up front so
+    // allocateWithholding() can split purely in EUR, weighted by each income
+    // candidate's EUR-converted grossAmount.
+    const withholdingTotalsEUR = new Map<string, number>();
+    for (const [key, w] of withholdingByKey) {
+      if (w.currency === "EUR") {
+        withholdingTotalsEUR.set(key, w.amount);
+        continue;
+      }
+      const rate = lookupRate(w.currency, w.date, snapshot);
+      if (rate !== null) {
+        withholdingTotalsEUR.set(key, w.amount / rate);
+      }
+    }
+
+    interface ConvertedIncome {
+      candidate: IncomeCandidate;
+      key: string;
+      grossAmount: number;
+      fxRate: number | undefined;
+    }
+    const convertedIncome: ConvertedIncome[] = [];
+
     for (const c of incomeCandidates) {
-      const key = `${c.isin}|${c.date}`;
-      const matchedWithholding = withholdingByKey.get(key);
+      const key = `${c.isin}|${c.date}|${c.currency}`;
 
       let grossAmount: number;
-      let withholdingTax: number;
       let fxRate: number | undefined;
 
       if (c.currency === "EUR") {
         grossAmount = Math.abs(c.localValue);
-        withholdingTax = matchedWithholding?.amount ?? 0;
         fxRate = undefined;
       } else {
         const rate = lookupRate(c.currency, c.date, snapshot);
@@ -388,13 +369,26 @@ export class DEGIROParser {
           continue;
         }
         grossAmount = Math.abs(c.localValue) / rate;
-        withholdingTax = matchedWithholding
-          ? matchedWithholding.amount / rate
-          : 0;
         fxRate = rate;
       }
 
-      if (matchedWithholding) consumedKeys.add(key);
+      convertedIncome.push({ candidate: c, key, grossAmount, fxRate });
+    }
+
+    const joinCandidates: WithholdingJoinCandidate[] = convertedIncome.map(
+      (ci) => ({ key: ci.key, grossAmount: ci.grossAmount }),
+    );
+    const allocatedWithholding = allocateWithholding(
+      joinCandidates,
+      withholdingTotalsEUR,
+    );
+
+    const consumedKeys = new Set<string>();
+    const incomeRows: IncomeRow[] = [];
+    for (let i = 0; i < convertedIncome.length; i++) {
+      const { candidate: c, key, grossAmount, fxRate } = convertedIncome[i];
+
+      if (withholdingByKey.has(key)) consumedKeys.add(key);
 
       incomeRows.push({
         isin: c.isin,
@@ -402,13 +396,13 @@ export class DEGIROParser {
         date: c.date,
         incomeType: c.incomeType,
         grossAmount,
-        withholdingTax,
+        withholdingTax: allocatedWithholding[i],
         currency: c.currency,
         fxRate,
       });
     }
 
-    // Orphan withholding candidates — no matching income row for (ISIN, date)
+    // Orphan withholding candidates — no matching income row for (ISIN, date, currency)
     for (const [key, w] of withholdingByKey) {
       if (!consumedKeys.has(key)) {
         this._warningEntries.push({

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { DEGIROParser, Calculator, Classifier } from "../src/index.js";
+import {
+  DEGIROParser,
+  IBKRParser,
+  Calculator,
+  Classifier,
+  ParseError,
+} from "../src/index.js";
 import type {
   IncomeRow,
   CarryForwardEntry,
@@ -10,6 +16,7 @@ import type {
   DichiarazioneReport,
   CalculatorOptions,
   GainsReport,
+  Parser,
 } from "../src/index.js";
 
 /**
@@ -172,5 +179,147 @@ describe("TC-097: v0.7.0 named exports present and correctly typed", () => {
 
     expect(result).toBeInstanceOf(Promise);
     await expect(result).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * TC-164/165/166: v0.11.0 public API — IBKRParser + Parser interface exports,
+ * ParseError structured-field mutual exclusivity, and section-prefixed
+ * warnings with independent per-section row counters.
+ *
+ * As with TC-097 above, most of the value here is compile-time: if this file
+ * type-checks, `IBKRParser`/`DEGIROParser` structurally satisfy `Parser` as
+ * exported from "../src/index.js". The `expect()` calls are runtime sanity
+ * checks layered on top.
+ */
+describe("TC-164...166: IBKRParser + Parser export, ParseError fields, section-prefixed warnings", () => {
+  it("TC-164: IBKRParser and DEGIROParser both resolve as constructable functions and satisfy Parser", () => {
+    expect(typeof IBKRParser).toBe("function");
+    expect(typeof DEGIROParser).toBe("function");
+
+    // Compile-time proof: this only type-checks if both classes structurally
+    // satisfy the `Parser` interface exported from "../src/index.js".
+    const p1: Parser = new IBKRParser();
+    const p2: Parser = new DEGIROParser();
+
+    expect(p1.warnings).toEqual([]);
+    expect(p1.incomeRows).toEqual([]);
+    expect(p2.warnings).toEqual([]);
+    expect(p2.incomeRows).toEqual([]);
+  });
+
+  describe("TC-165: ParseError.sectionName/.columnName are mutually exclusive and code-specific", () => {
+    const DEGIRO_FULL_HEADER =
+      "Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID";
+    const DEGIRO_DATA_ROW =
+      "14-01-2024,09:05,Apple Inc,US0378331005,XNAS,XNAS,10,150.00,-1500.00,EUR,-1500.00,EUR,1,-2.00,EUR,-1502.00,EUR,abc-123";
+
+    const binaryGarbage = "Field1\x00\x01Field2\nbinary garbage...";
+
+    it("step 1: MISSING_SECTION (IBKR only) — sectionName set, columnName undefined", () => {
+      // No Trades section at all — only Dividends.
+      const csv = [
+        "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+        "Dividends,Data,USD,US0378331005,AAPL,20240315,APPLE INC DIVIDEND,2.40",
+      ].join("\n");
+
+      const parser = new IBKRParser();
+      try {
+        parser.parse(csv);
+        expect.fail("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ParseError);
+        const e = err as ParseError;
+        expect(e.code).toBe("MISSING_SECTION");
+        expect(e.sectionName).toBe("Trades");
+        expect(e.columnName).toBeUndefined();
+      }
+    });
+
+    it("step 2: MISSING_COLUMN from IBKRParser — columnName set, sectionName undefined", () => {
+      // Trades header omits IBCommissionCurrency.
+      const csv = [
+        "Trades,Header,DataDiscriminator,AssetCategory,CurrencyPrimary,Symbol,Description,ISIN,TradeDate,Buy/Sell,Quantity,TradePrice,IBCommission",
+        "Trades,Data,Order,STK,USD,AAPL,APPLE INC,US0378331005,20240102,BUY,10,185.00,-2.00",
+      ].join("\n");
+
+      const parser = new IBKRParser();
+      try {
+        parser.parse(csv);
+        expect.fail("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ParseError);
+        const e = err as ParseError;
+        expect(e.code).toBe("MISSING_COLUMN");
+        expect(e.columnName).toBe("IBCommissionCurrency");
+        expect(e.sectionName).toBeUndefined();
+      }
+    });
+
+    it("step 3: MISSING_COLUMN from DEGIROParser — columnName set, sectionName undefined", () => {
+      // Header omits ISIN.
+      const cols = DEGIRO_FULL_HEADER.split(",").filter((c) => c !== "ISIN");
+      const csv = [cols.join(","), DEGIRO_DATA_ROW].join("\n");
+
+      const parser = new DEGIROParser();
+      try {
+        parser.parse(csv);
+        expect.fail("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ParseError);
+        const e = err as ParseError;
+        expect(e.code).toBe("MISSING_COLUMN");
+        expect(e.columnName).toBe("ISIN");
+        expect(e.sectionName).toBeUndefined();
+      }
+    });
+
+    it("step 4a: INVALID_CSV from IBKRParser — both columnName and sectionName undefined", () => {
+      const parser = new IBKRParser();
+      try {
+        parser.parse(binaryGarbage);
+        expect.fail("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ParseError);
+        const e = err as ParseError;
+        expect(e.code).toBe("INVALID_CSV");
+        expect(e.columnName).toBeUndefined();
+        expect(e.sectionName).toBeUndefined();
+      }
+    });
+
+    it("step 4b: INVALID_CSV from DEGIROParser — both columnName and sectionName undefined", () => {
+      const parser = new DEGIROParser();
+      try {
+        parser.parse(binaryGarbage);
+        expect.fail("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ParseError);
+        const e = err as ParseError;
+        expect(e.code).toBe("INVALID_CSV");
+        expect(e.columnName).toBeUndefined();
+        expect(e.sectionName).toBeUndefined();
+      }
+    });
+  });
+
+  it("TC-166: warnings are section-prefixed with independent per-section row counters", () => {
+    const csv = [
+      "Trades,Header,DataDiscriminator,AssetCategory,CurrencyPrimary,Symbol,Description,ISIN,TradeDate,Buy/Sell,Quantity,TradePrice,IBCommission,IBCommissionCurrency",
+      "Trades,Data,Order,STK,EUR,VWCE,VANGUARD FTSE ALL-WORLD,IE00BK5BQT80,20240102,BUY,5,95.00,-1.00,EUR",
+      "Trades,Data,Order,STK,EUR,AAPL,APPLE INC,IE00BK5BQT80,20240103,BUY,5,95.00,-1.00,EUR",
+      "Trades,Data,Order,STK,EUR,AAPL,APPLE INC,,20240104,BUY,5,95.00,-1.00,EUR",
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,EUR,IE00BK5BQT80,VWCE,20240315,VWCE DIVIDEND,10.00",
+      "Dividends,Data,EUR,,GENERIC,20240316,GENERIC DIVIDEND,5.00",
+    ].join("\n");
+
+    const parser = new IBKRParser();
+    parser.parse(csv);
+
+    expect(parser.warnings).toContain("Trades row 3: missing ISIN — skipped");
+    expect(parser.warnings).toContain(
+      "Dividends row 2: missing ISIN — skipped",
+    );
   });
 });

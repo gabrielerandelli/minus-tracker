@@ -14,18 +14,30 @@ export interface LocaleStrings {
   // Hard error messages
   errorInvalidCsv: string;
   errorMissingColumn: (columnName: string) => string;
+  errorMissingSection: (sectionName: string) => string;
   errorNoOpenLots: (isin: string, date: string) => string;
   errorCannotReadFile: (path: string) => string;
   errorCannotLoadSidecar: (path: string) => string;
   errorCannotWriteExport: (path: string) => string;
+  errorBrokerDetectionFailed: string;
 
   // Soft warnings (per-row)
-  warnMissingIsin: (row: number) => string;
-  warnUnsupportedCurrency: (row: number, currency: string) => string;
-  warnNoEcbRate: (row: number, currency: string, date: string) => string;
+  warnMissingIsin: (row: number, section?: string) => string;
+  warnUnsupportedCurrency: (
+    row: number,
+    currency: string,
+    section?: string,
+  ) => string;
+  warnNoEcbRate: (
+    row: number,
+    currency: string,
+    date: string,
+    section?: string,
+  ) => string;
   warnQuantityZero: (row: number) => string;
   warnMissingIsinIncome: (row: number) => string;
   warnOrphanWithholding: (isin: string, date: string) => string;
+  warnUnmatchedWithholding: (row: number, section?: string) => string;
 
   // calc command: multi-year warning
   warnMultipleYears: string;

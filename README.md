@@ -134,18 +134,18 @@ npx @gabrielerandelli/minus-tracker calc trades.csv
 
 ### Utilizzo CLI
 
-| Comando                | Flag principali                                                                                                                   | Note                                                                                                                                                                                                                                                                                                                                                 |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward`, `--offline` | Non aggiorna mai i tassi BCE da solo — esegui `rates --update` periodicamente. Se non trova un sidecar `*.classify.json`, classifica automaticamente gli strumenti (interattivo se è collegato un terminale, altrimenti offline con avviso) e lo scrive su disco                                                                                     |
-| `classify <file.csv>`  | `--offline`                                                                                                                       | Invocazione esplicita/opzionale: classifica gli strumenti (Bucket A/B) e crea/aggiorna il sidecar `*.classify.json`. `calc` la richiama automaticamente quando serve; usa questo comando per farlo in anticipo o per il flusso di conferma interattivo. Richiede un terminale interattivo (TTY), oppure il flag `--offline` in contesti scriptati/CI |
-| `validate <file.csv>`  | `--lang it\|en`                                                                                                                   | Exit 0 con avvisi; exit 1 in caso di errori bloccanti                                                                                                                                                                                                                                                                                                |
-| `rates --check`        | —                                                                                                                                 | Mostra la copertura della snapshot BCE in locale                                                                                                                                                                                                                                                                                                     |
-| `rates --update`       | —                                                                                                                                 | Scarica i tassi aggiornati dall'API BCE                                                                                                                                                                                                                                                                                                              |
-| `config --lang it\|en` | —                                                                                                                                 | Salva la lingua preferita                                                                                                                                                                                                                                                                                                                            |
-| `config --show`        | —                                                                                                                                 | Mostra la lingua correntemente impostata                                                                                                                                                                                                                                                                                                             |
-| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                                 | Documentato in fondo                                                                                                                                                                                                                                                                                                                                 |
-| `--help`               | —                                                                                                                                 | Mostra il banner e l'elenco comandi                                                                                                                                                                                                                                                                                                                  |
-| `--version`            | —                                                                                                                                 | Mostra la versione installata                                                                                                                                                                                                                                                                                                                        |
+| Comando                | Flag principali                                                                                                                                            | Note                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward`, `--offline`, `--broker degiro\|ibkr` | Non aggiorna mai i tassi BCE da solo — esegui `rates --update` periodicamente. Se non trova un sidecar `*.classify.json`, classifica automaticamente gli strumenti (interattivo se è collegato un terminale, altrimenti offline con avviso) e lo scrive su disco. Il broker (DEGIRO/IBKR) viene rilevato automaticamente dal formato del CSV; usa `--broker` per forzarlo esplicitamente |
+| `classify <file.csv>`  | `--offline`, `--broker degiro\|ibkr`                                                                                                                       | Invocazione esplicita/opzionale: classifica gli strumenti (Bucket A/B) e crea/aggiorna il sidecar `*.classify.json`. `calc` la richiama automaticamente quando serve; usa questo comando per farlo in anticipo o per il flusso di conferma interattivo. Richiede un terminale interattivo (TTY), oppure il flag `--offline` in contesti scriptati/CI                                     |
+| `validate <file.csv>`  | `--lang it\|en`, `--broker degiro\|ibkr`                                                                                                                   | Exit 0 con avvisi; exit 1 in caso di errori bloccanti                                                                                                                                                                                                                                                                                                                                    |
+| `rates --check`        | —                                                                                                                                                          | Mostra la copertura della snapshot BCE in locale                                                                                                                                                                                                                                                                                                                                         |
+| `rates --update`       | —                                                                                                                                                          | Scarica i tassi aggiornati dall'API BCE                                                                                                                                                                                                                                                                                                                                                  |
+| `config --lang it\|en` | —                                                                                                                                                          | Salva la lingua preferita                                                                                                                                                                                                                                                                                                                                                                |
+| `config --show`        | —                                                                                                                                                          | Mostra la lingua correntemente impostata                                                                                                                                                                                                                                                                                                                                                 |
+| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                                                          | Documentato in fondo                                                                                                                                                                                                                                                                                                                                                                     |
+| `--help`               | —                                                                                                                                                          | Mostra il banner e l'elenco comandi                                                                                                                                                                                                                                                                                                                                                      |
+| `--version`            | —                                                                                                                                                          | Mostra la versione installata                                                                                                                                                                                                                                                                                                                                                            |
 
 Precedenza lingua: `--lang` > lingua salvata > italiano (default).
 
@@ -179,19 +179,30 @@ npm install @gabrielerandelli/minus-tracker
 ```ts
 import {
   DEGIROParser,
+  IBKRParser,
   Calculator,
   Classifier,
   ParseError,
   CalculationError,
 } from "@gabrielerandelli/minus-tracker";
-import type { GainsReport, LotMethod } from "@gabrielerandelli/minus-tracker";
+import type {
+  GainsReport,
+  LotMethod,
+  Parser,
+} from "@gabrielerandelli/minus-tracker";
 
-// 1. Parsing
+// 1. Parsing — DEGIRO (export Attività → Transazioni)
 const parser = new DEGIROParser();
 const transactions = parser.parse(csvString); // lancia ParseError in caso di CSV non valido
 if (parser.warnings.length > 0) {
   console.warn("Righe saltate:", parser.warnings);
 }
+
+// 1b. Parsing — Interactive Brokers (export Activity Flex Query CSV)
+// Entrambi i parser implementano l'interfaccia condivisa `Parser`, quindi sono
+// intercambiabili ovunque venga usato `parser` in questo esempio.
+const ibkrParser: Parser = new IBKRParser();
+const ibkrTransactions = ibkrParser.parse(ibkrCsvString); // lancia ParseError anche con code MISSING_SECTION
 
 // 2. Classificazione (Bucket A/B) — facoltativa, abilita Quadro RT/RM nel report
 const classification = await new Classifier().classify(
@@ -219,6 +230,8 @@ try {
   if (err instanceof ParseError) {
     if (err.code === "MISSING_COLUMN") {
       console.error("Colonna mancante:", err.columnName);
+    } else if (err.code === "MISSING_SECTION") {
+      console.error("Sezione mancante (solo IBKR):", err.sectionName);
     } else {
       console.error("CSV non valido");
     }
@@ -444,18 +457,18 @@ npx @gabrielerandelli/minus-tracker calc trades.csv
 
 ### CLI Usage
 
-| Command                | Key flags                                                                                                                         | Notes                                                                                                                                                                                                                                                                                                                                      |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward`, `--offline` | Never fetches ECB rates on its own — run `rates --update` periodically. If no `*.classify.json` sidecar is found, auto-classifies instruments (interactively if a terminal is attached, otherwise offline with a warning) and writes it to disk                                                                                            |
-| `classify <file.csv>`  | `--offline`                                                                                                                       | Explicit/optional invocation: classifies instruments (Bucket A/B) and creates/updates the `*.classify.json` sidecar. `calc` calls this automatically when needed; use this command to run it ahead of time or to get the interactive confirm flow. Requires an interactive terminal (TTY), or the `--offline` flag in scripted/CI contexts |
-| `validate <file.csv>`  | `--lang it\|en`                                                                                                                   | Exit 0 with warnings; exit 1 on hard errors                                                                                                                                                                                                                                                                                                |
-| `rates --check`        | —                                                                                                                                 | Shows bundled ECB snapshot coverage                                                                                                                                                                                                                                                                                                        |
-| `rates --update`       | —                                                                                                                                 | Fetches fresh rates from the ECB API                                                                                                                                                                                                                                                                                                       |
-| `config --lang it\|en` | —                                                                                                                                 | Saves language preference                                                                                                                                                                                                                                                                                                                  |
-| `config --show`        | —                                                                                                                                 | Shows current language setting                                                                                                                                                                                                                                                                                                             |
-| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                                 | Documented below                                                                                                                                                                                                                                                                                                                           |
-| `--help`               | —                                                                                                                                 | Shows the banner and command list                                                                                                                                                                                                                                                                                                          |
-| `--version`            | —                                                                                                                                 | Shows the installed version                                                                                                                                                                                                                                                                                                                |
+| Command                | Key flags                                                                                                                                                  | Notes                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `calc <file.csv>`      | `--method LIFO\|FIFO` (default: LIFO), `--lang it\|en`, `--json`, `--export-dichiarazione [path]`, `--carry-forward`, `--offline`, `--broker degiro\|ibkr` | Never fetches ECB rates on its own — run `rates --update` periodically. If no `*.classify.json` sidecar is found, auto-classifies instruments (interactively if a terminal is attached, otherwise offline with a warning) and writes it to disk. Broker (DEGIRO/IBKR) is auto-detected from the CSV shape; use `--broker` to force it explicitly |
+| `classify <file.csv>`  | `--offline`, `--broker degiro\|ibkr`                                                                                                                       | Explicit/optional invocation: classifies instruments (Bucket A/B) and creates/updates the `*.classify.json` sidecar. `calc` calls this automatically when needed; use this command to run it ahead of time or to get the interactive confirm flow. Requires an interactive terminal (TTY), or the `--offline` flag in scripted/CI contexts       |
+| `validate <file.csv>`  | `--lang it\|en`, `--broker degiro\|ibkr`                                                                                                                   | Exit 0 with warnings; exit 1 on hard errors                                                                                                                                                                                                                                                                                                      |
+| `rates --check`        | —                                                                                                                                                          | Shows bundled ECB snapshot coverage                                                                                                                                                                                                                                                                                                              |
+| `rates --update`       | —                                                                                                                                                          | Fetches fresh rates from the ECB API                                                                                                                                                                                                                                                                                                             |
+| `config --lang it\|en` | —                                                                                                                                                          | Saves language preference                                                                                                                                                                                                                                                                                                                        |
+| `config --show`        | —                                                                                                                                                          | Shows current language setting                                                                                                                                                                                                                                                                                                                   |
+| `stress-test`          | `--range N-M`, `--keep`, `--json`, `--output-dir`                                                                                                          | Documented below                                                                                                                                                                                                                                                                                                                                 |
+| `--help`               | —                                                                                                                                                          | Shows the banner and command list                                                                                                                                                                                                                                                                                                                |
+| `--version`            | —                                                                                                                                                          | Shows the installed version                                                                                                                                                                                                                                                                                                                      |
 
 Language precedence: `--lang` flag > saved config > Italian (default).
 
@@ -489,19 +502,30 @@ npm install @gabrielerandelli/minus-tracker
 ```ts
 import {
   DEGIROParser,
+  IBKRParser,
   Calculator,
   Classifier,
   ParseError,
   CalculationError,
 } from "@gabrielerandelli/minus-tracker";
-import type { GainsReport, LotMethod } from "@gabrielerandelli/minus-tracker";
+import type {
+  GainsReport,
+  LotMethod,
+  Parser,
+} from "@gabrielerandelli/minus-tracker";
 
-// 1. Parse
+// 1. Parse — DEGIRO (Activity → Transactions export)
 const parser = new DEGIROParser();
 const transactions = parser.parse(csvString); // throws ParseError on bad CSV
 if (parser.warnings.length > 0) {
   console.warn("Skipped rows:", parser.warnings);
 }
+
+// 1b. Parse — Interactive Brokers (Activity Flex Query CSV export)
+// Both parsers implement the shared `Parser` interface, so they're
+// interchangeable anywhere `parser` is used in this example.
+const ibkrParser: Parser = new IBKRParser();
+const ibkrTransactions = ibkrParser.parse(ibkrCsvString); // also throws ParseError with code MISSING_SECTION
 
 // 2. Classify (Bucket A/B) — optional, enables Quadro RT/RM in the report
 const classification = await new Classifier().classify(
@@ -529,6 +553,8 @@ try {
   if (err instanceof ParseError) {
     if (err.code === "MISSING_COLUMN") {
       console.error("Missing column:", err.columnName);
+    } else if (err.code === "MISSING_SECTION") {
+      console.error("Missing section (IBKR only):", err.sectionName);
     } else {
       console.error("Invalid CSV");
     }

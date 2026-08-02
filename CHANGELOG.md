@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `IBKRParser`: parses Interactive Brokers Activity Flex Query CSV exports (`Trades`,
+  `Dividends`, `Withholding Tax`, and `Interest` sections) into the same `Transaction[]`/
+  `IncomeRow[]` shape as `DEGIROParser`, with per-currency FX conversion, section-prefixed
+  warnings, and independent per-section row counters (e.g. `"Trades row 3: ..."` and
+  `"Dividends row 2: ..."` never share a counter).
+- `Parser` interface: the shared `parse(csv): Transaction[]` / `warnings: string[]` /
+  `incomeRows: IncomeRow[]` shape both `DEGIROParser` and `IBKRParser` implement, exported from
+  the library root for consumers who want to accept either parser interchangeably.
+- CLI: broker auto-detection on `calc`, `validate`, and `classify` — the CSV shape (DEGIRO vs
+  IBKR) is detected automatically, or forced explicitly with the new `--broker <degiro|ibkr>`
+  flag. A file matching neither signature exits with an explicit error instead of a confusing
+  downstream parse failure.
+- `ParseError` gains a `"MISSING_SECTION"` code (+ `sectionName`) for IBKR files missing their
+  required `Trades` section; `sectionName`/`columnName` remain mutually exclusive per error code.
+
+### Fixed
+
+- `DEGIROParser`: withholding-tax pairing keyed only by `(ISIN, date)` gave every income row
+  sharing that key the parsed CSV's **full** matched withholding total, over-counting withholding
+  tax whenever multiple income rows shared an ISIN/date (e.g. two dividend payments on the same
+  day in different currencies). The pairing key now also includes currency, and the matched total
+  is allocated proportionally across the income rows sharing a key (weighted by each row's gross
+  amount), instead of being applied in full to each one.
+
 ## [0.10.0] - 2026-07-26
 
 ### Added

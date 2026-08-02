@@ -107,6 +107,9 @@ export class Calculator {
       if (tx.fxRate !== undefined) {
         ratesUsed[`${tx.currency}:${tx.date}`] = tx.fxRate;
       }
+      if (tx.feesFxRate !== undefined && tx.feesCurrency !== undefined) {
+        ratesUsed[`${tx.feesCurrency}:${tx.date}`] = tx.feesFxRate;
+      }
 
       if (tx.type === "BUY") {
         const lot: Lot = {

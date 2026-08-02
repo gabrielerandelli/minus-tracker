@@ -7,23 +7,38 @@ export const it: LocaleStrings = {
 
   errorInvalidCsv: "CSV non valido: impossibile analizzare il file",
   errorMissingColumn: (col) => `Colonna obbligatoria mancante: ${col}`,
+  errorMissingSection: (sectionName) =>
+    `Sezione obbligatoria mancante: ${sectionName}`,
   errorNoOpenLots: (isin, date) =>
     `Nessun lotto aperto per ISIN ${isin} in data ${date}`,
   errorCannotReadFile: (path) => `Impossibile leggere il file: ${path}`,
   errorCannotLoadSidecar: (path) => `Impossibile caricare il sidecar: ${path}`,
   errorCannotWriteExport: (path) =>
     `Impossibile scrivere l'export della dichiarazione: ${path}`,
+  errorBrokerDetectionFailed:
+    "Impossibile rilevare il formato del broker. Usa --broker <degiro|ibkr> per specificarlo esplicitamente.",
 
-  warnMissingIsin: (row) => `Riga ${row}: ISIN mancante — riga ignorata`,
-  warnUnsupportedCurrency: (row, currency) =>
-    `Riga ${row}: valuta non supportata ${currency} — riga ignorata`,
-  warnNoEcbRate: (row, currency, date) =>
-    `Riga ${row}: nessun tasso BCE per ${currency} in data ${date} — riga ignorata`,
+  warnMissingIsin: (row, section) =>
+    section
+      ? `${section} riga ${row}: ISIN mancante — riga ignorata`
+      : `Riga ${row}: ISIN mancante — riga ignorata`,
+  warnUnsupportedCurrency: (row, currency, section) =>
+    section
+      ? `${section} riga ${row}: valuta non supportata ${currency} — riga ignorata`
+      : `Riga ${row}: valuta non supportata ${currency} — riga ignorata`,
+  warnNoEcbRate: (row, currency, date, section) =>
+    section
+      ? `${section} riga ${row}: nessun tasso BCE per ${currency} in data ${date} — riga ignorata`
+      : `Riga ${row}: nessun tasso BCE per ${currency} in data ${date} — riga ignorata`,
   warnQuantityZero: (row) => `Riga ${row}: quantità pari a 0 — riga ignorata`,
   warnMissingIsinIncome: (row) =>
     `Riga ${row}: ISIN mancante su riga di reddito — riga ignorata`,
   warnOrphanWithholding: (isin, date) =>
     `Riga di ritenuta su ${isin}/${date} senza riga di reddito corrispondente — riga ignorata`,
+  warnUnmatchedWithholding: (row, section) =>
+    section
+      ? `${section} riga ${row}: ritenuta senza riga di reddito corrispondente — riga ignorata`
+      : `Riga ${row}: ritenuta senza riga di reddito corrispondente — riga ignorata`,
 
   warnMultipleYears:
     "Il CSV contiene transazioni di più anni — filtra per un singolo anno per un calcolo accurato.",

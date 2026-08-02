@@ -2,9 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { DEGIROParser } from "../../parser/index.js";
+import { IBKRParser } from "../../parser/ibkr.js";
 import { Calculator } from "../../calculator/index.js";
 import { Classifier } from "../../classifier/index.js";
 import { ParseError } from "../../errors.js";
+import { detectBroker } from "../broker-detect.js";
 import { renderReport } from "../renderer.js";
 import { classifyToSidecar } from "./classify-core.js";
 import type { LocaleStrings } from "../../i18n/types.js";
@@ -12,6 +14,7 @@ import type {
   LotMethod,
   ClassificationMap,
   CarryForward,
+  Parser,
 } from "../../types.js";
 
 export async function runCalc(
@@ -100,7 +103,22 @@ export async function runCalc(
     ([year, amount]) => ({ year: parseInt(year, 10), amount }),
   );
 
-  const parser = new DEGIROParser();
+  const brokerFlag = flags["broker"] as string | undefined;
+  if (
+    brokerFlag !== undefined &&
+    brokerFlag !== "degiro" &&
+    brokerFlag !== "ibkr"
+  ) {
+    stderr.write("--broker must be degiro or ibkr\n");
+    return 2;
+  }
+  const broker = brokerFlag ?? detectBroker(csv);
+  if (broker === null) {
+    stderr.write(s.errorBrokerDetectionFailed + "\n");
+    return 2;
+  }
+  const parser: Parser =
+    broker === "degiro" ? new DEGIROParser() : new IBKRParser();
   let transactions;
   try {
     transactions = parser.parse(csv);
@@ -108,6 +126,8 @@ export async function runCalc(
     if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
         stderr.write(s.errorInvalidCsv + "\n");
+      } else if (err.code === "MISSING_SECTION") {
+        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
       } else {
         stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
       }

@@ -178,6 +178,70 @@ describe("TC-075: Withholding row paired with dividend row by (ISIN, date) — o
   });
 });
 
+describe("TC-075b: Withholding row shared by two dividend rows on the same (ISIN, date, currency) key — weighted split, not full amount each", () => {
+  // Regression test for the v0.11.0 harmonization fix: before this fix, EVERY
+  // income row sharing a withholding key got the FULL withholding amount
+  // (double-counted). Two dividend rows for the same ISIN/date/currency,
+  // grossAmount 30.00 and 70.00 (sum 100.00), sharing one -10.00 withholding
+  // row, must now split it 3.00 / 7.00 (weighted by grossAmount share), not
+  // 10.00 each.
+  const WITHHOLDING_ROW =
+    "03-06-2024,00:00,DIVIDEND TAX Apple Inc,US0378331005,,,0,,-10.00,EUR,-10.00,EUR,1,0.00,EUR,-10.00,EUR,";
+  const DIVIDEND_ROW_A =
+    "03-06-2024,00:00,DIVIDEND Apple Inc,US0378331005,,,0,,30.00,EUR,30.00,EUR,1,0.00,EUR,30.00,EUR,";
+  const DIVIDEND_ROW_B =
+    "03-06-2024,00:00,DIVIDEND Apple Inc,US0378331005,,,0,,70.00,EUR,70.00,EUR,1,0.00,EUR,70.00,EUR,";
+
+  const csv = [HEADER, WITHHOLDING_ROW, DIVIDEND_ROW_A, DIVIDEND_ROW_B].join(
+    "\n",
+  );
+
+  it("Step 1: parse does not throw", () => {
+    const parser = new DEGIROParser();
+    expect(() => parser.parse(csv)).not.toThrow();
+  });
+
+  it("Step 2: incomeRows.length is 2 (both dividend rows kept)", () => {
+    const parser = new DEGIROParser();
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(2);
+  });
+
+  it("Step 3: grossAmounts are 30.00 and 70.00, unaffected by the split", () => {
+    const parser = new DEGIROParser();
+    parser.parse(csv);
+    const amounts = parser.incomeRows
+      .map((r) => r.grossAmount)
+      .sort((a, b) => a - b);
+    expect(amounts).toEqual([30.0, 70.0]);
+  });
+
+  it("Step 4: withholdingTax is grossAmount-weighted (3.00 and 7.00), not 10.00 each", () => {
+    const parser = new DEGIROParser();
+    parser.parse(csv);
+    const rowA = parser.incomeRows.find((r) => r.grossAmount === 30.0)!;
+    const rowB = parser.incomeRows.find((r) => r.grossAmount === 70.0)!;
+    expect(rowA.withholdingTax).toBeCloseTo(3.0, 6);
+    expect(rowB.withholdingTax).toBeCloseTo(7.0, 6);
+    // The old bug would have given each row the full 10.00 — guard against it.
+    expect(rowA.withholdingTax).not.toBeCloseTo(10.0, 6);
+    expect(rowB.withholdingTax).not.toBeCloseTo(10.0, 6);
+  });
+
+  it("Step 5: the sum of allocated withholding equals the original total (10.00)", () => {
+    const parser = new DEGIROParser();
+    parser.parse(csv);
+    const total = parser.incomeRows.reduce((s, r) => s + r.withholdingTax, 0);
+    expect(total).toBeCloseTo(10.0, 6);
+  });
+
+  it("Step 6: parser.warnings is empty (pairing succeeded, no orphan)", () => {
+    const parser = new DEGIROParser();
+    parser.parse(csv);
+    expect(parser.warnings).toEqual([]);
+  });
+});
+
 describe("TC-077: Non-EUR income row → grossAmount converted via ECB rate", () => {
   const STUB_RATES = { USD: { "2024-01-02": 1.25 } };
   const DIVIDEND_ROW =

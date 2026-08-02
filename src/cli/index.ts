@@ -35,6 +35,7 @@ export async function runCli(
     args: argv,
     options: {
       lang: { type: "string" },
+      broker: { type: "string" },
       method: { type: "string" },
       year: { type: "string" },
       json: { type: "boolean", default: false },
@@ -128,6 +129,8 @@ export async function runCli(
     } else if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
         stderr.write(s.errorInvalidCsv + "\n");
+      } else if (err.code === "MISSING_SECTION") {
+        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
       } else {
         stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
       }

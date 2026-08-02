@@ -7,22 +7,37 @@ export const en: LocaleStrings = {
 
   errorInvalidCsv: "Invalid CSV: unable to parse",
   errorMissingColumn: (col) => `Missing required column: ${col}`,
+  errorMissingSection: (sectionName) =>
+    `Missing required section: ${sectionName}`,
   errorNoOpenLots: (isin, date) => `No open lots for ISIN ${isin} on ${date}`,
   errorCannotReadFile: (path) => `Cannot read file: ${path}`,
   errorCannotLoadSidecar: (path) => `Cannot load sidecar: ${path}`,
   errorCannotWriteExport: (path) =>
     `Cannot write dichiarazione export: ${path}`,
+  errorBrokerDetectionFailed:
+    "Unable to detect broker format. Use --broker <degiro|ibkr> to specify explicitly.",
 
-  warnMissingIsin: (row) => `Row ${row}: missing ISIN — skipped`,
-  warnUnsupportedCurrency: (row, currency) =>
-    `Row ${row}: unsupported currency ${currency} — skipped`,
-  warnNoEcbRate: (row, currency, date) =>
-    `Row ${row}: no ECB rate for ${currency} on ${date} — skipped`,
+  warnMissingIsin: (row, section) =>
+    section
+      ? `${section} row ${row}: missing ISIN — skipped`
+      : `Row ${row}: missing ISIN — skipped`,
+  warnUnsupportedCurrency: (row, currency, section) =>
+    section
+      ? `${section} row ${row}: unsupported currency ${currency} — skipped`
+      : `Row ${row}: unsupported currency ${currency} — skipped`,
+  warnNoEcbRate: (row, currency, date, section) =>
+    section
+      ? `${section} row ${row}: no ECB rate for ${currency} on ${date} — skipped`
+      : `Row ${row}: no ECB rate for ${currency} on ${date} — skipped`,
   warnQuantityZero: (row) => `Row ${row}: quantity is 0 — skipped`,
   warnMissingIsinIncome: (row) =>
     `Row ${row}: income row has blank ISIN — skipped`,
   warnOrphanWithholding: (isin, date) =>
     `Withholding row on ${isin}/${date} has no matching income row — skipped`,
+  warnUnmatchedWithholding: (row, section) =>
+    section
+      ? `${section} row ${row}: withholding tax with no matching income row — skipped`
+      : `Row ${row}: withholding tax with no matching income row — skipped`,
 
   warnMultipleYears:
     "CSV contains transactions from multiple years — filter to a single year for accurate reporting.",

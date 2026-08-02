@@ -176,6 +176,11 @@ export interface Transaction {
   totalEUR: number; // |totalLocal| / ecbRate — always positive
   feesEUR: number; // brokerage costs in EUR, always positive
   fxRate?: number; // ECB rate used; undefined if currency === "EUR"
+  // v0.11.0 — set only by IBKRParser, only when the commission currency
+  // differs from both the trade currency and EUR. DEGIROParser never sets
+  // these; they remain undefined there.
+  feesFxRate?: number;
+  feesCurrency?: string;
 }
 
 export interface MatchedLot {
@@ -192,6 +197,13 @@ export interface MatchedLot {
   buyFxRate?: number;
   sellFxRate?: number;
   bucket?: "A" | "B";
+}
+
+// v0.11.0 — implemented by both DEGIROParser and IBKRParser.
+export interface Parser {
+  parse(csv: string): Transaction[];
+  readonly warnings: string[];
+  readonly incomeRows: IncomeRow[];
 }
 
 export interface GainsReport {

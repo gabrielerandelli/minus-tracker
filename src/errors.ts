@@ -1,18 +1,25 @@
 export class ParseError extends Error {
-  readonly code: "INVALID_CSV" | "MISSING_COLUMN";
+  readonly code: "INVALID_CSV" | "MISSING_COLUMN" | "MISSING_SECTION";
   readonly columnName?: string;
+  readonly sectionName?: string;
 
   constructor(code: "INVALID_CSV");
   constructor(code: "MISSING_COLUMN", columnName: string);
-  constructor(code: ParseError["code"], columnName?: string) {
+  constructor(code: "MISSING_SECTION", sectionName: string);
+  constructor(code: ParseError["code"], columnOrSectionName?: string) {
     const msg =
       code === "INVALID_CSV"
         ? "Invalid CSV: unable to parse"
-        : `Missing required column: ${columnName}`;
+        : code === "MISSING_COLUMN"
+          ? `Missing required column: ${columnOrSectionName}`
+          : `Missing required section: ${columnOrSectionName}`;
     super(msg);
     this.name = "ParseError";
     this.code = code;
-    this.columnName = columnName;
+    this.columnName =
+      code === "MISSING_COLUMN" ? columnOrSectionName : undefined;
+    this.sectionName =
+      code === "MISSING_SECTION" ? columnOrSectionName : undefined;
   }
 }
 
