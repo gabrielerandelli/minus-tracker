@@ -5,15 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.11.0] - 2026-08-03
 
 ### Added
 
-- `IBKRParser`: parses Interactive Brokers Activity Flex Query CSV exports (`Trades`,
+- `IBKRParser` **(beta)**: parses Interactive Brokers Activity Flex Query CSV exports (`Trades`,
   `Dividends`, `Withholding Tax`, and `Interest` sections) into the same `Transaction[]`/
   `IncomeRow[]` shape as `DEGIROParser`, with per-currency FX conversion, section-prefixed
   warnings, and independent per-section row counters (e.g. `"Trades row 3: ..."` and
-  `"Dividends row 2: ..."` never share a counter).
+  `"Dividends row 2: ..."` never share a counter). The column spec was derived from IBKR's public
+  Flex Query documentation and third-party importers, not yet validated against a real user
+  export — see the README's [Interactive Brokers CSV Format](README.md#interactive-brokers-csv-format-beta)
+  section before relying on it for a tax filing.
 - `Parser` interface: the shared `parse(csv): Transaction[]` / `warnings: string[]` /
   `incomeRows: IncomeRow[]` shape both `DEGIROParser` and `IBKRParser` implement, exported from
   the library root for consumers who want to accept either parser interchangeably.

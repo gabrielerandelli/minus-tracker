@@ -48,6 +48,15 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 - Output disponibile in **italiano** (default) o **inglese** (`--lang en`)
 - Disponibile come pacchetto NPM con supporto CLI
 
+**Novità in v0.11.0:**
+
+- **Supporto Interactive Brokers (beta)**: nuovo `IBKRParser` per gli export CSV "Activity Flex
+  Query" di IBKR (sezioni Trades/Dividends/Withholding Tax/Interest). Il broker (DEGIRO o IBKR)
+  viene rilevato automaticamente dal contenuto del file, oppure puoi forzarlo con il nuovo flag
+  `--broker degiro|ibkr` su `calc`, `validate` e `classify`. Vedi
+  [Formato CSV Interactive Brokers](#formato-csv-interactive-brokers-beta) per la configurazione
+  e l'avvertenza sullo stato beta.
+
 **Novità in v0.10.0:**
 
 - **Banner CLI**: `minus-tracker` (senza comando), `--help` e il nuovo flag `--version` mostrano
@@ -117,6 +126,34 @@ Valute supportate: **EUR** (nessuna conversione), **USD**, **GBP**, **CHF** (tas
 Le date nel file DEGIRO sono in formato `GG-MM-AAAA`; il parser le converte automaticamente in ISO.
 
 Le righe con ISIN mancante, valuta non supportata o nessun tasso BCE disponibile entro 3 giorni lavorativi vengono saltate con un avviso (non un errore) — usa `validate` per ispezionarle prima del calcolo.
+
+### Formato CSV Interactive Brokers (beta)
+
+> ⚠️ **Supporto beta.** Lo schema delle colonne IBKR è stato ricavato dalla documentazione
+> pubblica di Interactive Brokers e da implementazioni open source di terze parti, **non ancora
+> validato con un export reale di un utente**. Verifica sempre con attenzione l'output prima di
+> usarlo ai fini dichiarativi e [apri una segnalazione](https://github.com/gabrielerandelli/minus-tracker/issues)
+> se noti discrepanze rispetto al tuo export.
+
+A differenza di DEGIRO, IBKR non ha un export fisso: la prima volta è necessario configurare una
+**Activity Flex Query** in **IBKR Client Portal**:
+
+1. Accedi a Client Portal → **Performance & Reports** → **Flex Queries** (o **Reports** →
+   **Flex Queries**, a seconda della versione dell'interfaccia)
+2. Crea una nuova **Activity Flex Query**
+3. Abilita la sezione **Trades** (obbligatoria) e, se ti servono anche i redditi da capitale,
+   **Dividends**, **Withholding Tax** e **Interest** (facoltative)
+4. Nelle impostazioni della query, imposta:
+   - **Formato data:** `yyyyMMdd`
+   - **Delimitatore campi:** virgola
+   - **Includi riga di intestazione:** sì
+5. Salva ed esegui la query, poi scarica il risultato in formato **CSV** (fino a 5 anni di
+   storico in un'unica esportazione)
+
+Il file scaricato contiene tutte le sezioni abilitate concatenate in un unico CSV — è normale,
+`IBKRParser` le riconosce singolarmente. Valute supportate: le stesse di DEGIRO (EUR, USD, GBP,
+CHF). Il broker (DEGIRO/IBKR) viene rilevato automaticamente dal contenuto del file; usa
+`--broker ibkr` per forzarlo esplicitamente.
 
 ### Installazione CLI
 
@@ -292,7 +329,10 @@ da un agente in chiamate successive, mantenendo lo stato lato client.
 ### Domande frequenti
 
 **Il CSV viene rifiutato con "colonna mancante" o "CSV non valido"**
-Verifica di aver esportato da Attività → **Transazioni** e non dal rendiconto del conto. Il parser richiede il formato dell'export Transazioni.
+Verifica di aver esportato da Attività → **Transazioni** e non dal rendiconto del conto. Il parser richiede il formato dell'export Transazioni. Per IBKR, verifica di aver esportato un'**Activity Flex Query** con formato data `yyyyMMdd` e delimitatore virgola — vedi [Formato CSV Interactive Brokers](#formato-csv-interactive-brokers-beta).
+
+**Il broker non viene rilevato correttamente / "impossibile rilevare il broker"**
+Il rilevamento automatico si basa sull'intestazione del file (colonna `Local value currency` per DEGIRO, sezione `Trades` per IBKR). Se il file non corrisponde a nessuno dei due formati, usa esplicitamente `--broker degiro` o `--broker ibkr`.
 
 **Alcune righe vengono saltate con un avviso**
 Le righe vengono saltate (senza bloccare il calcolo) quando: l'ISIN è vuoto, la valuta non è tra EUR/USD/GBP/CHF, oppure non esiste un tasso BCE entro 3 giorni lavorativi dalla data dell'operazione. Usa `validate` per i dettagli.
@@ -314,6 +354,9 @@ La normativa italiana prevede che i **redditi diversi** (azioni, derivati, certi
 
 **Portafogli con soli titoli azionari o soli ETF:** il calcolo è corretto.
 **Portafogli misti (azioni + ETF):** il risultato netto riportato non è direttamente utilizzabile ai fini dichiarativi. In questo caso è necessario separare manualmente i lotti per categoria fiscale prima di presentare la dichiarazione, con l'assistenza di un commercialista.
+
+`IBKRParser` (v0.11.0) è **beta**: lo schema delle colonne non è ancora stato validato con un
+export IBKR reale — vedi [Formato CSV Interactive Brokers](#formato-csv-interactive-brokers-beta).
 
 ### Avvertenza
 
@@ -370,6 +413,15 @@ It loads data following the CSV format used by DEGIRO.
 - Test suite based on **Agenzia Entrate FAQ**
 - Output in **Italian** (default) or **English** (`--lang en`)
 - minus-tracker is an NPM package with CLI support
+
+**New in v0.11.0:**
+
+- **Interactive Brokers support (beta)**: a new `IBKRParser` for IBKR's "Activity Flex Query" CSV
+  export (Trades/Dividends/Withholding Tax/Interest sections). The broker (DEGIRO or IBKR) is
+  auto-detected from the file's contents, or you can force it with the new
+  `--broker degiro|ibkr` flag on `calc`, `validate`, and `classify`. See
+  [Interactive Brokers CSV Format](#interactive-brokers-csv-format-beta) for setup and the beta
+  caveat.
 
 **New in v0.10.0:**
 
@@ -440,6 +492,34 @@ Supported currencies: **EUR** (no conversion), **USD**, **GBP**, **CHF** (bundle
 Dates in the DEGIRO export are in `DD-MM-YYYY` format; the parser converts them to ISO automatically.
 
 Rows with a missing ISIN, unsupported currency, or no ECB rate within 3 trading days of the trade date are skipped with a warning (not an error) — run `validate` to inspect them before calculating.
+
+### Interactive Brokers CSV Format (beta)
+
+> ⚠️ **Beta support.** The IBKR column spec was derived from Interactive Brokers' public
+> documentation and third-party open-source importers, **not yet validated against a real user
+> export**. Always double-check the output before relying on it for a tax filing, and
+> [open an issue](https://github.com/gabrielerandelli/minus-tracker/issues) if you spot a
+> mismatch against your own export.
+
+Unlike DEGIRO, IBKR has no fixed export — the first time, you need to configure an **Activity
+Flex Query** in **IBKR Client Portal**:
+
+1. In Client Portal, go to **Performance & Reports** → **Flex Queries** (or **Reports** →
+   **Flex Queries**, depending on your interface version)
+2. Create a new **Activity Flex Query**
+3. Enable the **Trades** section (required) and, if you also want capital-income handling,
+   **Dividends**, **Withholding Tax**, and **Interest** (optional)
+4. In the query's format settings, set:
+   - **Date format:** `yyyyMMdd`
+   - **Field delimiter:** comma
+   - **Include header row:** yes
+5. Save and run the query, then download the result as **CSV** (up to 5 years of history in a
+   single export)
+
+The downloaded file has all enabled sections concatenated into one CSV — that's expected,
+`IBKRParser` parses each section independently. Supported currencies: same as DEGIRO (EUR, USD,
+GBP, CHF). The broker (DEGIRO/IBKR) is auto-detected from the file's contents; use
+`--broker ibkr` to force it explicitly.
 
 ### CLI Installation
 
@@ -613,7 +693,10 @@ multiple calls, with state kept client-side.
 ### FAQ / Troubleshooting
 
 **My CSV is rejected with "missing column" or "invalid CSV"**
-Confirm you exported from Activity → **Transactions**, not the Account Statement. The parser requires the Transactions export format.
+Confirm you exported from Activity → **Transactions**, not the Account Statement. The parser requires the Transactions export format. For IBKR, confirm you exported an **Activity Flex Query** with date format `yyyyMMdd` and comma delimiter — see [Interactive Brokers CSV Format](#interactive-brokers-csv-format-beta).
+
+**The broker isn't detected correctly / "unable to detect broker"**
+Auto-detection relies on the file's header content (the `Local value currency` column for DEGIRO, the `Trades` section for IBKR). If your file matches neither format, pass `--broker degiro` or `--broker ibkr` explicitly.
 
 **Some rows are skipped with a warning**
 Rows are skipped (without aborting the calculation) when: the ISIN is empty, the currency is not EUR/USD/GBP/CHF, or no ECB rate exists within 3 trading days of the trade date. Run `validate` for details.
@@ -635,6 +718,9 @@ Italian law requires that **redditi diversi** (individual stocks, derivatives, c
 
 **Portfolios holding only stocks or only ETFs:** the calculation is correct.
 **Mixed portfolios (stocks + ETFs):** the reported net result cannot be used directly for tax filing. In this case, lots must be manually separated by tax category before filing, with the help of a qualified tax advisor.
+
+`IBKRParser` (v0.11.0) is **beta**: the column spec has not yet been validated against a real
+IBKR export — see [Interactive Brokers CSV Format](#interactive-brokers-csv-format-beta).
 
 ### Disclaimer
 
