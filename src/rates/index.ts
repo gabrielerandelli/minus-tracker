@@ -1,24 +1,19 @@
-import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import * as fs from "node:fs";
+// Imported as a JSON module so tsup/esbuild inlines the data as a JS literal
+// directly into each compiled bundle at build time. This removes the need
+// to compute a runtime filesystem path to the bundled snapshot relative to
+// the compiled entry point's location -- a computation that broke for
+// dist/index.js and dist/index.cjs because tsup bundles each entry point
+// into a single flat file at a different nesting depth under dist/ (see
+// getUserSnapshot() below for the unrelated, still-runtime-resolved,
+// user-config-dir snapshot).
+import bundledRatesData from "../data/ecb-rates.json" with { type: "json" };
 
 export type RatesSnapshot = Record<string, Record<string, number>>;
 
-// Load the bundled snapshot lazily; returns null if the file is absent (e.g. broken install)
-let _bundled: RatesSnapshot | null | undefined = undefined;
-
 function getBundledSnapshot(): RatesSnapshot | null {
-  if (_bundled !== undefined) return _bundled;
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const bundledPath = path.join(__dirname, "../data/ecb-rates.json");
-  try {
-    _bundled = JSON.parse(
-      fs.readFileSync(bundledPath, "utf8"),
-    ) as RatesSnapshot;
-  } catch {
-    _bundled = null;
-  }
-  return _bundled;
+  return (bundledRatesData as RatesSnapshot) ?? null;
 }
 
 function getUserSnapshot(): RatesSnapshot | null {
