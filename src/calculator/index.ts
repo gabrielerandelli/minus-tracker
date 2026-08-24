@@ -29,6 +29,10 @@ function roundHalfUp(x: number): number {
   return (Math.sign(x) * Math.round(Math.abs(x) * 100)) / 100;
 }
 
+// Absorbs floating-point residue from repeated lot-quantity subtraction (e.g. 2.22e-17);
+// real quantity mismatches between BUYs and SELLs are always many orders of magnitude larger.
+const QUANTITY_EPSILON = 1e-9;
+
 function inferTaxYear(transactions: Transaction[]): {
   year: number;
   multipleYears: boolean;
@@ -168,6 +172,9 @@ export class Calculator {
 
           lot.quantity -= matchedQty;
           remainingSellQty -= matchedQty;
+
+          if (Math.abs(lot.quantity) < QUANTITY_EPSILON) lot.quantity = 0;
+          if (Math.abs(remainingSellQty) < QUANTITY_EPSILON) remainingSellQty = 0;
 
           if (lot.quantity <= 0) {
             if (method === "LIFO") {
