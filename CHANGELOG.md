@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-08-24
+
+### Fixed
+
+- The bundled ECB rates snapshot was resolved via a runtime filesystem path computed relative to
+  the compiled entry point (`../data/ecb-rates.json`), an assumption valid only for the `src/`
+  layout. tsup bundles each entry point into a single flat file, so `dist/index.js` (mapped from
+  `"exports"`/`"main"` to package consumers) resolved one directory above `dist/` entirely, and
+  `dist/index.cjs` crashed outright since `import.meta.url` is undefined under CJS output — both
+  making every `parser.parse()` call throw `"No ECB rates snapshot available"`, even for pure-EUR
+  transactions with no currency conversion. This broke the documented public API
+  (`import { DEGIROParser } from "minus-tracker"`) for all npm consumers; it escaped the test
+  suite because tests import from `src/`, not the built `dist/` output. The snapshot is now
+  imported as a JSON module (`with { type: "json" }`) so it's inlined as a JS literal at build
+  time, removing the runtime path computation entirely.
+
 ## [0.11.0] - 2026-08-03
 
 ### Added
