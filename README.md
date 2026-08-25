@@ -127,6 +127,8 @@ Le date nel file DEGIRO sono in formato `GG-MM-AAAA`; il parser le converte auto
 
 Le righe con ISIN mancante, valuta non supportata o nessun tasso BCE disponibile entro 3 giorni lavorativi vengono saltate con un avviso (non un errore) — usa `validate` per ispezionarle prima del calcolo.
 
+Le colonne numeriche (`Quantity`, `Price`, `Local value`, `Transaction costs`) possono usare la virgola come separatore delle migliaia (es. `2,500`), formattazione che alcuni fogli di calcolo aggiungono risalvando un CSV — il parser la normalizza correttamente invece di interpretarla male.
+
 ### Formato CSV Interactive Brokers (beta)
 
 > ⚠️ **Supporto beta.** Lo schema delle colonne IBKR è stato ricavato dalla documentazione
@@ -158,6 +160,11 @@ CHF). Il broker (DEGIRO/IBKR) viene rilevato automaticamente dal contenuto del f
 Le righe Trades con ISIN mancante, quantità zero, valuta non supportata o nessun tasso BCE
 disponibile entro 3 giorni lavorativi vengono saltate con un avviso (non un errore), come per
 DEGIRO — usa `validate` per ispezionarle prima del calcolo.
+
+Le colonne numeriche (`Quantity`, `TradePrice`, `IBCommission` e `Amount` nelle sezioni
+`Dividends`/`Withholding Tax`/`Interest`) possono usare la virgola come separatore delle migliaia
+(es. `2,500`), formattazione che alcuni fogli di calcolo aggiungono risalvando un CSV — il parser
+la normalizza correttamente invece di interpretarla male.
 
 ### Installazione CLI
 
@@ -497,6 +504,8 @@ Dates in the DEGIRO export are in `DD-MM-YYYY` format; the parser converts them 
 
 Rows with a missing ISIN, unsupported currency, or no ECB rate within 3 trading days of the trade date are skipped with a warning (not an error) — run `validate` to inspect them before calculating.
 
+Numeric columns (`Quantity`, `Price`, `Local value`, `Transaction costs`) may use a thousands-separator comma (e.g. `2,500`), which some spreadsheet software adds when re-saving a CSV — the parser normalizes these correctly rather than misreading them.
+
 ### Interactive Brokers CSV Format (beta)
 
 > ⚠️ **Beta support.** The IBKR column spec was derived from Interactive Brokers' public
@@ -528,6 +537,11 @@ GBP, CHF). The broker (DEGIRO/IBKR) is auto-detected from the file's contents; u
 Trades rows with a missing ISIN, zero quantity, unsupported currency, or no ECB rate within 3
 trading days of the trade date are skipped with a warning (not an error), same as DEGIRO — run
 `validate` to inspect them before calculating.
+
+Numeric columns (`Quantity`, `TradePrice`, `IBCommission`, and `Amount` in the `Dividends`/
+`Withholding Tax`/`Interest` sections) may use a thousands-separator comma (e.g. `2,500`), which
+some spreadsheet software adds when re-saving a CSV — the parser normalizes these correctly
+rather than misreading them.
 
 ### CLI Installation
 

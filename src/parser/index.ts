@@ -8,6 +8,7 @@ import {
 import { WarningEntry, warningToEnglish } from "./warnings.js";
 import { parseCSV } from "./csv.js";
 import { stripBom } from "./bom.js";
+import { parseNumericField } from "./numeric.js";
 import {
   allocateWithholding,
   WithholdingJoinCandidate,
@@ -163,7 +164,7 @@ export class DEGIROParser implements Parser {
       const isin = get("ISIN");
       const product = get("Product");
       const qtyStr = get("Quantity");
-      const rawQty = parseFloat(qtyStr);
+      const rawQty = parseNumericField(qtyStr);
       const qtyIsZeroOrBlank = qtyStr === "" || isNaN(rawQty) || rawQty === 0;
 
       // --- Income-row detection (Quantity == 0 or blank) ---
@@ -175,7 +176,7 @@ export class DEGIROParser implements Parser {
           INCOME_KEYWORDS.some((k) => upperProduct.includes(k));
 
         if (isTaxKeyword || isIncomeKeyword) {
-          const rawLocalValue = parseFloat(get("Local value"));
+          const rawLocalValue = parseNumericField(get("Local value"));
           const localValue = isNaN(rawLocalValue) ? 0 : rawLocalValue;
           const isoDate = parseDate(get("Date"));
 
@@ -246,7 +247,7 @@ export class DEGIROParser implements Parser {
 
       // --- Currency & FX ---
       const currency = get("Local value currency");
-      const rawTotalLocal = parseFloat(get("Local value"));
+      const rawTotalLocal = parseNumericField(get("Local value"));
       const totalLocal = isNaN(rawTotalLocal) ? 0 : rawTotalLocal;
 
       let totalEUR: number;
@@ -279,11 +280,11 @@ export class DEGIROParser implements Parser {
       }
 
       // --- Fees ---
-      const rawFees = parseFloat(get("Transaction costs"));
+      const rawFees = parseNumericField(get("Transaction costs"));
       const feesEUR = Math.abs(isNaN(rawFees) ? 0 : rawFees);
 
       // --- Remaining fields ---
-      const pricePerUnit = parseFloat(get("Price"));
+      const pricePerUnit = parseNumericField(get("Price"));
 
       transactions.push({
         isin,

@@ -8,6 +8,7 @@ import {
 import { WarningEntry, warningToEnglish } from "./warnings.js";
 import { parseCSV } from "./csv.js";
 import { stripBom } from "./bom.js";
+import { parseNumericField } from "./numeric.js";
 import {
   allocateWithholding,
   WithholdingJoinCandidate,
@@ -376,7 +377,7 @@ export class IBKRParser implements Parser {
 
     // --- Type & quantity ---
     const type = get("Buy/Sell") as "BUY" | "SELL";
-    const rawQty = parseFloat(get("Quantity"));
+    const rawQty = parseNumericField(get("Quantity"));
     const quantity = Math.abs(isNaN(rawQty) ? 0 : rawQty);
     if (quantity === 0) {
       this._warningEntries.push({
@@ -413,14 +414,14 @@ export class IBKRParser implements Parser {
       ecbRate = rate;
     }
 
-    const tradePrice = parseFloat(get("TradePrice"));
+    const tradePrice = parseNumericField(get("TradePrice"));
     const totalLocal = (type === "SELL" ? 1 : -1) * quantity * tradePrice;
     const totalEUR = Math.abs(totalLocal) / ecbRate;
 
     // --- Commission FX (independent lookup, per-decision) ---
     const commissionRaw = get("IBCommission");
     const commissionCurrency = get("IBCommissionCurrency");
-    const commissionNum = parseFloat(commissionRaw);
+    const commissionNum = parseNumericField(commissionRaw);
 
     let feesEUR: number;
     let feesFxRate: number | undefined;
@@ -495,7 +496,7 @@ export class IBKRParser implements Parser {
 
     const currency = get("CurrencyPrimary");
     const isoDate = ibkrDate(get("Date"));
-    const rawAmount = parseFloat(get("Amount"));
+    const rawAmount = parseNumericField(get("Amount"));
     const amount = Math.abs(isNaN(rawAmount) ? 0 : rawAmount);
     const product = get("Description") || get("Symbol");
 
@@ -530,7 +531,7 @@ export class IBKRParser implements Parser {
     const isin = get("ISIN");
     const currency = get("CurrencyPrimary");
     const isoDate = ibkrDate(get("Date"));
-    const rawAmount = parseFloat(get("Amount"));
+    const rawAmount = parseNumericField(get("Amount"));
     const amount = Math.abs(isNaN(rawAmount) ? 0 : rawAmount);
 
     return { isin, date: isoDate, currency, amount, row: rowCounter };
@@ -553,7 +554,7 @@ export class IBKRParser implements Parser {
     };
 
     const type = get("Type");
-    const rawAmount = parseFloat(get("Amount"));
+    const rawAmount = parseNumericField(get("Amount"));
     const amount = isNaN(rawAmount) ? 0 : rawAmount;
 
     if (!type.toUpperCase().includes("BOND") || amount <= 0) {
