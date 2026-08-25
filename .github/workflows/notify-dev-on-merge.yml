@@ -39,4 +39,10 @@ jobs:
               --input -
 
       - name: Summary
-        run: echo "Dispatched submodule-updated for PR #${{ github.event.pull_request.number }}" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # Block scalar, not a plain one: in a plain YAML scalar a space
+        # followed by "#" starts a comment, which silently truncated this
+        # command mid-quote and broke the step.
+        run: |
+          echo "Dispatched submodule-updated for PR #${PR_NUMBER}" >> "$GITHUB_STEP_SUMMARY"
