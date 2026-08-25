@@ -272,6 +272,37 @@ describe("TC-147: Trades Data rows with no Trades Header anywhere → MISSING_CO
   });
 });
 
+describe("zero-quantity Trades row is skipped like DEGIROParser's QUANTITY_ZERO (regression — QA-found bug)", () => {
+  const csv = [
+    TRADES_HEADER,
+    "Trades,Data,Order,STK,EUR,AAPL,APPLE INC,US0378331005,20240110,BUY,100,10.00,0,EUR",
+    "Trades,Data,Order,STK,EUR,AAPL,APPLE INC,US0378331005,20240115,BUY,0,12.00,0,EUR",
+    "Trades,Data,Order,STK,EUR,AAPL,APPLE INC,US0378331005,20240301,SELL,100,15.00,0,EUR",
+  ].join("\n");
+
+  it("skips the zero-quantity row, keeping only the 2 legitimate trades", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(2);
+  });
+
+  it("emits a QUANTITY_ZERO-style warning referencing the skipped row", () => {
+    const parser = new IBKRParser();
+    parser.parse(csv);
+    expect(parser.warnings).toContain("Trades row 2: quantity is 0 — skipped");
+  });
+
+  it("yields a finite netResult matching the hand-computed gain of the 2 real trades", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    const calculator = new Calculator(transactions, parser.warnings);
+    const report = calculator.calculateGains("LIFO");
+    // Cost: 100 * 10.00 = 1000 EUR. Proceeds: 100 * 15.00 = 1500 EUR.
+    expect(report.netResult).toBeCloseTo(500, 6);
+    expect(Number.isFinite(report.netResult)).toBe(true);
+  });
+});
+
 describe("TC-148: unrecognized section name ignored, known sections still parse", () => {
   const csv = [
     TRADES_HEADER,

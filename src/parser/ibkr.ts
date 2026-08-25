@@ -124,8 +124,9 @@ export class IBKRParser implements Parser {
    *         `Trades` section is present but missing a required column (or has
    *         `Data` rows with no `Header` ever seen for it).
    *
-   * Rows with missing ISIN, unsupported currency, or no ECB rate within 3
-   * trading days are skipped silently. Inspect `parser.warnings` for details.
+   * Rows with missing ISIN, zero quantity, unsupported currency, or no ECB
+   * rate within 3 trading days are skipped silently. Inspect `parser.warnings`
+   * for details.
    */
   parse(csv: string): Transaction[] {
     this._warningEntries = [];
@@ -377,6 +378,14 @@ export class IBKRParser implements Parser {
     const type = get("Buy/Sell") as "BUY" | "SELL";
     const rawQty = parseFloat(get("Quantity"));
     const quantity = Math.abs(isNaN(rawQty) ? 0 : rawQty);
+    if (quantity === 0) {
+      this._warningEntries.push({
+        code: "QUANTITY_ZERO",
+        row: rowCounter,
+        section: "Trades",
+      });
+      return undefined;
+    }
 
     // --- Date ---
     const isoDate = ibkrDate(get("TradeDate"));
