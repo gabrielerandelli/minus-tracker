@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `IBKRParser` did not skip zero-quantity `Trades` rows, unlike `DEGIROParser`, which has always
+  treated a zero (or unparseable) quantity as a `QUANTITY_ZERO` skip condition. A zero-quantity
+  row (e.g. a blank/malformed `Quantity` field in the export) produced a `Transaction` with
+  `quantity: 0`, violating that field's documented "always positive" contract. `Calculator`
+  divides by `quantity` when building each lot (`totalEUR / quantity`), so this silently turned
+  into a `0/0` division, poisoning `plusvalenze`/`minusvalenze`/`netResult` in the final
+  `GainsReport` with `NaN` — with no thrown error and no warning, since the row parsed
+  "successfully". `IBKRParser` now skips zero-quantity `Trades` rows and pushes a `QUANTITY_ZERO`
+  warning (row-numbered, `Trades`-prefixed), matching `DEGIROParser`'s existing behavior exactly.
+
 - `Calculator.calculateGains()` could throw a spurious `CalculationError` ("No open lots") for a
   fully-balanced fractional-share position closed across multiple `SELL` transactions (e.g. a
   0.3-share `BUY` closed by a 0.1-share `SELL` followed by a 0.2-share `SELL`). Repeated

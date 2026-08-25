@@ -155,6 +155,10 @@ Il file scaricato contiene tutte le sezioni abilitate concatenate in un unico CS
 CHF). Il broker (DEGIRO/IBKR) viene rilevato automaticamente dal contenuto del file; usa
 `--broker ibkr` per forzarlo esplicitamente.
 
+Le righe Trades con ISIN mancante, quantità zero, valuta non supportata o nessun tasso BCE
+disponibile entro 3 giorni lavorativi vengono saltate con un avviso (non un errore), come per
+DEGIRO — usa `validate` per ispezionarle prima del calcolo.
+
 ### Installazione CLI
 
 **Installazione globale** (per rendere il comando disponibile in ogni directory):
@@ -520,6 +524,10 @@ The downloaded file has all enabled sections concatenated into one CSV — that'
 `IBKRParser` parses each section independently. Supported currencies: same as DEGIRO (EUR, USD,
 GBP, CHF). The broker (DEGIRO/IBKR) is auto-detected from the file's contents; use
 `--broker ibkr` to force it explicitly.
+
+Trades rows with a missing ISIN, zero quantity, unsupported currency, or no ECB rate within 3
+trading days of the trade date are skipped with a warning (not an error), same as DEGIRO — run
+`validate` to inspect them before calculating.
 
 ### CLI Installation
 

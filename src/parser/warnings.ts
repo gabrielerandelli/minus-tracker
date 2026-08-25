@@ -17,7 +17,7 @@ export type WarningEntry =
       date: string;
       section?: IBKRSection;
     }
-  | { code: "QUANTITY_ZERO"; row: number }
+  | { code: "QUANTITY_ZERO"; row: number; section?: IBKRSection }
   | { code: "MISSING_ISIN_INCOME"; row: number }
   | { code: "ORPHAN_WITHHOLDING"; isin: string; date: string }
   | { code: "UNMATCHED_WITHHOLDING"; row: number; section: IBKRSection };
@@ -37,7 +37,9 @@ export function warningToEnglish(w: WarningEntry): string {
         ? `${w.section} row ${w.row}: no ECB rate for ${w.currency} on ${w.date} — skipped`
         : `Row ${w.row}: no ECB rate for ${w.currency} on ${w.date} — skipped`;
     case "QUANTITY_ZERO":
-      return `Row ${w.row}: quantity is 0 — skipped`;
+      return w.section
+        ? `${w.section} row ${w.row}: quantity is 0 — skipped`
+        : `Row ${w.row}: quantity is 0 — skipped`;
     case "MISSING_ISIN_INCOME":
       return `Row ${w.row}: blank ISIN on income row — skipped`;
     case "ORPHAN_WITHHOLDING":
