@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `Calculator.calculateGains()` could throw a spurious `CalculationError` ("No open lots") for a
+  fully-balanced fractional-share position closed across multiple `SELL` transactions (e.g. a
+  0.3-share `BUY` closed by a 0.1-share `SELL` followed by a 0.2-share `SELL`). Repeated
+  floating-point subtraction in the LIFO/FIFO lot-matching loop could leave `lot.quantity` or the
+  remaining sell quantity at a tiny non-zero residue (on the order of `2.22e-17`) instead of
+  exactly `0`, causing the loop to either report a lot as still open when it was fully consumed,
+  or to spuriously continue and find no lots left to match against. Both `lot.quantity` and the
+  remaining sell quantity are now snapped to exactly `0` once they fall within a `1e-9` tolerance
+  after each match, which absorbs floating-point noise many orders of magnitude larger than any
+  realistic rounding residue while still correctly rejecting genuine oversell mismatches (e.g.
+  selling 0.31 shares when only 0.3 were ever bought still throws `CalculationError` as before).
+
 ## [0.11.1] - 2026-08-24
 
 ### Fixed
