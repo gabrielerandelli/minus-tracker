@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `DEGIROParser` and `IBKRParser` read every numeric CSV cell (`Quantity`, `Price`/`TradePrice`,
+  `Local value`, `Transaction costs`/`IBCommission`, and `Amount` in the `Dividends`/
+  `Withholding Tax`/`Interest` sections) via a bare `parseFloat()` call. `parseFloat` parses only
+  a leading numeric prefix and silently ignores everything from the first unparseable character
+  onward, so a perfectly valid, RFC-4180-quoted cell using a comma as a thousands separator (e.g.
+  `"2,500"` for 2,500 shares — something spreadsheet software commonly produces when re-saving a
+  CSV with a number-formatted column) was silently read as `2`, a 1000x+ quantity/amount
+  corruption with no warning or error. Depending on the surrounding transactions, this either
+  produced a confusing `CalculationError: No open lots` on an entirely ordinary partial sale of
+  the position, or — worse — silently reported a wrong quantity and per-share price with no
+  error at all. A new `parseNumericField()` helper (`src/parser/numeric.ts`) now validates the
+  full trimmed cell against either a plain-number or a strict 3-digit-grouped-thousands pattern
+  before parsing, correctly normalizing `"2,500"` to `2500` while still returning `NaN` — exactly
+  as a bare `parseFloat` always did — for genuinely non-numeric or malformed-grouping input (e.g.
+  `""`, `"abc"`, or a bogus grouping like `"1,2,3"`), so no existing blank/garbage-field
+  validation is weakened.
+
 - `IBKRParser` did not skip zero-quantity `Trades` rows, unlike `DEGIROParser`, which has always
   treated a zero (or unparseable) quantity as a `QUANTITY_ZERO` skip condition. A zero-quantity
   row (e.g. a blank/malformed `Quantity` field in the export) produced a `Transaction` with
