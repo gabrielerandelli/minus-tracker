@@ -1,0 +1,42 @@
+# Repo: gabrielerandelli/minus-tracker  (PUBLIC)
+# Path: .github/workflows/notify-dev-on-merge.yml
+#
+# When a PR is merged into main, tell the private wrapper repo to bump its
+# submodule pointer. Nothing happens for PRs that are closed without merging.
+
+name: Notify dev repo on merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  dispatch:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository_dispatch to minus-tracker-dev
+        env:
+          # Fine-grained PAT with Contents: Read and write on minus-tracker-dev.
+          GH_TOKEN: ${{ secrets.DEV_REPO_DISPATCH_TOKEN }}
+          # Passed via env, never interpolated into the script body:
+          # a PR title is attacker-controlled text.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg sha "$MERGE_SHA" \
+            --arg title "$PR_TITLE" \
+            --argjson pr "$PR_NUMBER" \
+            '{event_type:"submodule-updated",
+              client_payload:{sha:$sha, pr:$pr, title:$title}}' \
+          | gh api --method POST \
+              -H "Accept: application/vnd.github+json" \
+              /repos/gabrielerandelli/minus-tracker-dev/dispatches \
+              --input -
+
+      - name: Summary
+        run: echo "Dispatched submodule-updated for PR #${{ github.event.pull_request.number }}" >> "$GITHUB_STEP_SUMMARY"
