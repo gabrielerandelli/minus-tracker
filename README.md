@@ -48,6 +48,17 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 - Output disponibile in **italiano** (default) o **inglese** (`--lang en`)
 - Disponibile come pacchetto NPM con supporto CLI
 
+**Novità in v0.11.1:**
+
+- **Fix critico dei pacchetti pubblicati**: `dist/index.js` e `dist/index.cjs` risolvevano il
+  percorso dello snapshot dei tassi BCE in modo relativo al file compilato, un'assunzione valida
+  solo per il layout `src/`. Dopo il bundling con tsup questo faceva fallire **ogni** chiamata a
+  `parser.parse()` con `"No ECB rates snapshot available"` — anche per transazioni in soli EUR
+  senza alcuna conversione valutaria — rompendo l'API pubblica per tutti i consumer NPM. Non
+  emergeva nella suite di test perché i test importano da `src/`, non dall'output `dist/`
+  compilato. Lo snapshot è ora importato come modulo JSON e incorporato come letterale JS in fase
+  di build, eliminando del tutto il calcolo del percorso a runtime.
+
 **Novità in v0.11.0:**
 
 - **Supporto Interactive Brokers (beta)**: nuovo `IBKRParser` per gli export CSV "Activity Flex
@@ -424,6 +435,17 @@ It loads data following the CSV format used by DEGIRO.
 - Test suite based on **Agenzia Entrate FAQ**
 - Output in **Italian** (default) or **English** (`--lang en`)
 - minus-tracker is an NPM package with CLI support
+
+**New in v0.11.1:**
+
+- **Critical fix for published packages**: `dist/index.js` and `dist/index.cjs` resolved the
+  bundled ECB rates snapshot via a runtime filesystem path computed relative to the compiled
+  entry point, an assumption valid only for the `src/` layout. After tsup bundling this made
+  **every** `parser.parse()` call throw `"No ECB rates snapshot available"` — even for pure-EUR
+  transactions with no currency conversion — breaking the public API for all npm consumers. This
+  escaped the test suite because tests import from `src/`, not the built `dist/` output. The
+  snapshot is now imported as a JSON module and inlined as a JS literal at build time, removing
+  the runtime path computation entirely.
 
 **New in v0.11.0:**
 
