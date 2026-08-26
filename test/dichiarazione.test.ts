@@ -68,14 +68,19 @@ describe("TC-083 (TC-D3): CF partially offsets gain", () => {
 describe("TC-084 (TC-D4): CF fully offsets gain — only consume what is needed", () => {
   const cf: CarryForward[] = [{ year: 2023, amount: 1200 }];
 
-  it("consumes only 800 of the 1200 available, imposta=0", () => {
+  it("consumes only 800 of the 1200 available, imposta=0, and carries forward the unconsumed 400", () => {
     const result = buildQuadroRT(makeBucketB(800, 0), cf, 2024);
     expect(result.carryForwardApplied).toEqual([
       { annoOrigine: 2023, importo: 800 },
     ]);
     expect(result.imponibileNetto).toBe(0);
     expect(result.imposta).toBe(0);
-    expect(result.carryForwardRiportato).toEqual([]);
+    // The 2023 entry supplied 1200 but only 800 was needed this year: the
+    // remaining 400 is still un-expired (2024 - 2023 = 1 <= 4) and must
+    // survive into carryForwardRiportato, not be dropped.
+    expect(result.carryForwardRiportato).toEqual([
+      { annoOrigine: 2023, importo: 400 },
+    ]);
   });
 });
 
@@ -87,6 +92,8 @@ describe("TC-085 (TC-D5): expired CF (gap > 4 years)", () => {
     expect(result.carryForwardApplied).toEqual([]);
     expect(result.imponibileNetto).toBe(1000);
     expect(result.imposta).toBe(260);
+    // Expired (2024 - 2019 = 5 > 4): must not reappear as "remaining" either.
+    expect(result.carryForwardRiportato).toEqual([]);
   });
 });
 
@@ -108,6 +115,9 @@ describe("TC-086 (TC-D15): unsorted CF input — must apply oldest-first", () =>
     ]);
     expect(result.imponibileNetto).toBe(0);
     expect(result.imposta).toBe(0);
+    expect(result.carryForwardRiportato).toEqual([
+      { annoOrigine: 2023, importo: 200 },
+    ]);
   });
 });
 
@@ -322,6 +332,103 @@ describe("TC-092 (TC-D14): ETF loss routed to Bucket B / QuadroRT, not QuadroRM"
       imposta: 0,
     });
     expect(report.dichiarazione!.quadroRT.minusvalenze).toBe(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression — un-expired carryForward balance silently dropped from
+// quadroRT.carryForwardRiportato (end-to-end via the public Calculator API)
+// ---------------------------------------------------------------------------
+
+describe("REG-001: partial CF consumption (differenza>0) keeps the unconsumed balance in the export", () => {
+  it("consumes only 800 of a supplied 1200 CF entry and reports the remaining 400 in carryForwardRiportato", () => {
+    const buy = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-01-10",
+      type: "BUY",
+      quantity: 100,
+      pricePerUnit: 10,
+      totalLocal: -1000,
+      totalEUR: 1000,
+    });
+    const sell = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-06-10",
+      type: "SELL",
+      quantity: 100,
+      pricePerUnit: 18,
+      totalLocal: 1800,
+      totalEUR: 1800,
+    });
+
+    const report = new Calculator([buy, sell], [], {
+      classification: CLASSIFICATION,
+      carryForward: [{ year: 2023, amount: 1200 }],
+    }).calculateGains("LIFO");
+
+    // Sanity: this is the Bucket B gain the bug report is built around
+    // (800 gain, fully offset by the 1200 CF entry down to a net result of 0).
+    expect(report.bucketB!.plusvalenze).toBe(800);
+    expect(report.bucketB!.minusvalenze).toBe(0);
+    expect(report.bucketB!.netResult).toBe(0);
+    // Calculator's own (already-correct) per-entry remaining balance.
+    expect(report.bucketB!.carryForwardEntriesRemaining).toEqual([
+      { annoOrigine: 2023, importo: 400 },
+    ]);
+
+    // The actual tax-filing export must NOT drop that 400 balance.
+    expect(report.dichiarazione!.quadroRT.carryForwardRiportato).toEqual([
+      { annoOrigine: 2023, importo: 400 },
+    ]);
+    expect(report.dichiarazione!.quadroRT.carryForwardApplied).toEqual([
+      { annoOrigine: 2023, importo: 800 },
+    ]);
+    expect(report.dichiarazione!.quadroRT.imponibileNetto).toBe(0);
+    expect(report.dichiarazione!.quadroRT.imposta).toBe(0);
+  });
+});
+
+describe("REG-002: net loss (differenza<=0) with a pre-existing unconsumed CF entry", () => {
+  it("keeps the prior entry's un-expired balance AND adds this year's new loss to carryForwardRiportato", () => {
+    const buy = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-01-10",
+      type: "BUY",
+      quantity: 100,
+      pricePerUnit: 10,
+      totalLocal: -1000,
+      totalEUR: 1000,
+    });
+    const sell = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-06-10",
+      type: "SELL",
+      quantity: 100,
+      pricePerUnit: 7,
+      totalLocal: 700,
+      totalEUR: 700,
+    });
+
+    const report = new Calculator([buy, sell], [], {
+      classification: CLASSIFICATION,
+      carryForward: [{ year: 2023, amount: 200 }],
+    }).calculateGains("LIFO");
+
+    // Bucket B loss this year: 300; no gain available to consume the
+    // supplied CF entry, so it must pass through untouched.
+    expect(report.bucketB!.plusvalenze).toBe(0);
+    expect(report.bucketB!.minusvalenze).toBe(300);
+    expect(report.bucketB!.carryForwardEntriesRemaining).toEqual([
+      { annoOrigine: 2023, importo: 200 },
+    ]);
+
+    expect(report.dichiarazione!.quadroRT.carryForwardApplied).toEqual([]);
+    expect(report.dichiarazione!.quadroRT.carryForwardRiportato).toEqual([
+      { annoOrigine: 2023, importo: 200 },
+      { annoOrigine: 2024, importo: 300 },
+    ]);
+    expect(report.dichiarazione!.quadroRT.imponibileNetto).toBe(0);
+    expect(report.dichiarazione!.quadroRT.imposta).toBe(0);
   });
 });
 

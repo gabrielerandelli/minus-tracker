@@ -148,7 +148,14 @@ describe("TC-113: calculate_gains — full pipeline output includes bucketA/B/di
       carryForwardApplied: [],
       imponibileNetto: 0,
       imposta: 0,
-      carryForwardRiportato: [{ annoOrigine: 2024, importo: 300 }],
+      // The pre-existing 2023/100 CF entry is un-expired (2024-2023=1<=4)
+      // and unconsumed (this year is itself a net loss, so nothing was
+      // available to apply it against) — it must survive into the export
+      // alongside this year's own new 300 loss.
+      carryForwardRiportato: [
+        { annoOrigine: 2023, importo: 100 },
+        { annoOrigine: 2024, importo: 300 },
+      ],
     });
     expect(parsed.dichiarazione.quadroRM.capitaleAliquota26).toEqual({
       plusvalenze: 400,

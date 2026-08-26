@@ -48,6 +48,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   realistic rounding residue while still correctly rejecting genuine oversell mismatches (e.g.
   selling 0.31 shares when only 0.3 were ever bought still throws `CalculationError` as before).
 
+- `buildQuadroRT` (the Quadro RT builder behind `report.dichiarazione` / `--export-dichiarazione`
+  / the `calculate_gains` MCP tool) silently dropped any caller-supplied Bucket B `carryForward`
+  entry that was not fully consumed by the current tax year, in every case except a straightforward
+  net gain: a partially-consumed entry (e.g. only 800 of a 1200 EUR prior-year loss needed to
+  offset this year's gain) lost its unconsumed 400 EUR balance entirely, and when the current
+  year's Bucket B result was break-even or a net loss, *all* supplied `carryForward` entries were
+  dropped outright regardless of whether they were still within their 4-year window — the
+  function only ever consulted `carryForward` in its `differenza > 0` branch. This did not affect
+  `Calculator`'s own `report.bucketB.carryForwardEntriesRemaining`, which already tracked
+  unconsumed balances correctly, but it did mean the actual exported Quadro RT (the document a
+  user would file) understated or omitted legitimate minusvalenze carryforward, which could cause
+  a user to overpay capital-gains tax in a future year. `buildQuadroRT` now computes
+  `carryForwardRiportato` in a single pass across all three `differenza` signs, mirroring
+  `Calculator`'s existing oldest-first consumption order: every unexpired supplied entry's
+  unconsumed residual is preserved, plus a new entry for the current tax year's own loss when
+  applicable. `carryForwardApplied` and the frozen public API are unchanged.
+
 ## [0.11.1] - 2026-08-24
 
 ### Fixed

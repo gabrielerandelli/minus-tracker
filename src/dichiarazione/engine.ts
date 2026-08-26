@@ -23,58 +23,59 @@ export function buildQuadroRT(
   const minusvalenze = bucketB.minusvalenze;
   const differenza = roundHalfUp(plusvalenze - minusvalenze);
 
-  if (differenza > 0) {
-    const sorted = [...carryForward].sort((a, b) => a.year - b.year);
-    let remaining = differenza;
-    const carryForwardApplied: CarryForwardEntry[] = [];
+  // Carry-forward consumption: oldest-first, only unexpired entries
+  // (taxYear - entry.year <= 4), consuming only what this year's
+  // `differenza` still needs. This mirrors the consumption order/formula
+  // Calculator.calculateGains uses to derive bucketB.carryForwardEntriesRemaining
+  // (src/calculator/index.ts) so the two stay in agreement; it is run in a
+  // single pass covering all three differenza signs (>0, ==0, <0) so that,
+  // unlike before, an un-expired supplied entry's unconsumed balance is
+  // never silently dropped regardless of this year's result.
+  const sorted = [...carryForward].sort((a, b) => a.year - b.year);
+  let remaining = differenza;
+  const carryForwardApplied: CarryForwardEntry[] = [];
+  const carryForwardRiportato: CarryForwardEntry[] = [];
 
-    for (const entry of sorted) {
-      if (taxYear - entry.year > 4) continue;
-      const consumed = Math.min(entry.amount, remaining);
-      if (consumed > 0) {
-        carryForwardApplied.push({
-          annoOrigine: entry.year,
-          importo: roundHalfUp(consumed),
-        });
-        remaining -= consumed;
-      }
+  for (const entry of sorted) {
+    if (taxYear - entry.year > 4) continue; // expired: gone, not "remaining"
+    const consumed = remaining > 0 ? Math.min(entry.amount, remaining) : 0;
+    if (consumed > 0) {
+      carryForwardApplied.push({
+        annoOrigine: entry.year,
+        importo: roundHalfUp(consumed),
+      });
+      remaining -= consumed;
     }
-
-    const imponibileNetto = roundHalfUp(remaining);
-    const imposta = roundHalfUp(imponibileNetto * 0.26);
-
-    return {
-      plusvalenze,
-      minusvalenze,
-      differenza,
-      carryForwardApplied,
-      imponibileNetto,
-      imposta,
-      carryForwardRiportato: [],
-    };
-  } else if (differenza < 0) {
-    return {
-      plusvalenze,
-      minusvalenze,
-      differenza,
-      carryForwardApplied: [],
-      imponibileNetto: 0,
-      imposta: 0,
-      carryForwardRiportato: [
-        { annoOrigine: taxYear, importo: roundHalfUp(Math.abs(differenza)) },
-      ],
-    };
-  } else {
-    return {
-      plusvalenze,
-      minusvalenze,
-      differenza: 0,
-      carryForwardApplied: [],
-      imponibileNetto: 0,
-      imposta: 0,
-      carryForwardRiportato: [],
-    };
+    const residual = roundHalfUp(entry.amount - consumed);
+    if (residual > 0) {
+      carryForwardRiportato.push({
+        annoOrigine: entry.year,
+        importo: residual,
+      });
+    }
   }
+
+  const netResult = roundHalfUp(remaining);
+  if (netResult < 0) {
+    // This year's own new loss, not covered by any supplied carryForward.
+    carryForwardRiportato.push({
+      annoOrigine: taxYear,
+      importo: roundHalfUp(Math.abs(netResult)),
+    });
+  }
+
+  const imponibileNetto = netResult > 0 ? roundHalfUp(netResult) : 0;
+  const imposta = roundHalfUp(imponibileNetto * 0.26);
+
+  return {
+    plusvalenze,
+    minusvalenze,
+    differenza,
+    carryForwardApplied,
+    imponibileNetto,
+    imposta,
+    carryForwardRiportato,
+  };
 }
 
 export function buildQuadroRM(
