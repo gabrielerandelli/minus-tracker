@@ -34,6 +34,17 @@ relevant Agenzia delle Entrate FAQ. See `test/` for the existing TC-\* naming co
 - Run `npm run build && npm test` before opening the PR.
 - Follow the commit format used in this repo: `feat|fix|docs|style|refactor|test|chore|perf`.
 
+## About the `fix/qa-*` PRs
+
+You may see PRs opened from branches named `fix/qa-YYYYMMDD-HHMM-<slug>` that you didn't file an
+issue for. These come from a scheduled automated QA process that continuously generates
+adversarial edge-case inputs against the public API/CLI, and on finding a genuine bug, fixes it
+with a regression test and opens a PR here — the same as a human contributor would, including a
+full `npm run build && npm test` pass. It never merges its own PRs; every one of these still goes
+through normal maintainer review before landing on `main`. Once merged,
+[`notify-dev-on-merge.yml`](.github/workflows/notify-dev-on-merge.yml) notifies the private
+downstream repo to pick up the change — no action needed from you as a contributor.
+
 ## Reporting bugs / requesting features
 
 Open an issue at https://github.com/gabrielerandelli/minus-tracker/issues. For security issues,
