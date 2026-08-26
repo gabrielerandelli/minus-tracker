@@ -20,8 +20,8 @@
 🤖 **Novità: server MCP** — qualsiasi agente AI può calcolare plusvalenze/minusvalenze italiane direttamente, senza passare dalla CLI.
 🤖 **New: MCP server** — any AI agent can compute Italian capital gains/losses directly, no CLI required.
 
-✅ Validato su tutti i 12 scenari FAQ dell'Agenzia delle Entrate · 120 test automatici · zero dipendenze runtime nella libreria core.
-✅ Validated against all 12 Agenzia delle Entrate FAQ scenarios · 120 automated tests · zero runtime dependencies in the core library.
+✅ Validato su tutti i 12 scenari FAQ dell'Agenzia delle Entrate · 628 test automatici · zero dipendenze runtime nella libreria core.
+✅ Validated against all 12 Agenzia delle Entrate FAQ scenarios · 628 automated tests · zero runtime dependencies in the core library.
 
 _L'unico tool open-source che trasforma un export DEGIRO grezzo direttamente in plusvalenze/minusvalenze corrette secondo l'Agenzia delle Entrate — come CLI, libreria, o strumento MCP richiamabile dal tuo agente AI._
 _The only open-source tool that turns a raw DEGIRO export directly into Agenzia-Entrate-correct capital gains/losses — as a CLI, a library, or an MCP tool your AI agent can call._

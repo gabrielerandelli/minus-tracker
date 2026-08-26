@@ -10,7 +10,8 @@ npm run build
 npm test
 ```
 
-`npm test` runs the full vitest suite (~120 test cases). One integration test group
+`npm test` runs the full vitest suite (628 test cases as of this writing — run `npm test` for
+the current count, since it grows over time). One integration test group
 (`TC-041b`, live ECB API) requires network access and will fail in offline/sandboxed
 environments — that's expected and unrelated to your change.
 
