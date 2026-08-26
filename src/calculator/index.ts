@@ -292,9 +292,16 @@ export class Calculator {
       };
 
       // Filter income rows to the tax year and build the dichiarazione report
+      // Note: row.date is a plain ISO "YYYY-MM-DD" string. We deliberately avoid
+      // constructing a Date object here and reading getFullYear() from it — that
+      // parses the string as UTC midnight but reads the year back in the host
+      // machine's LOCAL timezone, which silently shifts the year for any negative
+      // UTC offset (e.g. "2024-01-01" becomes 2023 in America/New_York). Slicing
+      // the year directly out of the ISO string sidesteps timezone conversion
+      // entirely, matching the pattern already used by inferTaxYear() above.
       const allIncomeRows = this._options.incomeRows ?? [];
       const filteredIncomeRows = allIncomeRows.filter(
-        (row) => new Date(row.date).getFullYear() === taxYear,
+        (row) => parseInt(row.date.slice(0, 4), 10) === taxYear,
       );
       if (filteredIncomeRows.length < allIncomeRows.length) {
         warnings.push(`Income rows outside tax year ${taxYear} were skipped.`);

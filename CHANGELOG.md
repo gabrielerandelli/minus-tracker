@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Calculator.calculateGains()` filtered `IncomeRow`s (dividends/coupons) into the current tax
+  year's `dichiarazione.quadroRM` using `new Date(row.date).getFullYear() === taxYear`.
+  `row.date` is a plain ISO `"YYYY-MM-DD"` string, and `new Date()` parses a date-only string as
+  UTC midnight — but `.getFullYear()` reads the year back in the **host machine's local
+  timezone**, not UTC. In any timezone with a negative UTC offset (e.g. `America/New_York`,
+  UTC-5), an income row dated exactly `"2024-01-01"` was reinterpreted as local time
+  `"2023-12-31 19:00"`, so `.getFullYear()` returned `2023` instead of `2024`. The row then
+  silently failed the tax-year filter and was dropped from `quadroRM.dividendiEsteri`/`.cedole`,
+  with a misleading `"Income rows outside tax year ... were skipped."` warning pushed even
+  though the dividend or coupon genuinely belonged to that tax year — understating foreign
+  income on the exported Modello Redditi PF depending purely on which timezone the calculation
+  happened to run in, with no change to the input data. The filter now extracts the year via
+  plain string slicing (`row.date.slice(0, 4)`), the same timezone-independent pattern already
+  used by `inferTaxYear()` a few lines above in the same file, instead of constructing a `Date`
+  object at all. `Calculator.calculateGains()`'s signature and the frozen public API are
+  unchanged.
+
 - `DEGIROParser` and `IBKRParser` read every numeric CSV cell (`Quantity`, `Price`/`TradePrice`,
   `Local value`, `Transaction costs`/`IBCommission`, and `Amount` in the `Dividends`/
   `Withholding Tax`/`Interest` sections) via a bare `parseFloat()` call. `parseFloat` parses only
