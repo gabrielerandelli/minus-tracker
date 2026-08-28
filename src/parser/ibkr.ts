@@ -6,8 +6,7 @@ import {
   RatesSnapshot,
 } from "../rates/index.js";
 import { WarningEntry, warningToEnglish } from "./warnings.js";
-import { parseCSV } from "./csv.js";
-import { stripBom } from "./bom.js";
+import { checkCsvValidity } from "./validity.js";
 import { parseNumericField } from "./numeric.js";
 import {
   allocateWithholding,
@@ -37,21 +36,6 @@ const TRADES_REQUIRED_COLUMNS = [
   "IBCommission",
   "IBCommissionCurrency",
 ] as const;
-
-// Cheap binary-garbage detector — same heuristic as DEGIROParser (see
-// src/parser/index.ts for the full rationale): a high ratio of control
-// characters in the header-row candidate means the content isn't text/CSV.
-const BINARY_GARBAGE_CONTROL_CHAR_RATIO = 0.1;
-
-function looksLikeBinaryGarbage(firstLine: string): boolean {
-  if (firstLine.length === 0) return false;
-  let controlChars = 0;
-  for (let i = 0; i < firstLine.length; i++) {
-    const code = firstLine.charCodeAt(i);
-    if (code < 32 && code !== 9) controlChars++;
-  }
-  return controlChars / firstLine.length > BINARY_GARBAGE_CONTROL_CHAR_RATIO;
-}
 
 /**
  * Convert an IBKR date "YYYYMMDD" to ISO format "YYYY-MM-DD".
@@ -133,26 +117,11 @@ export class IBKRParser implements Parser {
     this._warningEntries = [];
     this._incomeRows = [];
 
-    if (typeof csv !== "string" || csv.includes("\x00")) {
+    const validity = checkCsvValidity(csv);
+    if (!validity.valid) {
       throw new ParseError("INVALID_CSV");
     }
-    const stripped = stripBom(csv);
-
-    const firstLine = stripped.split("\n", 1)[0] ?? "";
-    if (looksLikeBinaryGarbage(firstLine)) {
-      throw new ParseError("INVALID_CSV");
-    }
-
-    let rows: string[][];
-    try {
-      rows = parseCSV(stripped);
-    } catch {
-      throw new ParseError("INVALID_CSV");
-    }
-
-    if (rows.length === 0) {
-      throw new ParseError("INVALID_CSV");
-    }
+    const rows = validity.rows;
 
     const snapshot: RatesSnapshot = this._snapshot ?? getActiveSnapshot();
 

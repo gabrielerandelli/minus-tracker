@@ -38,6 +38,13 @@ const IBKR_CSV_DIVIDENDS_BEFORE_TRADES = [
 
 const UNRELATED_CSV = "Name,Age,City\n1,2,3\n";
 
+// Binary garbage — a NUL byte makes this structurally invalid CSV, not just
+// an unrecognized broker format. Same bytes the stress-test suite's
+// scenarios 076/077 (error-invalid-csv-binary / error-invalid-csv-garbled-
+// header) exercise via `--broker degiro` explicitly; here we exercise the
+// no-`--broker` auto-detection path.
+const INVALID_BINARY_CSV = "NOT_A_CSV\x00\x01\x02\ngarbage data";
+
 const BOM = "﻿";
 
 function captureStream(): { stream: Writable; output: () => string } {
@@ -148,6 +155,44 @@ describe("TC-161: neither signature matches → exit 2, errorBrokerDetectionFail
 
     expect(code).toBe(2);
     expect(err.output()).toBe(itStrings.errorBrokerDetectionFailed + "\n");
+  });
+});
+
+describe("TC-161b: binary/garbled CSV (no --broker) → exit 1, errorInvalidCsv, not a detection failure", () => {
+  // Regression test: detectBroker() returning null must NOT be conflated
+  // with "invalid CSV" — structurally invalid content (binary garbage, NUL
+  // bytes) has to be reported the same way it would be if a parser had
+  // actually attempted (and rejected) it, i.e. exit 1 / s.errorInvalidCsv,
+  // not exit 2 / s.errorBrokerDetectionFailed. This must hold even though
+  // detectBroker() never recognizes this content as DEGIRO or IBKR shaped.
+  it("calc exits 1 with errorInvalidCsv", async () => {
+    const filePath = writeFixture("garbage.csv", INVALID_BINARY_CSV);
+    const out = captureStream();
+    const err = captureStream();
+
+    const code = await runCli(
+      ["calc", "--lang", "it", filePath],
+      out.stream,
+      err.stream,
+    );
+
+    expect(code).toBe(1);
+    expect(err.output()).toBe(itStrings.errorInvalidCsv + "\n");
+  });
+
+  it("validate exits 1 with errorInvalidCsv", async () => {
+    const filePath = writeFixture("garbage.csv", INVALID_BINARY_CSV);
+    const out = captureStream();
+    const err = captureStream();
+
+    const code = await runCli(
+      ["validate", "--lang", "it", filePath],
+      out.stream,
+      err.stream,
+    );
+
+    expect(code).toBe(1);
+    expect(err.output()).toBe(itStrings.errorInvalidCsv + "\n");
   });
 });
 

@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The CLI's `calc`, `validate`, and `classify` commands returned exit code 2
+  ("`Impossibile rilevare il formato del broker`" / "broker detection failed") instead of the
+  documented exit code 1 ("`CSV non valido: impossibile analizzare il file`" / invalid CSV) when
+  given genuinely invalid or binary CSV content (e.g. a file containing a NUL byte, or otherwise
+  unparseable garbage) without an explicit `--broker` flag. This was a regression from v0.11.0's
+  broker auto-detection: `detectBroker()` is a deliberately cheap format sniff — it only checks
+  for DEGIRO's `"Local value currency"` header column or an IBKR `"Trades,Header,"` line, and
+  returns `null` for anything else — but it was never able to distinguish "not a recognized
+  broker format" from "not valid CSV at all". Since all three commands short-circuited on a
+  `null` broker result before ever instantiating `DEGIROParser`/`IBKRParser` (which would
+  otherwise reject invalid content with their own documented `ParseError("INVALID_CSV")` → exit
+  1 contract), invalid/binary input was silently misreported as an unrecognized broker instead.
+  This was caught by minus-tracker's own shipped `stress-test` suite (scenarios `076`/`077`,
+  category `11-errors`), which expects exit 1 for exactly this content and was failing on `main`.
+  A new shared helper (`checkCsvValidity()` in `src/parser/validity.ts`) now performs the
+  structural "is this even parseable CSV" check — the same NUL-byte/binary-garbage heuristic and
+  empty-parse check `DEGIROParser` and `IBKRParser` already used internally, now de-duplicated
+  into one implementation both parsers call. `calc`/`validate`/`classify` consult this same
+  helper only when `detectBroker()` returns `null`, so a well-formed CSV that simply isn't
+  DEGIRO- or IBKR-shaped still correctly reports "broker detection failed" (exit 2) without ever
+  instantiating a parser, while structurally invalid content now correctly reports "invalid CSV"
+  (exit 1) instead. `DEGIROParser`, `IBKRParser`, `Calculator.calculateGains()`, and `Classifier`
+  signatures and thrown-error contracts are unchanged.
+
 - `Calculator.calculateGains()` filtered `IncomeRow`s (dividends/coupons) into the current tax
   year's `dichiarazione.quadroRM` using `new Date(row.date).getFullYear() === taxYear`.
   `row.date` is a plain ISO `"YYYY-MM-DD"` string, and `new Date()` parses a date-only string as

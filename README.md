@@ -351,7 +351,7 @@ da un agente in chiamate successive, mantenendo lo stato lato client.
 ### Domande frequenti
 
 **Il CSV viene rifiutato con "colonna mancante" o "CSV non valido"**
-Verifica di aver esportato da Attività → **Transazioni** e non dal rendiconto del conto. Il parser richiede il formato dell'export Transazioni. Per IBKR, verifica di aver esportato un'**Activity Flex Query** con formato data `yyyyMMdd` e delimitatore virgola — vedi [Formato CSV Interactive Brokers](#formato-csv-interactive-brokers-beta).
+Verifica di aver esportato da Attività → **Transazioni** e non dal rendiconto del conto. Il parser richiede il formato dell'export Transazioni. Per IBKR, verifica di aver esportato un'**Activity Flex Query** con formato data `yyyyMMdd` e delimitatore virgola — vedi [Formato CSV Interactive Brokers](#formato-csv-interactive-brokers-beta). Un file binario/corrotto (non testo/CSV a tutti gli effetti) termina sempre con `CSV non valido` ed exit code 1, anche senza `--broker` esplicito — questo è distinto dall'errore "impossibile rilevare il broker" (exit code 2) qui sotto, che riguarda solo CSV ben formati ma di un formato non riconosciuto.
 
 **Il broker non viene rilevato correttamente / "impossibile rilevare il broker"**
 Il rilevamento automatico si basa sull'intestazione del file (colonna `Local value currency` per DEGIRO, sezione `Trades` per IBKR). Se il file non corrisponde a nessuno dei due formati, usa esplicitamente `--broker degiro` o `--broker ibkr`.
@@ -737,7 +737,7 @@ multiple calls, with state kept client-side.
 ### FAQ / Troubleshooting
 
 **My CSV is rejected with "missing column" or "invalid CSV"**
-Confirm you exported from Activity → **Transactions**, not the Account Statement. The parser requires the Transactions export format. For IBKR, confirm you exported an **Activity Flex Query** with date format `yyyyMMdd` and comma delimiter — see [Interactive Brokers CSV Format](#interactive-brokers-csv-format-beta).
+Confirm you exported from Activity → **Transactions**, not the Account Statement. The parser requires the Transactions export format. For IBKR, confirm you exported an **Activity Flex Query** with date format `yyyyMMdd` and comma delimiter — see [Interactive Brokers CSV Format](#interactive-brokers-csv-format-beta). A binary/corrupted file (not text/CSV at all) always exits with `Invalid CSV` and exit code 1, even without an explicit `--broker` — this is distinct from the "unable to detect broker" error (exit code 2) below, which only applies to well-formed CSVs in an unrecognized format.
 
 **The broker isn't detected correctly / "unable to detect broker"**
 Auto-detection relies on the file's header content (the `Local value currency` column for DEGIRO, the `Trades` section for IBKR). If your file matches neither format, pass `--broker degiro` or `--broker ibkr` explicitly.

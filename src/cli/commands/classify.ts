@@ -3,6 +3,7 @@ import { DEGIROParser } from "../../parser/index.js";
 import { IBKRParser } from "../../parser/ibkr.js";
 import { ParseError } from "../../errors.js";
 import { detectBroker } from "../broker-detect.js";
+import { checkCsvValidity } from "../../parser/validity.js";
 import { classifyToSidecar } from "./classify-core.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import type { Parser } from "../../types.js";
@@ -47,6 +48,15 @@ export async function runClassify(
   }
   const broker = brokerFlag ?? detectBroker(csv);
   if (broker === null) {
+    // detectBroker() is a cheap format sniff, not a CSV validity check — it
+    // can't tell "not DEGIRO/IBKR" apart from "not CSV at all". Distinguish
+    // them here, without instantiating either parser, so genuinely invalid
+    // content still gets the parser's own INVALID_CSV contract (exit 1)
+    // instead of being misreported as an unrecognized broker (exit 2).
+    if (!checkCsvValidity(csv).valid) {
+      stderr.write(s.errorInvalidCsv + "\n");
+      return 1;
+    }
     stderr.write(s.errorBrokerDetectionFailed + "\n");
     return 2;
   }
