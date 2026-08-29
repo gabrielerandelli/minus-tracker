@@ -168,9 +168,10 @@ Il file scaricato contiene tutte le sezioni abilitate concatenate in un unico CS
 CHF). Il broker (DEGIRO/IBKR) viene rilevato automaticamente dal contenuto del file; usa
 `--broker ibkr` per forzarlo esplicitamente.
 
-Le righe Trades con ISIN mancante, quantità zero, valuta non supportata o nessun tasso BCE
-disponibile entro 3 giorni lavorativi vengono saltate con un avviso (non un errore), come per
-DEGIRO — usa `validate` per ispezionarle prima del calcolo.
+Le righe Trades con ISIN mancante, quantità zero, valuta non supportata, nessun tasso BCE
+disponibile entro 3 giorni lavorativi, o un valore di `Buy/Sell` diverso da esattamente `BUY` o
+`SELL` vengono saltate con un avviso (non un errore), come per DEGIRO — usa `validate` per
+ispezionarle prima del calcolo.
 
 Le colonne numeriche (`Quantity`, `TradePrice`, `IBCommission` e `Amount` nelle sezioni
 `Dividends`/`Withholding Tax`/`Interest`) possono usare la virgola come separatore delle migliaia
@@ -556,9 +557,10 @@ The downloaded file has all enabled sections concatenated into one CSV — that'
 GBP, CHF). The broker (DEGIRO/IBKR) is auto-detected from the file's contents; use
 `--broker ibkr` to force it explicitly.
 
-Trades rows with a missing ISIN, zero quantity, unsupported currency, or no ECB rate within 3
-trading days of the trade date are skipped with a warning (not an error), same as DEGIRO — run
-`validate` to inspect them before calculating.
+Trades rows with a missing ISIN, zero quantity, unsupported currency, no ECB rate within 3
+trading days of the trade date, or a `Buy/Sell` value other than exactly `BUY` or `SELL` are
+skipped with a warning (not an error), same as DEGIRO — run `validate` to inspect them before
+calculating.
 
 Numeric columns (`Quantity`, `TradePrice`, `IBCommission`, and `Amount` in the `Dividends`/
 `Withholding Tax`/`Interest` sections) may use a thousands-separator comma (e.g. `2,500`), which

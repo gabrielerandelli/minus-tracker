@@ -345,7 +345,25 @@ export class IBKRParser implements Parser {
     }
 
     // --- Type & quantity ---
-    const type = get("Buy/Sell") as "BUY" | "SELL";
+    // Validate at the type boundary: "Buy/Sell" is raw untyped CSV text, and
+    // the Transaction.type union ("BUY" | "SELL") is closed downstream (the
+    // Calculator's lot-matching loop treats anything !== "BUY" as a SELL, so
+    // an uncaught bad value here would silently masquerade as the opposite
+    // side of a trade). Narrowing via this equality check — rather than an
+    // `as` cast — makes it a compile-time error for any code below this
+    // point to see `type` as anything but the literal union; no value other
+    // than exactly "BUY" or "SELL" can reach the Transaction we build below.
+    const rawType = get("Buy/Sell");
+    if (rawType !== "BUY" && rawType !== "SELL") {
+      this._warningEntries.push({
+        code: "INVALID_BUY_SELL",
+        row: rowCounter,
+        value: rawType,
+        section: "Trades",
+      });
+      return undefined;
+    }
+    const type = rawType;
     const rawQty = parseNumericField(get("Quantity"));
     const quantity = Math.abs(isNaN(rawQty) ? 0 : rawQty);
     if (quantity === 0) {

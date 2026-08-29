@@ -18,6 +18,12 @@ export type WarningEntry =
       section?: IBKRSection;
     }
   | { code: "QUANTITY_ZERO"; row: number; section?: IBKRSection }
+  | {
+      code: "INVALID_BUY_SELL";
+      row: number;
+      value: string;
+      section?: IBKRSection;
+    }
   | { code: "MISSING_ISIN_INCOME"; row: number }
   | { code: "ORPHAN_WITHHOLDING"; isin: string; date: string }
   | { code: "UNMATCHED_WITHHOLDING"; row: number; section: IBKRSection };
@@ -40,6 +46,10 @@ export function warningToEnglish(w: WarningEntry): string {
       return w.section
         ? `${w.section} row ${w.row}: quantity is 0 — skipped`
         : `Row ${w.row}: quantity is 0 — skipped`;
+    case "INVALID_BUY_SELL":
+      return w.section
+        ? `${w.section} row ${w.row}: invalid Buy/Sell value "${w.value}" (expected "BUY" or "SELL") — skipped`
+        : `Row ${w.row}: invalid Buy/Sell value "${w.value}" (expected "BUY" or "SELL") — skipped`;
     case "MISSING_ISIN_INCOME":
       return `Row ${w.row}: blank ISIN on income row — skipped`;
     case "ORPHAN_WITHHOLDING":

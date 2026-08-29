@@ -318,3 +318,66 @@ describe("TC-148: unrecognized section name ignored, known sections still parse"
     expect(parser.warnings).toEqual([]);
   });
 });
+
+describe("regression: Buy/Sell value other than exact \"BUY\"/\"SELL\" (e.g. \"Buy\") is skipped with a warning, not silently miscast", () => {
+  // Two rows for the same ISIN: a valid BUY of 20 shares, then a second row
+  // that is ALSO meant to be a purchase (10 more shares) but has a malformed
+  // Buy/Sell value ("Buy" instead of "BUY"). Before the fix, the unchecked
+  // `as "BUY" | "SELL"` cast let this row's totalLocal sign default to BUY
+  // (any value !== "SELL" was multiplied by -1) while nothing ever built a
+  // Transaction to record it correctly — worse, if a stray "sell"-like typo
+  // reached the Calculator's `tx.type === "BUY"` lot-matching check, it would
+  // be treated as a SELL and fabricate a taxable gain against the wrong lot.
+  // The correct behavior is: skip the malformed row entirely, with a clear
+  // warning, and never let it become a Transaction at all.
+  const csv = [
+    TRADES_HEADER,
+    "Trades,Data,Order,STK,USD,AAPL,APPLE INC,US0378331005,20240102,BUY,20,150.00,-2.00,USD",
+    "Trades,Data,Order,STK,USD,AAPL,APPLE INC,US0378331005,20240301,Buy,10,160.00,-2.00,USD",
+  ].join("\n");
+  const snapshot = {
+    USD: { "2024-01-02": 1.1, "2024-03-01": 1.1 },
+  };
+
+  it("skips the malformed row and returns only the valid BUY as a Transaction", () => {
+    const parser = new IBKRParser(snapshot);
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].type).toBe("BUY");
+    expect(transactions[0].quantity).toBe(20);
+  });
+
+  it('emits a clear INVALID_BUY_SELL warning naming the offending value', () => {
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.warnings).toContain(
+      'Trades row 2: invalid Buy/Sell value "Buy" (expected "BUY" or "SELL") — skipped',
+    );
+  });
+
+  it("does not fabricate a capital gain: with only a real purchase on record, LIFO gains are zero", () => {
+    const parser = new IBKRParser(snapshot);
+    const transactions = parser.parse(csv);
+    const calculator = new Calculator(transactions, parser.warnings);
+    const report = calculator.calculateGains("LIFO");
+    expect(report.netResult).toBe(0);
+    expect(report.lots).toHaveLength(0);
+  });
+});
+
+describe("regression: a well-formed \"BUY\"/\"SELL\" Buy/Sell value is unaffected by the validation", () => {
+  const csv = [
+    TRADES_HEADER,
+    "Trades,Data,Order,STK,EUR,VWCE,VANGUARD FTSE ALL-WORLD,IE00BK5BQT80,20240102,BUY,10,95.00,-1.00,EUR",
+    "Trades,Data,Order,STK,EUR,VWCE,VANGUARD FTSE ALL-WORLD,IE00BK5BQT80,20240301,SELL,10,100.00,-1.00,EUR",
+  ].join("\n");
+
+  it("parses both rows as Transactions with no warnings", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(2);
+    expect(transactions[0].type).toBe("BUY");
+    expect(transactions[1].type).toBe("SELL");
+    expect(parser.warnings).toEqual([]);
+  });
+});
