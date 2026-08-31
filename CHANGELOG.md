@@ -29,6 +29,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DEGIROParser`, `Calculator.calculateGains()`, `IBKRParser`, and `Classifier` signatures are
   unchanged; `DEGIROParser` was not affected (it already derives `BUY`/`SELL` from the signed
   `Quantity` field, not free-text). Found by the automated adversarial QA routine.
+- `Calculator.calculateGains()` could leak raw IEEE-754 floating-point noise into the public
+  `MatchedLot.quantity` field for a fractional-share position closed across multiple partial
+  lot matches (e.g. a `0.5`-share and a `0.7`-share `BUY` partially closed by a `0.9`-share
+  `SELL`): the second matched lot's `quantity` came out as `0.20000000000000007` instead of the
+  clean `0.2` the user actually traded, because `0.9 - 0.7` is not exactly representable in
+  double-precision floating point. The existing `QUANTITY_EPSILON` guard (from a prior fix) only
+  snapped a residue to exactly `0` when it was very close to zero — a non-zero-but-noisy residue
+  like this one passed through untouched and flowed straight into the next lot-matching
+  iteration's `Math.min(lot.quantity, remainingSellQty)`, which is pushed verbatim into
+  `matchedLots[].quantity`. This was silently wrong data in the frozen public API
+  (`GainsReport.lots[]`) and directly visible to end users: the CLI's `calc` command prints
+  `lot.quantity` raw in its results table, so a real fractional-share portfolio closed across
+  multiple sells rendered a garbled quantity column and broke the table's fixed-width alignment.
+  A new `roundQty()` helper now snaps every lot/remaining/matched quantity to 8 decimal places
+  (comfortably covering real broker fractional-share precision, which tops out around 6–8
+  decimals, while being many orders of magnitude coarser than the ~1e-15–1e-17 noise a single
+  subtraction introduces) at each point in the lot-matching loop, including the value assigned
+  to `matchedQty` itself — so the fix also covers a caller supplying an already-noisy
+  `Transaction.quantity` directly (e.g. from `0.1 + 0.2`-style arithmetic before constructing the
+  transaction), not just noise accumulated internally by the loop. Genuine oversells (selling more
+  than was ever bought) and the existing "lot fully closes to exactly zero" behavior are
+  unaffected — a real quantity mismatch is always many orders of magnitude larger than the 8th
+  decimal place. `DEGIROParser`, `IBKRParser`, `Calculator.calculateGains()`, and `Classifier`
+  signatures are unchanged.
 
 - The CLI's `calc`, `validate`, and `classify` commands returned exit code 2
   ("`Impossibile rilevare il formato del broker`" / "broker detection failed") instead of the

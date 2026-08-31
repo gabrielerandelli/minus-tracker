@@ -33,6 +33,23 @@ function roundHalfUp(x: number): number {
 // real quantity mismatches between BUYs and SELLs are always many orders of magnitude larger.
 const QUANTITY_EPSILON = 1e-9;
 
+// Real fractional-share trading precision from brokers (DEGIRO, IBKR) tops out at 8 decimal
+// places, while floating-point noise from a single JS subtraction is ~1e-15 to 1e-17 — many
+// orders of magnitude finer. Snapping every matched/remaining/open-lot quantity to
+// QUANTITY_DECIMALS places after each arithmetic step (rather than only zeroing near-zero
+// residue) keeps that noise from ever being *carried forward* into the next lot-matching
+// iteration — where Math.min(lot.quantity, remainingSellQty) would otherwise copy a noisy
+// value like 0.19999999999999998 verbatim into a matched lot's `quantity` — while still
+// leaving real quantity mismatches (which are always orders of magnitude larger than 1e-8)
+// fully distinguishable, so genuine oversells are still rejected.
+const QUANTITY_DECIMALS = 8;
+const QUANTITY_SCALE = 10 ** QUANTITY_DECIMALS;
+
+function roundQty(x: number): number {
+  if (Math.abs(x) < QUANTITY_EPSILON) return 0;
+  return Math.round(x * QUANTITY_SCALE) / QUANTITY_SCALE;
+}
+
 function inferTaxYear(transactions: Transaction[]): {
   year: number;
   multipleYears: boolean;
@@ -142,7 +159,12 @@ export class Calculator {
           }
 
           const lot = method === "LIFO" ? lots[lots.length - 1] : lots[0];
-          const matchedQty = Math.min(lot.quantity, remainingSellQty);
+          // Both operands are already snapped to QUANTITY_DECIMALS (BUY lots start clean from
+          // tx.quantity; carried-over lot/remaining quantities are re-snapped below), so
+          // matchedQty — which flows verbatim into the public MatchedLot.quantity field — is
+          // guaranteed clean too. roundQty() here is a defensive no-op in the common case, and
+          // a real fix in the rare case a caller feeds in an already-noisy tx.quantity.
+          const matchedQty = roundQty(Math.min(lot.quantity, remainingSellQty));
 
           // Fee allocation
           const allocatedBuyFeesEUR =
@@ -170,11 +192,13 @@ export class Calculator {
             sellFxRate: tx.fxRate,
           });
 
-          lot.quantity -= matchedQty;
-          remainingSellQty -= matchedQty;
-
-          if (Math.abs(lot.quantity) < QUANTITY_EPSILON) lot.quantity = 0;
-          if (Math.abs(remainingSellQty) < QUANTITY_EPSILON) remainingSellQty = 0;
+          // Snap immediately after subtracting: this both eliminates near-zero residue (as the
+          // old QUANTITY_EPSILON-only check did) AND rounds any non-zero residue (e.g.
+          // 0.9 - 0.7 -> 0.19999999999999998) to the nearest realistic trading precision, so the
+          // *next* iteration's Math.min() reads a clean value instead of propagating noise into
+          // another matched lot's quantity.
+          lot.quantity = roundQty(lot.quantity - matchedQty);
+          remainingSellQty = roundQty(remainingSellQty - matchedQty);
 
           if (lot.quantity <= 0) {
             if (method === "LIFO") {
