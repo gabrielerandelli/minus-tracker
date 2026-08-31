@@ -79,6 +79,7 @@ export const it: LocaleStrings = {
 
   configLangSet: (lang) => `Lingua impostata su: ${lang}`,
   configCurrentLang: (lang) => `Lingua corrente: ${lang}`,
+  configReset: "Configurazione ripristinata",
 
   classifyWritten: (path) => `Scritto: ${path}`,
   classifyMergePrompt: (existing) =>

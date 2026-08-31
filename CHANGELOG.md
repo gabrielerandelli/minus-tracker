@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `config --reset`: deletes the persisted `config.json` (the file `config --lang` writes to
+  `$XDG_CONFIG_HOME/minus-tracker/config.json`, or the platform equivalent), clearing any saved
+  locale override so the next `resolveLocale()` call falls through to the `MINUS_TRACKER_LANG`
+  env var, or the `it` default, exactly as if `--lang` had never been run. Deleting an
+  already-absent `config.json` is a no-op (exit 0, no error) via a try/catch-ignore around
+  `fs.unlinkSync`, matching this CLI's existing idempotent-command style. `--reset` only ever
+  touches `config.json`; the separate `carryforward.json` sidecar (`calc --carry-forward`'s
+  config-file source) is untouched. `--reset` is mutually exclusive with `--lang`/`--show` —
+  combining either with `--reset` is a usage error (exit 2), consistent with how `config` already
+  rejects other invalid invocations.
+
 ### Fixed
 
 - `IBKRParser` cast the `Buy/Sell` column of a `Trades` row directly to the `"BUY" | "SELL"`

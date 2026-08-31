@@ -32,6 +32,14 @@ export function saveLocale(lang: SupportedLocale): void {
   fs.writeFileSync(configPath, JSON.stringify(updated, null, 2) + "\n", "utf8");
 }
 
+export function deleteConfig(): void {
+  try {
+    fs.unlinkSync(getConfigPath());
+  } catch {
+    // Missing config.json is not an error — --reset is idempotent.
+  }
+}
+
 export function resolveLocale(cliLang?: string): SupportedLocale {
   // 1. --lang flag
   if (cliLang !== undefined) {
