@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `IBKRParser` cast the `Buy/Sell` column of a `Trades` row directly to the `"BUY" | "SELL"`
+  `Transaction.type` union (`get("Buy/Sell") as "BUY" | "SELL"`) with no runtime validation that
+  the CSV field actually held one of those two literals. Any other value (e.g. `"Buy"` instead of
+  the documented `"BUY"`) silently flowed into a `Transaction` with a nonconforming `type`. Because
+  `Calculator.calculateGains()`'s lot-matching loop treats anything not exactly `"BUY"` as a
+  `SELL`, a malformed purchase row was silently miscategorized as a disposal: a synthetic
+  reproduction (a real `BUY` of 20 shares followed by a second purchase of 10 more shares whose
+  `Buy/Sell` field read `"Buy"`) produced a fabricated €88.18 plusvalenza — a phantom taxable gain
+  for a security that was never sold — with **zero warnings and no error**. A simpler case (a bad
+  value on the first row for an ISIN, no prior open lot) instead threw a confusing
+  `CalculationError` blaming "no open lots" on what was actually meant to be the opening `BUY`.
+  `IBKRParser.parseTradesRow()` now validates `Buy/Sell` with an explicit equality guard
+  (`rawType !== "BUY" && rawType !== "SELL"`) immediately after reading the field, before it is
+  used to build a `Transaction` or determine `totalLocal`'s sign; a non-conforming value is
+  skipped with a new `INVALID_BUY_SELL` warning (naming the row and the offending raw value) and
+  no `Transaction` is produced for that row, consistent with how this same parser already handles
+  other malformed rows (`MISSING_ISIN`, `QUANTITY_ZERO`, `UNSUPPORTED_CURRENCY`, `NO_ECB_RATE`).
+  `DEGIROParser`, `Calculator.calculateGains()`, `IBKRParser`, and `Classifier` signatures are
+  unchanged; `DEGIROParser` was not affected (it already derives `BUY`/`SELL` from the signed
+  `Quantity` field, not free-text). Found by the automated adversarial QA routine.
 - `buildQuadroRT` (the Quadro RT builder behind `report.dichiarazione` / `--export-dichiarazione`
   / the `calculate_gains` MCP tool) could report a Bucket B loss-carryforward breakdown
   (`quadroRT.carryForwardApplied`) whose line items summed to MORE than the amount actually
