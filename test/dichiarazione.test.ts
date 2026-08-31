@@ -432,6 +432,58 @@ describe("REG-002: net loss (differenza<=0) with a pre-existing unconsumed CF en
   });
 });
 
+describe("REG-003: multiple CF entries whose independently-rounded consumption would overstate the total", () => {
+  it("quadroRT.carryForwardApplied sums to exactly bucketB.carryForwardApplied, never more", () => {
+    const buy = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2026-01-05",
+      type: "BUY",
+      quantity: 10,
+      pricePerUnit: 10,
+      totalLocal: -100,
+      totalEUR: 100,
+    });
+    const sell = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2026-06-05",
+      type: "SELL",
+      quantity: 10,
+      pricePerUnit: 10.1005,
+      totalLocal: 101.005,
+      totalEUR: 101.005,
+    });
+
+    // Three carry-forward entries whose consumed amounts (0.335 each, summing
+    // exactly to the 1.00 EUR gain) each round half-up independently to a
+    // higher cent (0.34, 0.34, 0.33 = 1.01) — one cent more than was ever
+    // actually applied or available to absorb.
+    const carryForward: CarryForward[] = [
+      { year: 2023, amount: 0.335 },
+      { year: 2024, amount: 0.335 },
+      { year: 2025, amount: 0.335 },
+    ];
+
+    const report = new Calculator([buy, sell], [], {
+      classification: CLASSIFICATION,
+      carryForward,
+    }).calculateGains("LIFO");
+
+    const applied = report.dichiarazione!.quadroRT.carryForwardApplied;
+    const appliedSum = applied.reduce((s, e) => s + e.importo, 0);
+
+    // The two fields describing "how much CF was consumed this year" must
+    // agree exactly.
+    expect(appliedSum).toBe(report.bucketB!.carryForwardApplied);
+    expect(report.bucketB!.carryForwardApplied).toBe(1);
+
+    // A filing must never show more carry-forward applied than there was
+    // Bucket-B gain (differenza) to absorb it.
+    expect(appliedSum).toBeLessThanOrEqual(
+      report.dichiarazione!.quadroRT.differenza,
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Category 13 — Income-row tax-year filtering (Calculator integration)
 // ---------------------------------------------------------------------------
