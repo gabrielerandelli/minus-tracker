@@ -78,6 +78,7 @@ export interface LocaleStrings {
   // config command
   configLangSet: (lang: SupportedLocale) => string;
   configCurrentLang: (lang: SupportedLocale) => string;
+  configReset: string;
 
   // classify command (Part 11)
   classifyWritten: (path: string) => string;
