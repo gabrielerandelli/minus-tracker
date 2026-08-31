@@ -36,14 +36,35 @@ export function buildQuadroRT(
   const carryForwardApplied: CarryForwardEntry[] = [];
   const carryForwardRiportato: CarryForwardEntry[] = [];
 
+  // Cumulative-rounding allocation: each entry's displayed `importo` is derived
+  // from the delta between two roundings of a running (unrounded) total, not by
+  // rounding its own `consumed` amount in isolation. This guarantees the sum of
+  // displayed importo values telescopes to exactly roundHalfUp(cumulativeConsumed)
+  // — the same "sum-then-round-once" formula Calculator.calculateGains uses for
+  // bucketB.carryForwardApplied (src/calculator/index.ts) — instead of drifting a
+  // cent or more above it, as independent per-entry rounding could. Each entry's
+  // own `consumed`/`residual` bookkeeping (which drives `remaining` and
+  // carryForwardRiportato below) stays on the unrounded amounts throughout, so
+  // only the *displayed* per-entry euro split changes, never the totals.
+  let cumulativeConsumed = 0;
+  let cumulativeConsumedRounded = 0;
+
   for (const entry of sorted) {
     if (taxYear - entry.year > 4) continue; // expired: gone, not "remaining"
     const consumed = remaining > 0 ? Math.min(entry.amount, remaining) : 0;
     if (consumed > 0) {
-      carryForwardApplied.push({
-        annoOrigine: entry.year,
-        importo: roundHalfUp(consumed),
-      });
+      cumulativeConsumed += consumed;
+      const newCumulativeRounded = roundHalfUp(cumulativeConsumed);
+      const entryImporto = roundHalfUp(
+        newCumulativeRounded - cumulativeConsumedRounded,
+      );
+      if (entryImporto > 0) {
+        carryForwardApplied.push({
+          annoOrigine: entry.year,
+          importo: entryImporto,
+        });
+      }
+      cumulativeConsumedRounded = newCumulativeRounded;
       remaining -= consumed;
     }
     const residual = roundHalfUp(entry.amount - consumed);

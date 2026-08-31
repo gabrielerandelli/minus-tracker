@@ -29,6 +29,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DEGIROParser`, `Calculator.calculateGains()`, `IBKRParser`, and `Classifier` signatures are
   unchanged; `DEGIROParser` was not affected (it already derives `BUY`/`SELL` from the signed
   `Quantity` field, not free-text). Found by the automated adversarial QA routine.
+- `buildQuadroRT` (the Quadro RT builder behind `report.dichiarazione` / `--export-dichiarazione`
+  / the `calculate_gains` MCP tool) could report a Bucket B loss-carryforward breakdown
+  (`quadroRT.carryForwardApplied`) whose line items summed to MORE than the amount actually
+  applied — and, worse, more than there was Bucket B gain (`differenza`) to offset in the first
+  place. This happened because each carry-forward entry's consumed amount was rounded to cents
+  **independently** (`roundHalfUp(consumed)`) when building the display breakdown, while the
+  separately-computed authoritative total (`report.bucketB.carryForwardApplied`, in
+  `Calculator.calculateGains()`) sums every entry's *unrounded* consumption first and rounds only
+  **once**. Since `roundHalfUp` is not linear, several entries whose fractional-cent consumption
+  each independently rounds up (e.g. three `0.335` EUR carry-forward entries fully absorbing a
+  `1.00` EUR gain) could display as `0.34 + 0.34 + 0.33 = 1.01` — one cent more than was ever
+  applied or available, and disagreeing with `report.bucketB.carryForwardApplied` (`1.00`) inside
+  the very same `GainsReport`. `buildQuadroRT` now derives each entry's displayed `importo` from
+  the delta between two roundings of a running unrounded total (`roundHalfUp(cumulativeConsumed)
+  - previousCumulativeRounded`), which telescopes by construction so the displayed line items
+  always sum to exactly `roundHalfUp(total unrounded consumption)` — the same figure
+  `Calculator.calculateGains()` reports as `bucketB.carryForwardApplied` — instead of drifting
+  above it. Each entry's own `consumed`/residual bookkeeping (driving `remaining` and
+  `carryForwardRiportato`) is untouched and stays on unrounded amounts throughout, so
+  `Calculator`'s own `bucketB.carryForwardApplied`, `carryForwardRemaining`, and
+  `carryForwardEntriesRemaining` outputs are unaffected. `DEGIROParser`, `IBKRParser`,
+  `Calculator.calculateGains()`, and `Classifier` signatures are unchanged.
+
 - `Calculator.calculateGains()` could leak raw IEEE-754 floating-point noise into the public
   `MatchedLot.quantity` field for a fractional-share position closed across multiple partial
   lot matches (e.g. a `0.5`-share and a `0.7`-share `BUY` partially closed by a `0.9`-share
