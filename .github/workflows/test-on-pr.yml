@@ -1,0 +1,40 @@
+# Repo: gabrielerandelli/minus-tracker  (PUBLIC)
+# Path: .github/workflows/test-on-pr.yml
+#
+# Pre-merge CI gate: build and run the real test suite on every pull request
+# against main, before a human (or an automated PR opener -- spec-pipeline-execute,
+# the QA routine) can merge it. Previously nothing ran tests before merge; the
+# only check was bump-submodule.yml's build/test gate in the private wrapper
+# repo, which runs AFTER merge and can only refuse a pointer bump, not undo an
+# already-broken commit on this repo's own main.
+#
+# Pair this with a required-status-check branch protection rule on main (set
+# manually in Settings > Branches) once this workflow has run at least once, so
+# the check name exists to select.
+
+name: Test on PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install, build, test
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm test
