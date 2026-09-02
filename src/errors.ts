@@ -24,14 +24,35 @@ export class ParseError extends Error {
 }
 
 export class CalculationError extends Error {
-  readonly isin: string;
-  readonly date: string;
+  // v0.11.2 — AMBIGUOUS_TAX_YEAR added alongside the pre-existing (now
+  // implicit) NO_OPEN_LOTS case. Same discriminated-by-.code, optional-field
+  // pattern ParseError already uses above, not a new shape (see
+  // docs/prd/07-error-handling.md's compatibility note).
+  readonly code: "NO_OPEN_LOTS" | "AMBIGUOUS_TAX_YEAR";
+  readonly isin?: string; // present only when code === "NO_OPEN_LOTS"
+  readonly date?: string; // present only when code === "NO_OPEN_LOTS"
+  readonly years?: number[]; // ascending, deduped; present only when code === "AMBIGUOUS_TAX_YEAR"
 
-  constructor(isin: string, date: string) {
-    super(`No open lots for ISIN ${isin} on ${date}`);
-    this.name = "CalculationError";
-    this.isin = isin;
-    this.date = date;
+  constructor(isin: string, date: string);
+  constructor(code: "AMBIGUOUS_TAX_YEAR", years: number[]);
+  constructor(isinOrCode: string, dateOrYears: string | number[]) {
+    if (Array.isArray(dateOrYears)) {
+      const years = dateOrYears;
+      super(
+        `Transactions span multiple tax years (${years.join(", ")}) — specify --year`,
+      );
+      this.name = "CalculationError";
+      this.code = "AMBIGUOUS_TAX_YEAR";
+      this.years = years;
+    } else {
+      const isin = isinOrCode;
+      const date = dateOrYears;
+      super(`No open lots for ISIN ${isin} on ${date}`);
+      this.name = "CalculationError";
+      this.code = "NO_OPEN_LOTS";
+      this.isin = isin;
+      this.date = date;
+    }
   }
 }
 

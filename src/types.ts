@@ -124,6 +124,12 @@ export interface CalculatorOptions {
   classification?: ClassificationMap;
   carryForward?: CarryForward[];
   incomeRows?: IncomeRow[];
+  // v0.11.2 — scopes report aggregation to one tax year while lot matching
+  // still runs on the full input (see Calculator.calculateGains). Omitted:
+  // taxYear is inferred from SELL transaction dates as before, throwing
+  // CalculationError with .code === "AMBIGUOUS_TAX_YEAR" if they span more
+  // than one calendar year.
+  taxYear?: number;
 }
 
 /**
@@ -181,6 +187,12 @@ export interface Transaction {
   // these; they remain undefined there.
   feesFxRate?: number;
   feesCurrency?: string;
+  // v0.11.2 — 1-indexed CSV row this transaction was parsed from (same
+  // numbering as WarningEntry.row). Set by DEGIROParser/IBKRParser; used by
+  // the multi-file merge pipeline's cross-file duplicate-row detection
+  // (warnDuplicateRow's {row1}/{row2}). Optional so hand-built Transaction
+  // objects (tests, MCP tool input) remain valid without it.
+  sourceRow?: number;
 }
 
 export interface MatchedLot {
