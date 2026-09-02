@@ -168,6 +168,7 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
           "fxRate",
           "feesFxRate",
           "feesCurrency",
+          "sourceRow",
         ].sort(),
       );
       expect(transactionSchema.required.slice().sort()).toEqual(
