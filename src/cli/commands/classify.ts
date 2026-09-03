@@ -1,12 +1,8 @@
-import * as fs from "node:fs";
-import { DEGIROParser } from "../../parser/index.js";
-import { IBKRParser } from "../../parser/ibkr.js";
 import { ParseError } from "../../errors.js";
-import { detectBroker } from "../broker-detect.js";
-import { checkCsvValidity } from "../../parser/validity.js";
 import { classifyToSidecar } from "./classify-core.js";
+import { parseMultipleFiles, MultiFileError } from "../multi-file.js";
+import type { Broker } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
-import type { Parser } from "../../types.js";
 
 export async function runClassify(
   positional: string[],
@@ -23,19 +19,12 @@ export async function runClassify(
     return 2;
   }
 
-  const csvPath = positional[0];
-  if (!csvPath) {
-    stderr.write("Usage: minus-tracker classify [--offline] <file.csv>\n");
+  const files = positional;
+  if (files.length === 0) {
+    stderr.write("Usage: minus-tracker classify [--offline] <file.csv> [file2.csv ...]\n");
     return 2;
   }
-
-  let csv: string;
-  try {
-    csv = fs.readFileSync(csvPath, "utf8");
-  } catch {
-    stderr.write(`Cannot read file: ${csvPath}\n`);
-    return 1;
-  }
+  const multi = files.length > 1;
 
   const brokerFlag = flags["broker"] as string | undefined;
   if (
@@ -46,26 +35,37 @@ export async function runClassify(
     stderr.write("--broker must be degiro or ibkr\n");
     return 2;
   }
-  const broker = brokerFlag ?? detectBroker(csv);
-  if (broker === null) {
-    // detectBroker() is a cheap format sniff, not a CSV validity check — it
-    // can't tell "not DEGIRO/IBKR" apart from "not CSV at all". Distinguish
-    // them here, without instantiating either parser, so genuinely invalid
-    // content still gets the parser's own INVALID_CSV contract (exit 1)
-    // instead of being misreported as an unrecognized broker (exit 2).
-    if (!checkCsvValidity(csv).valid) {
-      stderr.write(s.errorInvalidCsv + "\n");
-      return 1;
-    }
-    stderr.write(s.errorBrokerDetectionFailed + "\n");
+
+  // --sidecar: optional at N=1 (derived from the single file, as before),
+  // required at N>1 (TC-182, classify slice).
+  const sidecarFlag = flags["sidecar"] as string | undefined;
+  if (multi && sidecarFlag === undefined) {
+    stderr.write(s.errorMultiFileOutputRequired("--sidecar") + "\n");
     return 2;
   }
-  const parser: Parser =
-    broker === "degiro" ? new DEGIROParser() : new IBKRParser();
-  let transactions;
+
+  let parsed;
   try {
-    transactions = parser.parse(csv);
+    parsed = parseMultipleFiles(files, {
+      broker: brokerFlag as Broker | undefined,
+    });
   } catch (err) {
+    if (err instanceof MultiFileError) {
+      switch (err.code) {
+        case "DUPLICATE_FILE_PATH":
+          stderr.write(s.errorDuplicateFilePath(err.path!) + "\n");
+          return 2;
+        case "CANNOT_READ_FILE":
+          stderr.write(`Cannot read file: ${err.file}\n`);
+          return 1;
+        case "INVALID_CSV":
+          stderr.write(s.errorInvalidCsv + "\n");
+          return 1;
+        case "BROKER_DETECTION_FAILED":
+          stderr.write(s.errorBrokerDetectionFailed + "\n");
+          return 2;
+      }
+    }
     if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
         stderr.write(s.errorInvalidCsv + "\n");
@@ -79,10 +79,15 @@ export async function runClassify(
     throw err;
   }
 
-  // Derive sidecar path: replace .csv extension with .classify.json
-  const base = csvPath.replace(/\.csv$/i, "");
-  const sidecarPath = base + ".classify.json";
+  // Sidecar path: explicit --sidecar, or (N=1 only) derived from the
+  // single input file — same rule as `calc` (Task 53).
+  const sidecarPath =
+    sidecarFlag ?? files[0].replace(/\.csv$/i, "") + ".classify.json";
 
-  await classifyToSidecar(transactions, sidecarPath, { offline }, s, stdout);
+  // classifyToSidecar/Classifier.classify() already dedupes ISINs within
+  // whatever transaction list they're given — feeding it the cross-file
+  // merged list here is what makes TC-194's cross-file dedup work, with no
+  // separate multi-file-specific dedup path.
+  await classifyToSidecar(parsed.transactions, sidecarPath, { offline }, s, stdout);
   return 0;
 }

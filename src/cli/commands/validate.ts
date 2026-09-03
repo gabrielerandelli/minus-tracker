@@ -1,11 +1,65 @@
-import * as fs from "node:fs";
-import { DEGIROParser } from "../../parser/index.js";
-import { IBKRParser } from "../../parser/ibkr.js";
 import { ParseError } from "../../errors.js";
-import { detectBroker } from "../broker-detect.js";
-import { checkCsvValidity } from "../../parser/validity.js";
+import { parseMultipleFiles, MultiFileError, multiFileTag } from "../multi-file.js";
+import type { Broker, FileParseResult } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
-import type { Parser } from "../../types.js";
+import { warningToEnglish, type WarningEntry } from "../../parser/warnings.js";
+
+function renderWarningEntry(entry: WarningEntry, s: LocaleStrings): string {
+  let reason: string;
+  switch (entry.code) {
+    case "MISSING_ISIN":
+      reason = s.warnMissingIsin(entry.row, entry.section);
+      break;
+    case "UNSUPPORTED_CURRENCY":
+      reason = s.warnUnsupportedCurrency(
+        entry.row,
+        entry.currency,
+        entry.section,
+      );
+      break;
+    case "NO_ECB_RATE":
+      reason = s.warnNoEcbRate(
+        entry.row,
+        entry.currency,
+        entry.date,
+        entry.section,
+      );
+      break;
+    case "QUANTITY_ZERO":
+      reason = s.warnQuantityZero(entry.row);
+      break;
+    case "MISSING_ISIN_INCOME":
+      reason = s.warnMissingIsinIncome(entry.row);
+      break;
+    case "ORPHAN_WITHHOLDING":
+      reason = s.warnOrphanWithholding(entry.isin, entry.date);
+      break;
+    case "UNMATCHED_WITHHOLDING":
+      reason = s.warnUnmatchedWithholding(entry.row, entry.section);
+      break;
+    default:
+      // No localized LocaleStrings key exists for this code (pre-existing
+      // gap, not introduced here) — fall back to the locale-agnostic
+      // English rendering rather than leaving it unassigned.
+      reason = warningToEnglish(entry);
+      break;
+  }
+  return reason;
+}
+
+function renderFileBlock(
+  pf: FileParseResult,
+  multi: boolean,
+  s: LocaleStrings,
+  stdout: NodeJS.WritableStream,
+): void {
+  stdout.write(
+    multiFileTag(pf.file, multi) + s.validateOk(pf.transactions.length, 0) + "\n",
+  );
+  for (const entry of pf.warningEntries) {
+    stdout.write(multiFileTag(pf.file, multi) + renderWarningEntry(entry, s) + "\n");
+  }
+}
 
 export async function runValidate(
   positional: string[],
@@ -14,19 +68,12 @@ export async function runValidate(
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
 ): Promise<number> {
-  const filePath = positional[0];
-  if (!filePath) {
-    stderr.write("Usage: minus-tracker validate <file.csv>\n");
+  const files = positional;
+  if (files.length === 0) {
+    stderr.write("Usage: minus-tracker validate <file.csv> [file2.csv ...]\n");
     return 2;
   }
-
-  let csv: string;
-  try {
-    csv = fs.readFileSync(filePath, "utf8");
-  } catch {
-    stderr.write(`Cannot read file: ${filePath}\n`);
-    return 1;
-  }
+  const multi = files.length > 1;
 
   const brokerFlag = flags["broker"] as string | undefined;
   if (
@@ -37,26 +84,29 @@ export async function runValidate(
     stderr.write("--broker must be degiro or ibkr\n");
     return 2;
   }
-  const broker = brokerFlag ?? detectBroker(csv);
-  if (broker === null) {
-    // detectBroker() is a cheap format sniff, not a CSV validity check — it
-    // can't tell "not DEGIRO/IBKR" apart from "not CSV at all". Distinguish
-    // them here, without instantiating either parser, so genuinely invalid
-    // content still gets the parser's own INVALID_CSV contract (exit 1)
-    // instead of being misreported as an unrecognized broker (exit 2).
-    if (!checkCsvValidity(csv).valid) {
-      stderr.write(s.errorInvalidCsv + "\n");
-      return 1;
-    }
-    stderr.write(s.errorBrokerDetectionFailed + "\n");
-    return 2;
-  }
-  const parser: Parser =
-    broker === "degiro" ? new DEGIROParser() : new IBKRParser();
-  let transactions;
+
+  let parsed;
   try {
-    transactions = parser.parse(csv);
+    parsed = parseMultipleFiles(files, {
+      broker: brokerFlag as Broker | undefined,
+    });
   } catch (err) {
+    if (err instanceof MultiFileError) {
+      switch (err.code) {
+        case "DUPLICATE_FILE_PATH":
+          stderr.write(s.errorDuplicateFilePath(err.path!) + "\n");
+          return 2;
+        case "CANNOT_READ_FILE":
+          stderr.write(`Cannot read file: ${err.file}\n`);
+          return 1;
+        case "INVALID_CSV":
+          stderr.write(s.errorInvalidCsv + "\n");
+          return 1;
+        case "BROKER_DETECTION_FAILED":
+          stderr.write(s.errorBrokerDetectionFailed + "\n");
+          return 2;
+      }
+    }
     if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
         stderr.write(s.errorInvalidCsv + "\n");
@@ -70,43 +120,29 @@ export async function runValidate(
     throw err;
   }
 
-  stdout.write(s.validateOk(transactions.length, 0) + "\n");
+  for (const pf of parsed.perFile) {
+    renderFileBlock(pf, multi, s, stdout);
+  }
 
-  for (const entry of parser.warningEntries) {
-    let reason: string;
-    switch (entry.code) {
-      case "MISSING_ISIN":
-        reason = s.warnMissingIsin(entry.row, entry.section);
-        break;
-      case "UNSUPPORTED_CURRENCY":
-        reason = s.warnUnsupportedCurrency(
-          entry.row,
-          entry.currency,
-          entry.section,
-        );
-        break;
-      case "NO_ECB_RATE":
-        reason = s.warnNoEcbRate(
-          entry.row,
-          entry.currency,
-          entry.date,
-          entry.section,
-        );
-        break;
-      case "QUANTITY_ZERO":
-        reason = s.warnQuantityZero(entry.row);
-        break;
-      case "MISSING_ISIN_INCOME":
-        reason = s.warnMissingIsinIncome(entry.row);
-        break;
-      case "ORPHAN_WITHHOLDING":
-        reason = s.warnOrphanWithholding(entry.isin, entry.date);
-        break;
-      case "UNMATCHED_WITHHOLDING":
-        reason = s.warnUnmatchedWithholding(entry.row, entry.section);
-        break;
+  if (multi) {
+    const totalCount = parsed.perFile.reduce(
+      (sum, pf) => sum + pf.transactions.length,
+      0,
+    );
+    const perFileWarnings = parsed.perFile.reduce(
+      (sum, pf) => sum + pf.warningEntries.length,
+      0,
+    );
+    const totalWarnings = perFileWarnings + parsed.duplicateRows.length;
+
+    stdout.write("\n");
+    stdout.write(s.validateTotal(totalCount, totalWarnings) + "\n");
+    for (const dup of parsed.duplicateRows) {
+      stdout.write(
+        s.warnDuplicateRow(dup.file1, dup.row1 ?? 0, dup.file2, dup.row2 ?? 0) +
+          "\n",
+      );
     }
-    stdout.write(reason + "\n");
   }
 
   return 0;
