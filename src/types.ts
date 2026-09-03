@@ -124,6 +124,12 @@ export interface CalculatorOptions {
   classification?: ClassificationMap;
   carryForward?: CarryForward[];
   incomeRows?: IncomeRow[];
+  // v0.11.2 — scopes report aggregation to one tax year while lot matching
+  // still runs on the full input (see Calculator.calculateGains). Omitted:
+  // taxYear is inferred from SELL transaction dates as before, throwing
+  // CalculationError with .code === "AMBIGUOUS_TAX_YEAR" if they span more
+  // than one calendar year.
+  taxYear?: number;
 }
 
 /**
