@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   config-file source) is untouched. `--reset` is mutually exclusive with `--lang`/`--show` —
   combining either with `--reset` is a usage error (exit 2), consistent with how `config` already
   rejects other invalid invocations.
+- `Transaction.sourceRow`: an optional 1-indexed CSV row number, stamped by both
+  `DEGIROParser`/`IBKRParser` (same numbering as the existing `WarningEntry.row`), and a new
+  internal `parseMultipleFiles()` pipeline (`src/cli/multi-file.ts`) that parses N CSV files —
+  resolving duplicate resolved paths as a usage error, running each file's existing broker
+  detection/parsing unchanged, concatenating the results in file-argument order, and scanning for
+  cross-file duplicate-looking rows (same ISIN/date/type/quantity/price/currency across two
+  *different* source files) which are warned about, using `sourceRow`, but never dropped. This is
+  the shared multi-file plumbing `calc`/`validate`/`classify`'s upcoming N-file support builds on;
+  no existing single-file behavior changes.
 
 ### Fixed
 

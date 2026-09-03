@@ -264,6 +264,7 @@ export class DEGIROParser implements Parser {
         totalEUR,
         feesEUR,
         fxRate,
+        sourceRow: rowIndex,
       });
     }
 

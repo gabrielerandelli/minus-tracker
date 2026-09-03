@@ -188,8 +188,11 @@ export interface Transaction {
   feesFxRate?: number;
   feesCurrency?: string;
   // v0.11.2 — 1-indexed CSV row this transaction was parsed from (same
-  // numbering as WarningEntry.row). Set by DEGIROParser/IBKRParser; used by
-  // the multi-file merge pipeline's cross-file duplicate-row detection
+  // numbering as WarningEntry.row: for DEGIROParser, the raw CSV row with
+  // the header counted as row 1; for IBKRParser, the Trades section's own
+  // row counter, matching how its warnings are already section-relative).
+  // Set by DEGIROParser/IBKRParser; used by the multi-file merge pipeline's
+  // (src/cli/multi-file.ts) cross-file duplicate-row detection
   // (warnDuplicateRow's {row1}/{row2}). Optional so hand-built Transaction
   // objects (tests, MCP tool input) remain valid without it.
   sourceRow?: number;

@@ -454,6 +454,7 @@ export class IBKRParser implements Parser {
       fxRate,
       feesFxRate,
       feesCurrency,
+      sourceRow: rowCounter,
     };
   }
 
