@@ -1,21 +1,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { DEGIROParser } from "../../parser/index.js";
-import { IBKRParser } from "../../parser/ibkr.js";
 import { Calculator } from "../../calculator/index.js";
 import { Classifier } from "../../classifier/index.js";
-import { ParseError } from "../../errors.js";
-import { detectBroker } from "../broker-detect.js";
-import { checkCsvValidity } from "../../parser/validity.js";
+import { ParseError, CalculationError } from "../../errors.js";
 import { renderReport } from "../renderer.js";
 import { classifyToSidecar } from "./classify-core.js";
+import { parseMultipleFiles, MultiFileError } from "../multi-file.js";
+import type { Broker } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import type {
   LotMethod,
   ClassificationMap,
   CarryForward,
-  Parser,
 } from "../../types.js";
 
 export async function runCalc(
@@ -25,21 +22,69 @@ export async function runCalc(
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
 ): Promise<number> {
-  const filePath = positional[0];
-  if (!filePath) {
+  const files = positional;
+  if (files.length === 0) {
     stderr.write(
-      "Usage: minus-tracker calc [--method LIFO|FIFO] [--offline] [--json] <file.csv>\n",
+      "Usage: minus-tracker calc [--method LIFO|FIFO] [--offline] [--json] <file.csv> [file2.csv ...]\n",
     );
     return 2;
   }
+  const filePath = files[0];
+  const multi = files.length > 1;
 
-  let csv: string;
-  try {
-    csv = fs.readFileSync(filePath, "utf8");
-  } catch {
-    stderr.write(s.errorCannotReadFile(filePath) + "\n");
-    return 1;
+  const brokerFlag = flags["broker"] as string | undefined;
+  if (
+    brokerFlag !== undefined &&
+    brokerFlag !== "degiro" &&
+    brokerFlag !== "ibkr"
+  ) {
+    stderr.write("--broker must be degiro or ibkr\n");
+    return 2;
   }
+
+  // --sidecar: optional at N=1 (derived from the single file, as before),
+  // required at N>1 (TC-182).
+  const sidecarFlag = flags["sidecar"] as string | undefined;
+  if (multi && sidecarFlag === undefined) {
+    stderr.write(s.errorMultiFileOutputRequired("--sidecar") + "\n");
+    return 2;
+  }
+
+  let parsed;
+  try {
+    parsed = parseMultipleFiles(files, {
+      broker: brokerFlag as Broker | undefined,
+    });
+  } catch (err) {
+    if (err instanceof MultiFileError) {
+      switch (err.code) {
+        case "DUPLICATE_FILE_PATH":
+          stderr.write(s.errorDuplicateFilePath(err.path!) + "\n");
+          return 2;
+        case "CANNOT_READ_FILE":
+          stderr.write(s.errorCannotReadFile(err.file!) + "\n");
+          return 1;
+        case "INVALID_CSV":
+          stderr.write(s.errorInvalidCsv + "\n");
+          return 1;
+        case "BROKER_DETECTION_FAILED":
+          stderr.write(s.errorBrokerDetectionFailed + "\n");
+          return 2;
+      }
+    }
+    if (err instanceof ParseError) {
+      if (err.code === "INVALID_CSV") {
+        stderr.write(s.errorInvalidCsv + "\n");
+      } else if (err.code === "MISSING_SECTION") {
+        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
+      } else {
+        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
+      }
+      return 1;
+    }
+    throw err;
+  }
+  const transactions = parsed.transactions;
 
   const method = (flags["method"] as LotMethod) ?? "LIFO";
   if (method !== "LIFO" && method !== "FIFO") {
@@ -47,14 +92,27 @@ export async function runCalc(
     return 2;
   }
 
-  // --export-dichiarazione flag parsing (optional path value)
+  // --export-dichiarazione flag parsing. The optional-value convenience
+  // (auto-derive the path from the single input file) applies only at
+  // N=1 (TC-183); at N>1 a bare flag with no explicit path is a usage
+  // error, since there's no single file to derive a default from.
   const exportFlagRaw = flags["export-dichiarazione"];
   const exportRequested =
     exportFlagRaw !== undefined && exportFlagRaw !== false;
+  if (exportRequested && multi && typeof exportFlagRaw !== "string") {
+    stderr.write(
+      s.errorMultiFileOutputRequired("--export-dichiarazione") + "\n",
+    );
+    return 2;
+  }
   const exportPath =
     typeof exportFlagRaw === "string"
       ? exportFlagRaw
       : filePath.replace(/\.csv$/i, "") + ".dichiarazione.json";
+
+  // --year: sets CalculatorOptions.taxYear, scoping the report to that year.
+  const yearFlag = flags["year"] as string | undefined;
+  const taxYear = yearFlag !== undefined ? parseInt(yearFlag, 10) : undefined;
 
   // --carry-forward flag parsing
   const rawCf: unknown = flags["carry-forward"];
@@ -104,50 +162,10 @@ export async function runCalc(
     ([year, amount]) => ({ year: parseInt(year, 10), amount }),
   );
 
-  const brokerFlag = flags["broker"] as string | undefined;
-  if (
-    brokerFlag !== undefined &&
-    brokerFlag !== "degiro" &&
-    brokerFlag !== "ibkr"
-  ) {
-    stderr.write("--broker must be degiro or ibkr\n");
-    return 2;
-  }
-  const broker = brokerFlag ?? detectBroker(csv);
-  if (broker === null) {
-    // detectBroker() is a cheap format sniff, not a CSV validity check — it
-    // can't tell "not DEGIRO/IBKR" apart from "not CSV at all". Distinguish
-    // them here, without instantiating either parser, so genuinely invalid
-    // content still gets the parser's own INVALID_CSV contract (exit 1)
-    // instead of being misreported as an unrecognized broker (exit 2).
-    if (!checkCsvValidity(csv).valid) {
-      stderr.write(s.errorInvalidCsv + "\n");
-      return 1;
-    }
-    stderr.write(s.errorBrokerDetectionFailed + "\n");
-    return 2;
-  }
-  const parser: Parser =
-    broker === "degiro" ? new DEGIROParser() : new IBKRParser();
-  let transactions;
-  try {
-    transactions = parser.parse(csv);
-  } catch (err) {
-    if (err instanceof ParseError) {
-      if (err.code === "INVALID_CSV") {
-        stderr.write(s.errorInvalidCsv + "\n");
-      } else if (err.code === "MISSING_SECTION") {
-        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
-      } else {
-        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
-      }
-      return 1;
-    }
-    throw err;
-  }
-
-  // Sidecar auto-discovery — reuse it if present; otherwise auto-classify.
-  const sidecarPath = filePath.replace(/\.csv$/i, "") + ".classify.json";
+  // Sidecar path: explicit --sidecar, or (N=1 only) auto-derived — reuse
+  // it if present, otherwise auto-classify.
+  const sidecarPath =
+    sidecarFlag ?? filePath.replace(/\.csv$/i, "") + ".classify.json";
   let classification: ClassificationMap | undefined;
   if (fs.existsSync(sidecarPath)) {
     try {
@@ -177,12 +195,22 @@ export async function runCalc(
     );
   }
 
-  const calculator = new Calculator(transactions, parser.warnings, {
+  const calculator = new Calculator(transactions, parsed.warnings, {
     classification,
     carryForward: carryForward.length > 0 ? carryForward : undefined,
-    incomeRows: parser.incomeRows,
+    incomeRows: parsed.incomeRows,
+    taxYear,
   });
-  const report = calculator.calculateGains(method);
+  let report;
+  try {
+    report = calculator.calculateGains(method);
+  } catch (err) {
+    if (err instanceof CalculationError && err.code === "AMBIGUOUS_TAX_YEAR") {
+      stderr.write(s.errorAmbiguousTaxYear(err.years!) + "\n");
+      return 1;
+    }
+    throw err;
+  }
   const carryForwardWasProvided = carryForward.length > 0;
 
   if (exportRequested) {

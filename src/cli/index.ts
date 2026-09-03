@@ -48,6 +48,7 @@ export async function runCli(
       offline: { type: "boolean", default: false },
       "carry-forward": { type: "string", multiple: true },
       "export-dichiarazione": { type: "string" },
+      sidecar: { type: "string" },
       help: { type: "boolean", default: false },
       version: { type: "boolean", default: false },
     },
