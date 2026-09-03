@@ -50,22 +50,50 @@ function roundQty(x: number): number {
   return Math.round(x * QUANTITY_SCALE) / QUANTITY_SCALE;
 }
 
-function inferTaxYear(transactions: Transaction[]): {
-  year: number;
-  multipleYears: boolean;
-} {
+// Most-frequent-year fallback, used only when there are no SELL transactions
+// at all to infer from (see inferTaxYear below, and TC-176 scenario (b)).
+// Pre-v0.11.2 inference logic, unchanged.
+function inferYearFromAllDates(transactions: Transaction[]): number {
   const counts: Record<string, number> = {};
   for (const t of transactions) {
     const y = t.date.slice(0, 4);
     counts[y] = (counts[y] ?? 0) + 1;
   }
   const years = Object.keys(counts);
-  if (years.length === 0)
-    return { year: new Date().getFullYear(), multipleYears: false };
-  const year = parseInt(
-    years.reduce((a, b) => (counts[a] >= counts[b] ? a : b)),
+  if (years.length === 0) return new Date().getFullYear();
+  return parseInt(years.reduce((a, b) => (counts[a] >= counts[b] ? a : b)));
+}
+
+// v0.11.2 — tax-year inference/scoping.
+//
+// An explicit `explicitTaxYear` (CalculatorOptions.taxYear) is authoritative:
+// it short-circuits inference entirely, so it can scope a report to a year
+// with zero matching SELLs (TC-174) or to one year of an otherwise-ambiguous
+// multi-year SELL spread (TC-171) without ever consulting SELL dates.
+//
+// Absent that, inference counts SELL dates only (TC-176) — a BUY-only year
+// spread (an ordinary "bought last year, sold this year" trade, or a merged
+// multi-file BUY history) never triggers ambiguity (TC-173). Only when SELLs
+// themselves span more than one calendar year is the input truly ambiguous,
+// and that's a hard error rather than a blended report (TC-172).
+function inferTaxYear(
+  transactions: Transaction[],
+  explicitTaxYear?: number,
+): number {
+  if (explicitTaxYear !== undefined) return explicitTaxYear;
+
+  const sellYears = new Set<number>();
+  for (const t of transactions) {
+    if (t.type === "SELL") sellYears.add(parseInt(t.date.slice(0, 4), 10));
+  }
+
+  if (sellYears.size === 0) return inferYearFromAllDates(transactions);
+  if (sellYears.size === 1) return [...sellYears][0]!;
+
+  throw new CalculationError(
+    "AMBIGUOUS_TAX_YEAR",
+    [...sellYears].sort((a, b) => a - b),
   );
-  return { year, multipleYears: years.length > 1 };
 }
 
 /**
@@ -94,8 +122,10 @@ export class Calculator {
    * @param method - `"LIFO"` or `"FIFO"`.
    * @returns GainsReport with `plusvalenze`, `minusvalenze`, `netResult`, per-lot breakdown,
    *          ECB rates used, and any accumulated warnings.
-   * @throws {CalculationError} when a SELL has no matching open buy lots.
-   *         `error.isin` and `error.date` identify the problematic transaction.
+   * @throws {CalculationError} `.code === "NO_OPEN_LOTS"` when a SELL has no matching open
+   *         buy lots (`error.isin`/`error.date` identify the transaction), or
+   *         `.code === "AMBIGUOUS_TAX_YEAR"` when `options.taxYear` is omitted and SELL
+   *         transactions span more than one calendar year (`error.years`, ascending).
    */
   calculateGains(method: LotMethod): GainsReport {
     const warnings: string[] = [...this._parseWarnings];
@@ -110,13 +140,10 @@ export class Calculator {
       return 0;
     });
 
-    // 2. Tax year inference
-    const { year: taxYear, multipleYears } = inferTaxYear(sorted);
-    if (multipleYears) {
-      warnings.push(
-        "CSV contains transactions from multiple years — filter to a single year for accurate reporting.",
-      );
-    }
+    // 2. Tax year inference/scoping. options.taxYear, when given, is
+    // authoritative (see inferTaxYear); otherwise this may throw
+    // CalculationError("AMBIGUOUS_TAX_YEAR") if SELLs span multiple years.
+    const taxYear = inferTaxYear(sorted, this._options.taxYear);
 
     // 3. Lot matching
     const openLots = new Map<string, Lot[]>();
@@ -211,10 +238,21 @@ export class Calculator {
       }
     }
 
-    // 4. Aggregate
+    // 4. Tax-year scoping (TC-171): matching above always ran on the full
+    // sorted input regardless of taxYear — ratesUsed above reflects that
+    // full input too (TC-175, unaffected by this filter). Only now, after
+    // matching completes, are MatchedLots scoped down to those whose
+    // sellDate falls in taxYear; every report field below (plusvalenze,
+    // minusvalenze, bucketA, bucketB, dichiarazione, and report.lots itself)
+    // is computed from this scoped set, not the full matchedLots.
+    const scopedLots = matchedLots.filter(
+      (lot) => parseInt(lot.sellDate.slice(0, 4), 10) === taxYear,
+    );
+
+    // 5. Aggregate
     let plusvalenze = 0;
     let minusvalenze = 0;
-    for (const lot of matchedLots) {
+    for (const lot of scopedLots) {
       if (lot.gainLossEUR > 0) plusvalenze += lot.gainLossEUR;
       else minusvalenze += Math.abs(lot.gainLossEUR);
     }
@@ -242,8 +280,8 @@ export class Calculator {
         );
       }
 
-      // Bucket A computation
-      const bucketALots = matchedLots.filter((l) => l.bucket === "A");
+      // Bucket A computation (scoped to taxYear — see step 4 above)
+      const bucketALots = scopedLots.filter((l) => l.bucket === "A");
       const groupsByRate = new Map<
         number,
         { assetClasses: Set<string>; plusvalenze: number }
@@ -270,8 +308,8 @@ export class Calculator {
         ),
       };
 
-      // Bucket B computation
-      const bucketBLots = matchedLots.filter((l) => l.bucket === "B");
+      // Bucket B computation (scoped to taxYear — see step 4 above)
+      const bucketBLots = scopedLots.filter((l) => l.bucket === "B");
       let bPlusvalenze = 0;
       let bMinusvalenze = 0;
       for (const lot of bucketBLots) {
@@ -353,7 +391,7 @@ export class Calculator {
         plusvalenze: roundHalfUp(plusvalenze),
         minusvalenze: roundHalfUp(minusvalenze),
         netResult: roundHalfUp(plusvalenze - minusvalenze),
-        lots: matchedLots,
+        lots: scopedLots,
         ratesUsed,
         warnings,
         generatedAt: new Date().toISOString(),
@@ -381,7 +419,7 @@ export class Calculator {
       plusvalenze: roundHalfUp(plusvalenze),
       minusvalenze: roundHalfUp(minusvalenze),
       netResult: roundHalfUp(plusvalenze - minusvalenze),
-      lots: matchedLots,
+      lots: scopedLots,
       ratesUsed,
       warnings,
       generatedAt: new Date().toISOString(),

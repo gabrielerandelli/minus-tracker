@@ -48,6 +48,7 @@ export async function runCli(
       offline: { type: "boolean", default: false },
       "carry-forward": { type: "string", multiple: true },
       "export-dichiarazione": { type: "string" },
+      sidecar: { type: "string" },
       help: { type: "boolean", default: false },
       version: { type: "boolean", default: false },
     },
@@ -136,7 +137,17 @@ export async function runCli(
       }
       exitCode = 1;
     } else if (err instanceof CalculationError) {
-      stderr.write(s.errorNoOpenLots(err.isin, err.date) + "\n");
+      // NO_OPEN_LOTS is the only CalculationError code this shared handler
+      // renders today; AMBIGUOUS_TAX_YEAR (v0.11.2) is caught and rendered
+      // via errorAmbiguousTaxYear at the calc command's own call site
+      // (Task 53), so it never reaches here today. .isin!/.date! mirror the
+      // ParseError.sectionName!/.columnName! non-null-assertion pattern used
+      // just above: TS can't correlate an optional sibling field to a
+      // literal-typed .code check on a plain class, so the guard establishes
+      // the invariant and the assertion documents it, same as ParseError.
+      if (err.code === "NO_OPEN_LOTS") {
+        stderr.write(s.errorNoOpenLots(err.isin!, err.date!) + "\n");
+      }
       exitCode = 1;
     } else {
       throw err;

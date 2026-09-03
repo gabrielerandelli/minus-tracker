@@ -20,6 +20,9 @@ export interface LocaleStrings {
   errorCannotLoadSidecar: (path: string) => string;
   errorCannotWriteExport: (path: string) => string;
   errorBrokerDetectionFailed: string;
+  errorAmbiguousTaxYear: (years: number[]) => string;
+  errorDuplicateFilePath: (path: string) => string;
+  errorMultiFileOutputRequired: (flag: string) => string;
 
   // Soft warnings (per-row)
   warnMissingIsin: (row: number, section?: string) => string;
@@ -41,6 +44,15 @@ export interface LocaleStrings {
 
   // calc command: multi-year warning
   warnMultipleYears: string;
+
+  // v0.11.2 multi-file input
+  multiFileTag: (file: string) => string;
+  warnDuplicateRow: (
+    file1: string,
+    row1: number,
+    file2: string,
+    row2: number,
+  ) => string;
 
   // calc command: table column headers
   headerMethod: string;
@@ -64,6 +76,7 @@ export interface LocaleStrings {
   // validate command
   validateOk: (count: number, hardErrors: number) => string;
   validateWarn: (count: number, reason: string) => string;
+  validateTotal: (count: number, warnings: number) => string;
 
   // rates command
   ratesCoverage: (start: string, end: string, currencies: string) => string;
