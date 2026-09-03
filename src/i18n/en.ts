@@ -16,6 +16,11 @@ export const en: LocaleStrings = {
     `Cannot write dichiarazione export: ${path}`,
   errorBrokerDetectionFailed:
     "Unable to detect broker format. Use --broker <degiro|ibkr> to specify explicitly.",
+  errorAmbiguousTaxYear: (years) =>
+    `Transactions span multiple tax years (${years.join(", ")}) — specify --year`,
+  errorDuplicateFilePath: (path) => `Duplicate file path: ${path}`,
+  errorMultiFileOutputRequired: (flag) =>
+    `Multiple input files require an explicit path for ${flag}`,
 
   warnMissingIsin: (row, section) =>
     section
@@ -42,6 +47,10 @@ export const en: LocaleStrings = {
   warnMultipleYears:
     "CSV contains transactions from multiple years — filter to a single year for accurate reporting.",
 
+  multiFileTag: (file) => `[${file}] `,
+  warnDuplicateRow: (file1, row1, file2, row2) =>
+    `suspected duplicate row: ${file2} row ${row2} matches ${file1} row ${row1} (same ISIN, date, quantity, price, type)`,
+
   headerMethod: "METHOD",
   headerTaxYear: "TAX YEAR",
   headerIsin: "ISIN",
@@ -62,6 +71,8 @@ export const en: LocaleStrings = {
   validateOk: (count, errors) =>
     `OK: ${count} transactions parsed, ${errors} hard errors`,
   validateWarn: (count, reason) => `WARN: ${count} rows skipped (${reason})`,
+  validateTotal: (count, warnings) =>
+    `Total: ${count} transactions parsed, ${warnings} warnings`,
 
   ratesCoverage: (start, end, currencies) =>
     `Coverage: ${start} → ${end} | Currencies: ${currencies}`,
