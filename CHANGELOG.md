@@ -28,6 +28,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *different* source files) which are warned about, using `sourceRow`, but never dropped. This is
   the shared multi-file plumbing `calc`/`validate`/`classify`'s upcoming N-file support builds on;
   no existing single-file behavior changes.
+- `CalculatorOptions.taxYear`: `Calculator.calculateGains()` now scopes its report to an explicit
+  tax year. `taxYear` is applied *after* lot matching — the full input still informs matching
+  (e.g. an out-of-scope SELL still consumes the lot it's chronologically owed), only the final
+  `plusvalenze`/`minusvalenze`/`bucketA`/`bucketB`/`dichiarazione` totals are filtered to
+  `sellDate`s in that year. Tax-year *inference* (when `taxYear` is omitted) is corrected to
+  count SELL dates only, not BUY dates — a portfolio bought across several years but sold entirely
+  in one is no longer misreported as spanning multiple years. When SELLs genuinely span more than
+  one calendar year and `taxYear` is omitted, `calculateGains()` now throws `CalculationError`
+  with the new `.code === "AMBIGUOUS_TAX_YEAR"` (`.years`, ascending) instead of silently blending
+  years into one report; the old `warnMultipleYears` warning (whose trigger condition this throw
+  now fully supersedes) has been removed. `CalculationError.isin`/`.date` are consequently optional
+  (present only for the pre-existing `NO_OPEN_LOTS` code).
+- CLI: `calc`, `validate`, and `classify` all accept one or more positional CSV files
+  (`<file.csv> [file2.csv ...]`), parsed and merged via `parseMultipleFiles()`. Single-file
+  invocations are byte-for-byte unchanged. With more than one file: a new `--sidecar <path>` flag
+  becomes required (previously always auto-derived from the single input file); `calc`'s
+  `--export-dichiarazione`'s bare-flag auto-derive convenience is limited to single-file input (an
+  explicit path is required for N>1); `--broker` applies uniformly to every file when given,
+  otherwise each file auto-detects its own broker independently (mixed-broker merges); `validate`
+  renders one tagged block per file followed by a blank line and a `validateTotal` aggregate
+  (transaction count and total warnings, including cross-file duplicate-row warnings); `classify`
+  dedupes ISINs across the merged file list before OpenFIGI lookup, using its existing single-list
+  dedup logic unchanged. `calc --year <YYYY>` now actually scopes the report via
+  `CalculatorOptions.taxYear` (previously a no-op) and renders the new `AMBIGUOUS_TAX_YEAR` error
+  via `errorAmbiguousTaxYear` (exit 1) when omitted and needed. Six new locale keys support this:
+  `errorAmbiguousTaxYear`, `multiFileTag`, `errorDuplicateFilePath`,
+  `errorMultiFileOutputRequired`, `warnDuplicateRow`, `validateTotal`.
 
 ### Fixed
 
