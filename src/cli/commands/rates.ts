@@ -152,6 +152,9 @@ export async function runRates(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  // Pure plumbing for now — Task 61 wires this into rates' own coloring
+  // logic.
+  color: boolean = false,
 ): Promise<number> {
   if (flags["check"]) {
     const snapshot = getActiveSnapshot();

@@ -31,6 +31,9 @@ export async function classifyToSidecar(
   opts: { offline: boolean },
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
+  // Pure plumbing for now — a later task wires this into classify's own
+  // coloring logic.
+  color: boolean = false,
   stdin: NodeJS.ReadableStream = process.stdin,
 ): Promise<ClassificationMap> {
   if (opts.offline) {

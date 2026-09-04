@@ -21,6 +21,7 @@ export async function runCalc(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  color: boolean = false,
 ): Promise<number> {
   const files = positional;
   if (files.length === 0) {
@@ -192,6 +193,7 @@ export async function runCalc(
       { offline },
       s,
       flags["json"] ? stderr : stdout,
+      color,
     );
   }
 

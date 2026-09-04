@@ -10,6 +10,9 @@ export async function runConfig(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  // Pure plumbing for now — Task 61 wires this into config's own coloring
+  // logic.
+  color: boolean = false,
 ): Promise<number> {
   const resetFlag = flags["reset"] === true;
 

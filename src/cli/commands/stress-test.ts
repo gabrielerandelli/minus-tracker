@@ -18,6 +18,9 @@ export async function runStressTest(
   flags: Record<string, string | boolean>,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  // Pure plumbing for now — Task 62 wires this into stress-test's own
+  // coloring logic.
+  color: boolean = false,
 ): Promise<number> {
   // 1. Parse --range flag
   const rangeStr = (flags["range"] as string | undefined) ?? "1-100";

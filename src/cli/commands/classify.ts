@@ -10,6 +10,7 @@ export async function runClassify(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  color: boolean = false,
 ): Promise<number> {
   const offline = Boolean(flags["offline"]);
 
@@ -88,6 +89,13 @@ export async function runClassify(
   // whatever transaction list they're given — feeding it the cross-file
   // merged list here is what makes TC-194's cross-file dedup work, with no
   // separate multi-file-specific dedup path.
-  await classifyToSidecar(parsed.transactions, sidecarPath, { offline }, s, stdout);
+  await classifyToSidecar(
+    parsed.transactions,
+    sidecarPath,
+    { offline },
+    s,
+    stdout,
+    color,
+  );
   return 0;
 }
