@@ -58,6 +58,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `IBKRParser` silently ignored the optional `Multiplier` column on `Trades` rows. Real IBKR
+  Activity Flex Query exports for non-stock `AssetCategory` values — most importantly `OPT`
+  (equity/index options) and `FUT` (futures), both explicitly in scope per
+  `docs/prd/16-ibkr-parser.md`'s "STK, OPT, FUT, BOND, etc." — carry a `Multiplier` column: the
+  number of underlying units one traded contract represents (typically `100` for a standard
+  US/EU equity option). `TradePrice` on those rows is quoted **per underlying unit** (e.g. the
+  option premium per share), not per contract, so the real cash value of the trade is
+  `quantity * multiplier * tradePrice` — but `parseTradesRow()` computed `totalLocal` as plain
+  `quantity * tradePrice`, with zero references to `Multiplier` anywhere in the parser. For any
+  row where the real multiplier wasn't `1`, the resulting `totalLocal`/`totalEUR` — exactly what
+  `Calculator.calculateGains()` uses as cost basis / sale proceeds — was silently wrong by that
+  factor, with no warning and no error. A reproduction using one SAP call-option contract
+  (multiplier 100, bought for a 2.50 EUR/share premium plus 1 EUR commission, then sold two
+  months later for a 4.00 EUR/share premium minus 1 EUR commission) has real economics of a
+  +148 EUR gain (`1 * 100 * 2.50 + 1 = 251` EUR cost vs. `1 * 100 * 4.00 - 1 = 399` EUR proceeds),
+  but the unpatched parser reported `transactions[].totalEUR` as `2.5`/`4` (ignoring the
+  multiplier entirely) and the resulting `MatchedLot.gainLossEUR` as `-0.5` — a **0.50 EUR loss**
+  reported on a trade that was actually a **148 EUR gain**, with the sign flipped and the
+  magnitude off by two orders of magnitude. `parseTradesRow()` now reads the optional `Multiplier`
+  column via the same `get()`/`parseNumericField()` pattern already used for every other numeric
+  column, folding it into `totalLocal` only (`quantity * multiplier * tradePrice`) — `TradePrice`
+  itself, and therefore `Transaction.pricePerUnit`, is left untouched, since that field must keep
+  meaning the raw per-unit price as it appears in the source row (used for CSV-row dedup/display
+  in `src/cli/multi-file.ts`). `Multiplier` remains a strictly optional column — it was **not**
+  added to `TRADES_REQUIRED_COLUMNS` — and a missing column, blank cell, non-numeric value, zero,
+  or a negative value all default the multiplier to `1` (today's behavior for plain-stock rows)
+  rather than throwing or warning, so every existing `Trades` row shape (including all rows in the
+  test suite that omit the `Multiplier` column entirely) parses byte-for-byte identically.
+  `DEGIROParser`, `Calculator.calculateGains()`, `IBKRParser`, and `Classifier` signatures are
+  unchanged. Found by the automated adversarial QA routine.
 - `IBKRParser` cast the `Buy/Sell` column of a `Trades` row directly to the `"BUY" | "SELL"`
   `Transaction.type` union (`get("Buy/Sell") as "BUY" | "SELL"`) with no runtime validation that
   the CSV field actually held one of those two literals. Any other value (e.g. `"Buy"` instead of

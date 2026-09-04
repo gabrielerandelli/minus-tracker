@@ -178,6 +178,10 @@ Le colonne numeriche (`Quantity`, `TradePrice`, `IBCommission` e `Amount` nelle 
 (es. `2,500`), formattazione che alcuni fogli di calcolo aggiungono risalvando un CSV — il parser
 la normalizza correttamente invece di interpretarla male.
 
+Per strumenti come opzioni e futures, il valore dello scambio viene calcolato applicando la
+colonna opzionale `Multiplier` (es. 100 per un'opzione equity standard), che di default vale 1
+quando la colonna è assente.
+
 ### Installazione CLI
 
 **Installazione globale** (per rendere il comando disponibile in ogni directory):
@@ -566,6 +570,10 @@ Numeric columns (`Quantity`, `TradePrice`, `IBCommission`, and `Amount` in the `
 `Withholding Tax`/`Interest` sections) may use a thousands-separator comma (e.g. `2,500`), which
 some spreadsheet software adds when re-saving a CSV — the parser normalizes these correctly
 rather than misreading them.
+
+For instruments like options and futures, trade value is computed applying the optional
+`Multiplier` column (e.g. 100 for a standard equity option), which defaults to 1 when the column
+is absent.
 
 ### CLI Installation
 
