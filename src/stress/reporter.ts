@@ -4,6 +4,32 @@
  */
 
 import type { ScenarioResult } from "./runner.js";
+import { renderSegments, type Segment } from "../cli/colors.js";
+
+// Palette (Part 18) — mirrors src/cli/renderer.ts's palette for the three roles
+// stress-test's table/footer actually use: navy for the header row, green/red for the
+// per-verdict ESITO cell and the PASSATI:/FALLITI: footer values.
+const NAVY = "#1B4965";
+const GREEN = "#4ADE80";
+const RED = "#F87171";
+
+/** Renders a single whole-line segment (no cell/value split), e.g. the navy header row. */
+function wholeLine(text: string, hex: string | undefined, color: boolean): string {
+  return renderSegments([{ text, hex }], color);
+}
+
+/**
+ * Renders a `{label}{value}` line where only the value carries semantic color — mirrors
+ * renderer.ts's labelValueLine, used here for the PASSATI:/FALLITI: footer.
+ */
+function labelValueLine(
+  label: string,
+  value: string,
+  valueHex: string | undefined,
+  color: boolean,
+): string {
+  return renderSegments([{ text: label }, { text: value, hex: valueHex }], color);
+}
 
 /**
  * Aggregated stress test report
@@ -48,30 +74,52 @@ export function formatJson(report: StressReport): string {
 /**
  * Format a StressReport as a human-readable ASCII table
  */
-export function formatTable(report: StressReport): string {
+export function formatTable(report: StressReport, color: boolean = false): string {
   const lines: string[] = [];
 
   // Header
   lines.push("STRESS TEST — minus-tracker");
+  // Two-signal recap line (Scenari/Passati/Falliti all in one line) — the granularity rule's
+  // two-signal-line exception: rendered plain/unstyled regardless of pass/fail mix (TC-225).
   lines.push(
     `Scenari: ${report.totalScenarios}  |  Passati: ${report.passed}  |  Falliti: ${report.failed}`,
   );
   lines.push("");
 
-  // Column header
+  // Column header — built as plain text first (esitoHex omitted, color forced off), then the
+  // whole padded row is wrapped in one navy segment, so all four header cells (including
+  // ESITO's own header label) read navy alike, distinct from data rows where only the ESITO
+  // cell is colored.
   const idCol = "ID";
   const categoryCol = "CATEGORIA";
   const descCol = "DESCRIZIONE";
   const resultCol = "ESITO";
 
-  lines.push(formatRow(idCol, categoryCol, descCol, resultCol));
+  lines.push(
+    wholeLine(
+      formatRow(idCol, categoryCol, descCol, resultCol, undefined, false),
+      NAVY,
+      color,
+    ),
+  );
 
-  // Rows for each scenario
+  // Rows for each scenario — ID/CATEGORIA/DESCRIZIONE stay unstyled; only ESITO is colored,
+  // by verdict (TC-227). Column widths are computed on the plain text in formatRow before any
+  // segment/color wrapping happens, preserving the padding-before-color invariant.
   for (const result of report.results) {
     const idStr = result.id.padStart(3, "0");
     const status = result.pass ? "✓ PASS" : "✗ FAIL";
 
-    lines.push(formatRow(idStr, result.category, result.description, status));
+    lines.push(
+      formatRow(
+        idStr,
+        result.category,
+        result.description,
+        status,
+        result.pass ? GREEN : RED,
+        color,
+      ),
+    );
 
     // If failed, add failure details
     if (!result.pass) {
@@ -107,23 +155,38 @@ export function formatTable(report: StressReport): string {
     }
   }
 
-  // Summary footer
+  // Summary footer — label unstyled, value hex conditional: PASSATI is always green;
+  // FALLITI is red only when > 0, else unstyled (zero-is-neutral, same pattern as calc's
+  // WARNINGS: <n> — TC-228).
   lines.push("");
-  lines.push(`PASSATI: ${report.passed}`);
-  lines.push(`FALLITI: ${report.failed}`);
+  lines.push(labelValueLine("PASSATI: ", `${report.passed}`, GREEN, color));
+  lines.push(
+    labelValueLine(
+      "FALLITI: ",
+      `${report.failed}`,
+      report.failed > 0 ? RED : undefined,
+      color,
+    ),
+  );
   lines.push("");
 
   return lines.join("\n");
 }
 
 /**
- * Format a single table row with fixed column widths
+ * Format a single table row with fixed column widths. Only the ESITO cell ever carries color
+ * (`esitoHex`) — ID/CATEGORIA/DESCRIZIONE never receive a hex on any row, including the header
+ * (the header's own uniform navy comes from formatTable wrapping this function's plain output
+ * in one whole-line segment, not from a per-cell hex here). Column widths are computed on the
+ * plain text below before any segment is built, preserving the padding-before-color invariant.
  */
 function formatRow(
   id: string,
   category: string,
   description: string,
   esito: string,
+  esitoHex: string | undefined,
+  color: boolean,
 ): string {
   // Column widths: ID=4, CATEGORIA=22, DESCRIZIONE=40, ESITO=8
   const idWidth = 4;
@@ -137,7 +200,13 @@ function formatRow(
   const descCol = truncateOrPad(description, descWidth);
   const esitoCol = esito.padEnd(esitoWidth);
 
-  return `${idCol}  ${categoryCol}  ${descCol}  ${esitoCol}`;
+  const segments: Segment[] = [
+    { text: `${idCol}  ` },
+    { text: `${categoryCol}  ` },
+    { text: `${descCol}  ` },
+    { text: esitoCol, hex: esitoHex },
+  ];
+  return renderSegments(segments, color);
 }
 
 /**

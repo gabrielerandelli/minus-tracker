@@ -12,14 +12,26 @@ import { generateCsv } from "../../stress/generator.js";
 import { runScenario } from "../../stress/runner.js";
 import { buildReport, formatTable, formatJson } from "../../stress/reporter.js";
 import type { StressManifest } from "../../stress/generator.js";
+import { renderSegments } from "../colors.js";
+
+// Palette (Part 18) — mirrors src/cli/renderer.ts's palette for the two roles stress-test's
+// own lines (outside the table, which reporter.ts colors itself) actually use: green/red for
+// the per-scenario progress glyph, amber for the setup Warning: lines.
+const GREEN = "#4ADE80";
+const RED = "#F87171";
+const AMBER = "#FBBF24";
+
+/** Renders a single whole-line segment (no value/label split) — stress-test's own lines
+ * (progress line, setup warnings) are all full sentences with no isolable value. */
+function wholeLine(text: string, hex: string | undefined, color: boolean): string {
+  return renderSegments([{ text, hex }], color);
+}
 
 export async function runStressTest(
   _positionals: string[],
   flags: Record<string, string | boolean>,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
-  // Pure plumbing for now — Task 62 wires this into stress-test's own
-  // coloring logic.
   color: boolean = false,
 ): Promise<number> {
   // 1. Parse --range flag
@@ -82,7 +94,13 @@ export async function runStressTest(
     timeout: 15000,
   });
   if ((ratesCheck.status ?? 1) !== 0) {
-    stderr.write("Warning: rates --check failed; ECB rates may be stale.\n");
+    stderr.write(
+      wholeLine(
+        "Warning: rates --check failed; ECB rates may be stale.",
+        AMBER,
+        color,
+      ) + "\n",
+    );
   }
 
   const configShow = spawnSync("node", [cliBin, "config", "--show"], {
@@ -90,7 +108,7 @@ export async function runStressTest(
     timeout: 15000,
   });
   if ((configShow.status ?? 1) !== 0) {
-    stderr.write("Warning: config --show failed.\n");
+    stderr.write(wholeLine("Warning: config --show failed.", AMBER, color) + "\n");
   }
 
   // 6. Filter scenarios by range
@@ -105,8 +123,14 @@ export async function runStressTest(
     const csv = generateCsv(scenario);
     const result = runScenario(scenario, csv, outputDir, cliBin);
     results.push(result);
+    // Colored by its own glyph (green pass / red fail) — never teal; teal is reserved for
+    // rates' "still working" text and is not used anywhere in stress-test's own output.
     stdout.write(
-      `  [${result.pass ? "✓" : "✗"}] ${scenario.id} ${scenario.slug}\n`,
+      wholeLine(
+        `  [${result.pass ? "✓" : "✗"}] ${scenario.id} ${scenario.slug}`,
+        result.pass ? GREEN : RED,
+        color,
+      ) + "\n",
     );
   }
 
@@ -115,7 +139,7 @@ export async function runStressTest(
   if (flags["json"]) {
     stdout.write(formatJson(report) + "\n");
   } else {
-    stdout.write(formatTable(report) + "\n");
+    stdout.write(formatTable(report, color) + "\n");
   }
 
   // 10. Cleanup — only the auto-generated temp dir is ever deleted; a
