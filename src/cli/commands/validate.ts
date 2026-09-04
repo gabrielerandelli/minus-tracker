@@ -67,6 +67,9 @@ export async function runValidate(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  // Pure plumbing for now — Task 59 wires this into validate's own
+  // coloring logic.
+  color: boolean = false,
 ): Promise<number> {
   const files = positional;
   if (files.length === 0) {

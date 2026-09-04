@@ -51,6 +51,7 @@ export async function runCli(
       sidecar: { type: "string" },
       help: { type: "boolean", default: false },
       version: { type: "boolean", default: false },
+      "no-color": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -65,7 +66,10 @@ export async function runCli(
   const flags = values as Record<string, string | boolean>;
 
   const streamInfo = stdout as Partial<NodeJS.WriteStream>;
-  const color = !process.env["NO_COLOR"] && !!streamInfo.isTTY;
+  // Resolution order, highest to lowest priority: --no-color flag >
+  // NO_COLOR env var > non-TTY stdout > (else) color on.
+  const color =
+    !values["no-color"] && !process.env["NO_COLOR"] && !!streamInfo.isTTY;
   const width = streamInfo.columns;
 
   if (values.version) {
@@ -102,22 +106,63 @@ export async function runCli(
   try {
     switch (command) {
       case "calc":
-        exitCode = await runCalc(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runCalc(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "validate":
-        exitCode = await runValidate(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runValidate(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "rates":
-        exitCode = await runRates(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runRates(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "config":
-        exitCode = await runConfig(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runConfig(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "stress-test":
-        exitCode = await runStressTest(restPositionals, flags, stdout, stderr);
+        exitCode = await runStressTest(
+          restPositionals,
+          flags,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "classify":
-        exitCode = await runClassify(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runClassify(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       default:
         stderr.write(USAGE_LINE);
