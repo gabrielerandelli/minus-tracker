@@ -3,6 +3,18 @@ import { parseMultipleFiles, MultiFileError, multiFileTag } from "../multi-file.
 import type { Broker, FileParseResult } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import { warningToEnglish, type WarningEntry } from "../../parser/warnings.js";
+import { renderSegments } from "../colors.js";
+
+// Palette (Part 18) — mirrors src/cli/renderer.ts's palette for the two roles validate's
+// output actually uses: green for a zero-warning status, amber for a warning signal.
+const GREEN = "#4ADE80";
+const AMBER = "#FBBF24";
+
+/** Renders a single whole-line segment (no value/label split) — validate's lines are all
+ * full sentences with no single isolable value, per the granularity rule. */
+function wholeLine(text: string, hex: string | undefined, color: boolean): string {
+  return renderSegments([{ text, hex }], color);
+}
 
 function renderWarningEntry(entry: WarningEntry, s: LocaleStrings): string {
   let reason: string;
@@ -52,12 +64,26 @@ function renderFileBlock(
   multi: boolean,
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
+  color: boolean,
 ): void {
+  // Block status is driven by this file's own warning count: green when clean, amber the
+  // moment it has at least one warning — even though the line's text still says "OK:".
+  const hasWarnings = pf.warningEntries.length > 0;
   stdout.write(
-    multiFileTag(pf.file, multi) + s.validateOk(pf.transactions.length, 0) + "\n",
+    wholeLine(
+      multiFileTag(pf.file, multi) + s.validateOk(pf.transactions.length, 0),
+      hasWarnings ? AMBER : GREEN,
+      color,
+    ) + "\n",
   );
   for (const entry of pf.warningEntries) {
-    stdout.write(multiFileTag(pf.file, multi) + renderWarningEntry(entry, s) + "\n");
+    stdout.write(
+      wholeLine(
+        multiFileTag(pf.file, multi) + renderWarningEntry(entry, s),
+        AMBER,
+        color,
+      ) + "\n",
+    );
   }
 }
 
@@ -67,8 +93,6 @@ export async function runValidate(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
-  // Pure plumbing for now — Task 59 wires this into validate's own
-  // coloring logic.
   color: boolean = false,
 ): Promise<number> {
   const files = positional;
@@ -124,7 +148,7 @@ export async function runValidate(
   }
 
   for (const pf of parsed.perFile) {
-    renderFileBlock(pf, multi, s, stdout);
+    renderFileBlock(pf, multi, s, stdout, color);
   }
 
   if (multi) {
@@ -139,11 +163,24 @@ export async function runValidate(
     const totalWarnings = perFileWarnings + parsed.duplicateRows.length;
 
     stdout.write("\n");
-    stdout.write(s.validateTotal(totalCount, totalWarnings) + "\n");
+    // Colored by this line's own aggregate (`totalWarnings`, computed just above from all
+    // per-file warnings + duplicate rows) — never re-derived from the last per-file block's
+    // own status, which would silently mis-color whenever the last file happens to be clean
+    // but an earlier file or a cross-file duplicate isn't.
+    stdout.write(
+      wholeLine(
+        s.validateTotal(totalCount, totalWarnings),
+        totalWarnings > 0 ? AMBER : GREEN,
+        color,
+      ) + "\n",
+    );
     for (const dup of parsed.duplicateRows) {
       stdout.write(
-        s.warnDuplicateRow(dup.file1, dup.row1 ?? 0, dup.file2, dup.row2 ?? 0) +
-          "\n",
+        wholeLine(
+          s.warnDuplicateRow(dup.file1, dup.row1 ?? 0, dup.file2, dup.row2 ?? 0),
+          AMBER,
+          color,
+        ) + "\n",
       );
     }
   }
