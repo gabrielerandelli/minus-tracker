@@ -3,6 +3,12 @@ import { classifyToSidecar } from "./classify-core.js";
 import { parseMultipleFiles, MultiFileError } from "../multi-file.js";
 import type { Broker } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
+import { renderSegments } from "../colors.js";
+
+// Palette (Part 18): red for the hard TTY-precondition error. This is checked ahead of the
+// shared try/catch in index.ts (Task 63's scope), so it's colored here directly rather than
+// through that shared error-rendering pass.
+const RED = "#F87171";
 
 export async function runClassify(
   positional: string[],
@@ -16,7 +22,7 @@ export async function runClassify(
 
   // TTY check — FIRST, before any file I/O
   if (!process.stdin.isTTY && !offline) {
-    stderr.write(s.classifyNonTtyError + "\n");
+    stderr.write(renderSegments([{ text: s.classifyNonTtyError, hex: RED }], color) + "\n");
     return 2;
   }
 
