@@ -229,7 +229,9 @@ export async function runCalc(
     const { dichiarazione: _dichiarazione, ...jsonReport } = report;
     stdout.write(JSON.stringify(jsonReport, null, 2) + "\n");
   } else {
-    stdout.write(renderReport(report, s, carryForwardWasProvided) + "\n");
+    stdout.write(
+      renderReport(report, s, carryForwardWasProvided, color) + "\n",
+    );
   }
 
   if (exportRequested) {
