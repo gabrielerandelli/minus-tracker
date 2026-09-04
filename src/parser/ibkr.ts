@@ -402,7 +402,21 @@ export class IBKRParser implements Parser {
     }
 
     const tradePrice = parseNumericField(get("TradePrice"));
-    const totalLocal = (type === "SELL" ? 1 : -1) * quantity * tradePrice;
+
+    // --- Multiplier (optional column) ---
+    // For instruments quoted per underlying unit (options: per-share
+    // premium; futures: per-unit price), TradePrice alone understates the
+    // real cash value of the trade by the contract's Multiplier (e.g. 100
+    // for a standard equity option). Missing column, a blank cell,
+    // non-numeric garbage, zero, or a negative value are all defensive
+    // fallbacks to 1 (today's behavior for plain-stock rows) rather than a
+    // hard error — most real exports (plain STK) omit this column entirely.
+    const rawMultiplier = parseNumericField(get("Multiplier"));
+    const multiplier =
+      isNaN(rawMultiplier) || rawMultiplier <= 0 ? 1 : rawMultiplier;
+
+    const totalLocal =
+      (type === "SELL" ? 1 : -1) * quantity * multiplier * tradePrice;
     const totalEUR = Math.abs(totalLocal) / ecbRate;
 
     // --- Commission FX (independent lookup, per-decision) ---

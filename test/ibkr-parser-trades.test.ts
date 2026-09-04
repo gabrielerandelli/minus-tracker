@@ -381,3 +381,84 @@ describe("regression: a well-formed \"BUY\"/\"SELL\" Buy/Sell value is unaffecte
     expect(parser.warnings).toEqual([]);
   });
 });
+
+describe("regression: OPT Trades rows apply the optional Multiplier column to trade value", () => {
+  // One call-option contract (multiplier 100), bought for a 2.50 EUR/share
+  // premium plus 1 EUR commission, then sold two months later for a 4.00
+  // EUR/share premium minus 1 EUR commission.
+  // Real economics: buy cost = 1 * 100 * 2.50 + 1 = 251 EUR;
+  //                 sell proceeds = 1 * 100 * 4.00 - 1 = 399 EUR;
+  //                 gain = +148 EUR.
+  const HEADER_WITH_MULTIPLIER =
+    "Trades,Header,DataDiscriminator,AssetCategory,CurrencyPrimary,Symbol,Description,ISIN,Multiplier,TradeDate,Buy/Sell,Quantity,TradePrice,IBCommission,IBCommissionCurrency";
+  const csv = [
+    HEADER_WITH_MULTIPLIER,
+    "Trades,Data,Order,OPT,EUR,SAP  260320C00220000,SAP SE 20MAR26 220.0 C,DE000OPT00019,100,20260110,BUY,1,2.50,-1.00,EUR",
+    "Trades,Data,Order,OPT,EUR,SAP  260320C00220000,SAP SE 20MAR26 220.0 C,DE000OPT00019,100,20260210,SELL,1,4.00,-1.00,EUR",
+  ].join("\n");
+
+  it("multiplies quantity * multiplier * tradePrice into totalLocal/totalEUR, not just quantity * tradePrice", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(2);
+    expect(transactions[0].totalEUR).toBeCloseTo(250, 6);
+    expect(transactions[1].totalEUR).toBeCloseTo(400, 6);
+    // pricePerUnit must stay the raw per-underlying-unit price from the row —
+    // the multiplier is folded into totalLocal/totalEUR only.
+    expect(transactions[0].pricePerUnit).toBe(2.5);
+    expect(transactions[1].pricePerUnit).toBe(4.0);
+  });
+
+  it("produces the correct real-economics gain via Calculator.calculateGains", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    const calculator = new Calculator(transactions, parser.warnings);
+    const report = calculator.calculateGains("LIFO");
+    expect(report.lots).toHaveLength(1);
+    expect(report.lots[0].gainLossEUR).toBeCloseTo(148, 6);
+  });
+});
+
+describe("regression: Multiplier column absent, blank, non-numeric, zero, or negative defaults to 1", () => {
+  it("Multiplier column entirely absent (existing header shape) behaves exactly as before", () => {
+    const csv = [
+      TRADES_HEADER,
+      "Trades,Data,Order,STK,EUR,VWCE,VANGUARD FTSE ALL-WORLD,IE00BK5BQT80,20240102,BUY,10,95.00,-1.00,EUR",
+    ].join("\n");
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].totalEUR).toBeCloseTo(950, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+
+  const HEADER_WITH_MULTIPLIER =
+    "Trades,Header,DataDiscriminator,AssetCategory,CurrencyPrimary,Symbol,Description,ISIN,Multiplier,TradeDate,Buy/Sell,Quantity,TradePrice,IBCommission,IBCommissionCurrency";
+
+  it.each([
+    ["blank cell", ""],
+    ["non-numeric garbage", "abc"],
+    ["zero", "0"],
+    ["negative", "-100"],
+  ])("Multiplier %s falls back to a multiplier of 1", (_label, multiplierValue) => {
+    const csv = [
+      HEADER_WITH_MULTIPLIER,
+      `Trades,Data,Order,STK,EUR,VWCE,VANGUARD FTSE ALL-WORLD,IE00BK5BQT80,${multiplierValue},20240102,BUY,10,95.00,-1.00,EUR`,
+    ].join("\n");
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].totalEUR).toBeCloseTo(950, 6);
+  });
+
+  it("Multiplier of 1 (plain stock row with the column present) is a no-op", () => {
+    const csv = [
+      HEADER_WITH_MULTIPLIER,
+      "Trades,Data,Order,STK,EUR,VWCE,VANGUARD FTSE ALL-WORLD,IE00BK5BQT80,1,20240102,BUY,10,95.00,-1.00,EUR",
+    ].join("\n");
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].totalEUR).toBeCloseTo(950, 6);
+  });
+});
