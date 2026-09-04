@@ -1,8 +1,17 @@
 import { resolveLocale, saveLocale, deleteConfig } from "../../i18n/settings.js";
 import type { LocaleStrings, SupportedLocale } from "../../i18n/types.js";
+import { renderSegments } from "../colors.js";
 
 const SUPPORTED_LOCALES: SupportedLocale[] = ["it", "en"];
 const USAGE_LINE = "Usage: minus-tracker config --lang <it|en> | --show | --reset\n";
+
+// Palette (Part 18): green for state-changing confirmations (a lang was set, config was
+// reset), navy for a read-only query (the currently active language). Hard-error
+// `stderr.write` calls below (unsupported locale, usage-line fallbacks) are left to Task 63's
+// shared red-coloring pass rather than duplicated here, since they're plain `stderr.write`
+// calls without a dedicated `LocaleStrings` key today.
+const GREEN = "#4ADE80";
+const NAVY = "#1B4965";
 
 export async function runConfig(
   positional: string[],
@@ -10,8 +19,6 @@ export async function runConfig(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
-  // Pure plumbing for now — Task 61 wires this into config's own coloring
-  // logic.
   color: boolean = false,
 ): Promise<number> {
   const resetFlag = flags["reset"] === true;
@@ -23,7 +30,7 @@ export async function runConfig(
 
   if (resetFlag) {
     deleteConfig();
-    stdout.write(s.configReset + "\n");
+    stdout.write(renderSegments([{ text: s.configReset, hex: GREEN }], color) + "\n");
     return 0;
   }
 
@@ -34,13 +41,20 @@ export async function runConfig(
       return 2;
     }
     saveLocale(lang as SupportedLocale);
-    stdout.write(s.configLangSet(lang as SupportedLocale) + "\n");
+    stdout.write(
+      renderSegments(
+        [{ text: s.configLangSet(lang as SupportedLocale), hex: GREEN }],
+        color,
+      ) + "\n",
+    );
     return 0;
   }
 
   if (flags["show"]) {
     const locale = resolveLocale();
-    stdout.write(s.configCurrentLang(locale) + "\n");
+    stdout.write(
+      renderSegments([{ text: s.configCurrentLang(locale), hex: NAVY }], color) + "\n",
+    );
     return 0;
   }
 
