@@ -1,5 +1,6 @@
 import { ParseError } from "../../errors.js";
 import { classifyToSidecar } from "./classify-core.js";
+import { colorize } from "../colors.js";
 import { parseMultipleFiles, MultiFileError } from "../multi-file.js";
 import type { Broker } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
@@ -10,12 +11,13 @@ export async function runClassify(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  color: boolean = false,
 ): Promise<number> {
   const offline = Boolean(flags["offline"]);
 
   // TTY check — FIRST, before any file I/O
   if (!process.stdin.isTTY && !offline) {
-    stderr.write(s.classifyNonTtyError + "\n");
+    stderr.write(colorize(s.classifyNonTtyError, "#F87171", color) + "\n");
     return 2;
   }
 
@@ -88,6 +90,13 @@ export async function runClassify(
   // whatever transaction list they're given — feeding it the cross-file
   // merged list here is what makes TC-194's cross-file dedup work, with no
   // separate multi-file-specific dedup path.
-  await classifyToSidecar(parsed.transactions, sidecarPath, { offline }, s, stdout);
+  await classifyToSidecar(
+    parsed.transactions,
+    sidecarPath,
+    { offline },
+    s,
+    stdout,
+    color,
+  );
   return 0;
 }
