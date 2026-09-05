@@ -21,6 +21,7 @@ export async function runCalc(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  color = false,
 ): Promise<number> {
   const files = positional;
   if (files.length === 0) {
@@ -227,7 +228,9 @@ export async function runCalc(
     const { dichiarazione: _dichiarazione, ...jsonReport } = report;
     stdout.write(JSON.stringify(jsonReport, null, 2) + "\n");
   } else {
-    stdout.write(renderReport(report, s, carryForwardWasProvided) + "\n");
+    stdout.write(
+      renderReport(report, s, carryForwardWasProvided, color) + "\n",
+    );
   }
 
   if (exportRequested) {
