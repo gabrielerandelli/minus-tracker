@@ -48,6 +48,15 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 - Output disponibile in **italiano** (default) o **inglese** (`--lang en`)
 - Disponibile come pacchetto NPM con supporto CLI
 
+**Novità in v0.12.0:**
+
+- **Output CLI a colori**: `calc`, `validate`, `classify`, `rates`, `config` e `stress-test`
+  mostrano ora un output colorato in terminale — verde per plusvalenze/guadagni, rosso per
+  minusvalenze/perdite ed errori bloccanti, ambra per avvisi e note, blu navy per intestazioni di
+  tabella e titoli di sezione. Disabilitabile con il nuovo flag `--no-color` o la variabile
+  d'ambiente `NO_COLOR`; l'output non a colori resta invariato quando non è collegato un terminale
+  (es. in pipe o CI). Vedi lo screenshot qui sotto.
+
 **Novità in v0.11.1:**
 
 - **Fix critico dei pacchetti pubblicati**: `dist/index.js` e `dist/index.cjs` risolvevano il
@@ -451,6 +460,14 @@ It loads data following the CSV format used by DEGIRO.
 - Test suite based on **Agenzia Entrate FAQ**
 - Output in **Italian** (default) or **English** (`--lang en`)
 - minus-tracker is an NPM package with CLI support
+
+**New in v0.12.0:**
+
+- **CLI color output**: `calc`, `validate`, `classify`, `rates`, `config`, and `stress-test` now
+  render colorized terminal output — green for gains, red for losses and hard errors, amber for
+  warnings/notes, navy for table headers and section titles. Disable it with the new `--no-color`
+  flag or the `NO_COLOR` env var; non-TTY output (pipes, CI) stays plain automatically. See the
+  screenshot below.
 
 **New in v0.11.1:**
 

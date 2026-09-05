@@ -1,6 +1,6 @@
 {
   "name": "@gabrielerandelli/minus-tracker",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Italian capital-gains/loss calculator (LIFO/FIFO) with CLI and MCP server for AI agents — Regime Dichiarativo",
   "type": "module",
   "exports": {

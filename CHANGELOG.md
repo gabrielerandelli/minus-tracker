@@ -7,8 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-05
+
 ### Added
 
+- **CLI color output**: `calc`, `validate`, `classify`, `rates`, `config`, and `stress-test` now
+  render colorized terminal output — green for plusvalenze/gains, red for minusvalenze/losses and
+  hard errors, amber for warnings/notes, navy for table headers and section labels — sharing one
+  set of truecolor ANSI primitives (`src/cli/colors.ts`, extracted from the existing `banner.ts`
+  gradient logic) and a `Segment`-based renderer (`src/cli/renderer.ts`) that always computes
+  column padding on plain text _before_ wrapping it in color, so ANSI escape bytes are never
+  counted toward a width calculation. A new `--no-color` flag forces plain output; resolution
+  order is `--no-color` > `NO_COLOR` env var > non-TTY stdout > color on, so piped/redirected
+  output and CI logs stay uncolored automatically without any flag. Hard errors across
+  `calc`/`validate`/`classify` now share one red-coloring error-rendering path. Zero new runtime
+  dependencies, consistent with this project's minimal-dependency convention.
 - `config --reset`: deletes the persisted `config.json` (the file `config --lang` writes to
   `$XDG_CONFIG_HOME/minus-tracker/config.json`, or the platform equivalent), clearing any saved
   locale override so the next `resolveLocale()` call falls through to the `MINUS_TRACKER_LANG`
@@ -25,14 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolving duplicate resolved paths as a usage error, running each file's existing broker
   detection/parsing unchanged, concatenating the results in file-argument order, and scanning for
   cross-file duplicate-looking rows (same ISIN/date/type/quantity/price/currency across two
-  *different* source files) which are warned about, using `sourceRow`, but never dropped. This is
+  _different_ source files) which are warned about, using `sourceRow`, but never dropped. This is
   the shared multi-file plumbing `calc`/`validate`/`classify`'s upcoming N-file support builds on;
   no existing single-file behavior changes.
 - `CalculatorOptions.taxYear`: `Calculator.calculateGains()` now scopes its report to an explicit
-  tax year. `taxYear` is applied *after* lot matching — the full input still informs matching
+  tax year. `taxYear` is applied _after_ lot matching — the full input still informs matching
   (e.g. an out-of-scope SELL still consumes the lot it's chronologically owed), only the final
   `plusvalenze`/`minusvalenze`/`bucketA`/`bucketB`/`dichiarazione` totals are filtered to
-  `sellDate`s in that year. Tax-year *inference* (when `taxYear` is omitted) is corrected to
+  `sellDate`s in that year. Tax-year _inference_ (when `taxYear` is omitted) is corrected to
   count SELL dates only, not BUY dates — a portfolio bought across several years but sold entirely
   in one is no longer misreported as spanning multiple years. When SELLs genuinely span more than
   one calendar year and `taxYear` is omitted, `calculateGains()` now throws `CalculationError`
@@ -115,7 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   place. This happened because each carry-forward entry's consumed amount was rounded to cents
   **independently** (`roundHalfUp(consumed)`) when building the display breakdown, while the
   separately-computed authoritative total (`report.bucketB.carryForwardApplied`, in
-  `Calculator.calculateGains()`) sums every entry's *unrounded* consumption first and rounds only
+  `Calculator.calculateGains()`) sums every entry's _unrounded_ consumption first and rounds only
   **once**. Since `roundHalfUp` is not linear, several entries whose fractional-cent consumption
   each independently rounds up (e.g. three `0.335` EUR carry-forward entries fully absorbing a
   `1.00` EUR gain) could display as `0.34 + 0.34 + 0.33 = 1.01` — one cent more than was ever
@@ -241,7 +254,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry that was not fully consumed by the current tax year, in every case except a straightforward
   net gain: a partially-consumed entry (e.g. only 800 of a 1200 EUR prior-year loss needed to
   offset this year's gain) lost its unconsumed 400 EUR balance entirely, and when the current
-  year's Bucket B result was break-even or a net loss, *all* supplied `carryForward` entries were
+  year's Bucket B result was break-even or a net loss, _all_ supplied `carryForward` entries were
   dropped outright regardless of whether they were still within their 4-year window — the
   function only ever consulted `carryForward` in its `differenza > 0` branch. This did not affect
   `Calculator`'s own `report.bucketB.carryForwardEntriesRemaining`, which already tracked
