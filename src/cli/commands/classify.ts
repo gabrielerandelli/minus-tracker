@@ -47,7 +47,12 @@ export async function runClassify(
   // required at N>1 (TC-182, classify slice).
   const sidecarFlag = flags["sidecar"] as string | undefined;
   if (multi && sidecarFlag === undefined) {
-    stderr.write(s.errorMultiFileOutputRequired("--sidecar") + "\n");
+    stderr.write(
+      renderSegments(
+        [{ text: s.errorMultiFileOutputRequired("--sidecar"), hex: RED }],
+        color,
+      ) + "\n",
+    );
     return 2;
   }
 
@@ -60,26 +65,57 @@ export async function runClassify(
     if (err instanceof MultiFileError) {
       switch (err.code) {
         case "DUPLICATE_FILE_PATH":
-          stderr.write(s.errorDuplicateFilePath(err.path!) + "\n");
+          stderr.write(
+            renderSegments(
+              [{ text: s.errorDuplicateFilePath(err.path!), hex: RED }],
+              color,
+            ) + "\n",
+          );
           return 2;
         case "CANNOT_READ_FILE":
-          stderr.write(`Cannot read file: ${err.file}\n`);
+          stderr.write(
+            renderSegments(
+              [{ text: `Cannot read file: ${err.file}`, hex: RED }],
+              color,
+            ) + "\n",
+          );
           return 1;
         case "INVALID_CSV":
-          stderr.write(s.errorInvalidCsv + "\n");
+          stderr.write(
+            renderSegments([{ text: s.errorInvalidCsv, hex: RED }], color) +
+              "\n",
+          );
           return 1;
         case "BROKER_DETECTION_FAILED":
-          stderr.write(s.errorBrokerDetectionFailed + "\n");
+          stderr.write(
+            renderSegments(
+              [{ text: s.errorBrokerDetectionFailed, hex: RED }],
+              color,
+            ) + "\n",
+          );
           return 2;
       }
     }
     if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
-        stderr.write(s.errorInvalidCsv + "\n");
+        stderr.write(
+          renderSegments([{ text: s.errorInvalidCsv, hex: RED }], color) +
+            "\n",
+        );
       } else if (err.code === "MISSING_SECTION") {
-        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
+        stderr.write(
+          renderSegments(
+            [{ text: s.errorMissingSection(err.sectionName!), hex: RED }],
+            color,
+          ) + "\n",
+        );
       } else {
-        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
+        stderr.write(
+          renderSegments(
+            [{ text: s.errorMissingColumn(err.columnName!), hex: RED }],
+            color,
+          ) + "\n",
+        );
       }
       return 1;
     }

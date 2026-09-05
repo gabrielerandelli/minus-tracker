@@ -12,6 +12,10 @@ import { runStressTest } from "./commands/stress-test.js";
 import { runClassify } from "./commands/classify.js";
 import { ClassificationError } from "../errors.js";
 import { renderBanner } from "./banner.js";
+import { colorize } from "./colors.js";
+
+// Palette (Part 18): red for every hard-error render in the shared catch block below (Task 63).
+const RED = "#F87171";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -170,15 +174,20 @@ export async function runCli(
     }
   } catch (err) {
     if (err instanceof ClassificationError) {
-      stderr.write(err.message + "\n");
+      stderr.write(colorize(err.message, RED, color) + "\n");
       exitCode = 1;
     } else if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
-        stderr.write(s.errorInvalidCsv + "\n");
+        stderr.write(colorize(s.errorInvalidCsv, RED, color) + "\n");
       } else if (err.code === "MISSING_SECTION") {
-        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
+        stderr.write(
+          colorize(s.errorMissingSection(err.sectionName!), RED, color) +
+            "\n",
+        );
       } else {
-        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
+        stderr.write(
+          colorize(s.errorMissingColumn(err.columnName!), RED, color) + "\n",
+        );
       }
       exitCode = 1;
     } else if (err instanceof CalculationError) {
@@ -191,7 +200,10 @@ export async function runCli(
       // literal-typed .code check on a plain class, so the guard establishes
       // the invariant and the assertion documents it, same as ParseError.
       if (err.code === "NO_OPEN_LOTS") {
-        stderr.write(s.errorNoOpenLots(err.isin!, err.date!) + "\n");
+        stderr.write(
+          colorize(s.errorNoOpenLots(err.isin!, err.date!), RED, color) +
+            "\n",
+        );
       }
       exitCode = 1;
     } else {

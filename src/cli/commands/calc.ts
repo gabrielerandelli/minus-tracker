@@ -14,6 +14,11 @@ import type {
   ClassificationMap,
   CarryForward,
 } from "../../types.js";
+import { colorize } from "../colors.js";
+
+// Palette (Part 18): red for every hard-error stderr.write in this command, matching the shared
+// catch block's treatment in index.ts (Task 63).
+const RED = "#F87171";
 
 export async function runCalc(
   positional: string[],
@@ -47,7 +52,10 @@ export async function runCalc(
   // required at N>1 (TC-182).
   const sidecarFlag = flags["sidecar"] as string | undefined;
   if (multi && sidecarFlag === undefined) {
-    stderr.write(s.errorMultiFileOutputRequired("--sidecar") + "\n");
+    stderr.write(
+      colorize(s.errorMultiFileOutputRequired("--sidecar"), RED, color) +
+        "\n",
+    );
     return 2;
   }
 
@@ -60,26 +68,37 @@ export async function runCalc(
     if (err instanceof MultiFileError) {
       switch (err.code) {
         case "DUPLICATE_FILE_PATH":
-          stderr.write(s.errorDuplicateFilePath(err.path!) + "\n");
+          stderr.write(
+            colorize(s.errorDuplicateFilePath(err.path!), RED, color) + "\n",
+          );
           return 2;
         case "CANNOT_READ_FILE":
-          stderr.write(s.errorCannotReadFile(err.file!) + "\n");
+          stderr.write(
+            colorize(s.errorCannotReadFile(err.file!), RED, color) + "\n",
+          );
           return 1;
         case "INVALID_CSV":
-          stderr.write(s.errorInvalidCsv + "\n");
+          stderr.write(colorize(s.errorInvalidCsv, RED, color) + "\n");
           return 1;
         case "BROKER_DETECTION_FAILED":
-          stderr.write(s.errorBrokerDetectionFailed + "\n");
+          stderr.write(
+            colorize(s.errorBrokerDetectionFailed, RED, color) + "\n",
+          );
           return 2;
       }
     }
     if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
-        stderr.write(s.errorInvalidCsv + "\n");
+        stderr.write(colorize(s.errorInvalidCsv, RED, color) + "\n");
       } else if (err.code === "MISSING_SECTION") {
-        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
+        stderr.write(
+          colorize(s.errorMissingSection(err.sectionName!), RED, color) +
+            "\n",
+        );
       } else {
-        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
+        stderr.write(
+          colorize(s.errorMissingColumn(err.columnName!), RED, color) + "\n",
+        );
       }
       return 1;
     }
@@ -102,7 +121,11 @@ export async function runCalc(
     exportFlagRaw !== undefined && exportFlagRaw !== false;
   if (exportRequested && multi && typeof exportFlagRaw !== "string") {
     stderr.write(
-      s.errorMultiFileOutputRequired("--export-dichiarazione") + "\n",
+      colorize(
+        s.errorMultiFileOutputRequired("--export-dichiarazione"),
+        RED,
+        color,
+      ) + "\n",
     );
     return 2;
   }
@@ -173,7 +196,9 @@ export async function runCalc(
       const classifier = new Classifier();
       classification = await classifier.load(sidecarPath);
     } catch {
-      stderr.write(s.errorCannotLoadSidecar(sidecarPath) + "\n");
+      stderr.write(
+        colorize(s.errorCannotLoadSidecar(sidecarPath), RED, color) + "\n",
+      );
       return 1;
     }
   } else {
@@ -208,7 +233,9 @@ export async function runCalc(
     report = calculator.calculateGains(method);
   } catch (err) {
     if (err instanceof CalculationError && err.code === "AMBIGUOUS_TAX_YEAR") {
-      stderr.write(s.errorAmbiguousTaxYear(err.years!) + "\n");
+      stderr.write(
+        colorize(s.errorAmbiguousTaxYear(err.years!), RED, color) + "\n",
+      );
       return 1;
     }
     throw err;
@@ -219,7 +246,9 @@ export async function runCalc(
     try {
       await report.dichiarazione!.exportTo(exportPath);
     } catch {
-      stderr.write(s.errorCannotWriteExport(exportPath) + "\n");
+      stderr.write(
+        colorize(s.errorCannotWriteExport(exportPath), RED, color) + "\n",
+      );
       return 1;
     }
   }

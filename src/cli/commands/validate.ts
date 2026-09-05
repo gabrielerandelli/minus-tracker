@@ -9,6 +9,8 @@ import { renderSegments } from "../colors.js";
 // output actually uses: green for a zero-warning status, amber for a warning signal.
 const GREEN = "#4ADE80";
 const AMBER = "#FBBF24";
+// Red for hard-error stderr.write call sites, matching index.ts's shared catch block (Task 63).
+const RED = "#F87171";
 
 /** Renders a single whole-line segment (no value/label split) — validate's lines are all
  * full sentences with no single isolable value, per the granularity rule. */
@@ -121,26 +123,37 @@ export async function runValidate(
     if (err instanceof MultiFileError) {
       switch (err.code) {
         case "DUPLICATE_FILE_PATH":
-          stderr.write(s.errorDuplicateFilePath(err.path!) + "\n");
+          stderr.write(
+            wholeLine(s.errorDuplicateFilePath(err.path!), RED, color) + "\n",
+          );
           return 2;
         case "CANNOT_READ_FILE":
-          stderr.write(`Cannot read file: ${err.file}\n`);
+          stderr.write(
+            wholeLine(`Cannot read file: ${err.file}`, RED, color) + "\n",
+          );
           return 1;
         case "INVALID_CSV":
-          stderr.write(s.errorInvalidCsv + "\n");
+          stderr.write(wholeLine(s.errorInvalidCsv, RED, color) + "\n");
           return 1;
         case "BROKER_DETECTION_FAILED":
-          stderr.write(s.errorBrokerDetectionFailed + "\n");
+          stderr.write(
+            wholeLine(s.errorBrokerDetectionFailed, RED, color) + "\n",
+          );
           return 2;
       }
     }
     if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
-        stderr.write(s.errorInvalidCsv + "\n");
+        stderr.write(wholeLine(s.errorInvalidCsv, RED, color) + "\n");
       } else if (err.code === "MISSING_SECTION") {
-        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
+        stderr.write(
+          wholeLine(s.errorMissingSection(err.sectionName!), RED, color) +
+            "\n",
+        );
       } else {
-        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
+        stderr.write(
+          wholeLine(s.errorMissingColumn(err.columnName!), RED, color) + "\n",
+        );
       }
       return 1;
     }
