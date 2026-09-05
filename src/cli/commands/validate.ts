@@ -3,6 +3,20 @@ import { parseMultipleFiles, MultiFileError, multiFileTag } from "../multi-file.
 import type { Broker, FileParseResult } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import { warningToEnglish, type WarningEntry } from "../../parser/warnings.js";
+import { renderSegments } from "../colors.js";
+
+// Palette (Part 18) — mirrors src/cli/renderer.ts's palette for the two roles validate's
+// output actually uses: green for a zero-warning status, amber for a warning signal.
+const GREEN = "#4ADE80";
+const AMBER = "#FBBF24";
+// Red for hard-error stderr.write call sites, matching index.ts's shared catch block (Task 63).
+const RED = "#F87171";
+
+/** Renders a single whole-line segment (no value/label split) — validate's lines are all
+ * full sentences with no single isolable value, per the granularity rule. */
+function wholeLine(text: string, hex: string | undefined, color: boolean): string {
+  return renderSegments([{ text, hex }], color);
+}
 
 function renderWarningEntry(entry: WarningEntry, s: LocaleStrings): string {
   let reason: string;
@@ -52,12 +66,26 @@ function renderFileBlock(
   multi: boolean,
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
+  color: boolean,
 ): void {
+  // Block status is driven by this file's own warning count: green when clean, amber the
+  // moment it has at least one warning — even though the line's text still says "OK:".
+  const hasWarnings = pf.warningEntries.length > 0;
   stdout.write(
-    multiFileTag(pf.file, multi) + s.validateOk(pf.transactions.length, 0) + "\n",
+    wholeLine(
+      multiFileTag(pf.file, multi) + s.validateOk(pf.transactions.length, 0),
+      hasWarnings ? AMBER : GREEN,
+      color,
+    ) + "\n",
   );
   for (const entry of pf.warningEntries) {
-    stdout.write(multiFileTag(pf.file, multi) + renderWarningEntry(entry, s) + "\n");
+    stdout.write(
+      wholeLine(
+        multiFileTag(pf.file, multi) + renderWarningEntry(entry, s),
+        AMBER,
+        color,
+      ) + "\n",
+    );
   }
 }
 
@@ -67,6 +95,7 @@ export async function runValidate(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  color: boolean = false,
 ): Promise<number> {
   const files = positional;
   if (files.length === 0) {
@@ -94,26 +123,37 @@ export async function runValidate(
     if (err instanceof MultiFileError) {
       switch (err.code) {
         case "DUPLICATE_FILE_PATH":
-          stderr.write(s.errorDuplicateFilePath(err.path!) + "\n");
+          stderr.write(
+            wholeLine(s.errorDuplicateFilePath(err.path!), RED, color) + "\n",
+          );
           return 2;
         case "CANNOT_READ_FILE":
-          stderr.write(`Cannot read file: ${err.file}\n`);
+          stderr.write(
+            wholeLine(`Cannot read file: ${err.file}`, RED, color) + "\n",
+          );
           return 1;
         case "INVALID_CSV":
-          stderr.write(s.errorInvalidCsv + "\n");
+          stderr.write(wholeLine(s.errorInvalidCsv, RED, color) + "\n");
           return 1;
         case "BROKER_DETECTION_FAILED":
-          stderr.write(s.errorBrokerDetectionFailed + "\n");
+          stderr.write(
+            wholeLine(s.errorBrokerDetectionFailed, RED, color) + "\n",
+          );
           return 2;
       }
     }
     if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
-        stderr.write(s.errorInvalidCsv + "\n");
+        stderr.write(wholeLine(s.errorInvalidCsv, RED, color) + "\n");
       } else if (err.code === "MISSING_SECTION") {
-        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
+        stderr.write(
+          wholeLine(s.errorMissingSection(err.sectionName!), RED, color) +
+            "\n",
+        );
       } else {
-        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
+        stderr.write(
+          wholeLine(s.errorMissingColumn(err.columnName!), RED, color) + "\n",
+        );
       }
       return 1;
     }
@@ -121,7 +161,7 @@ export async function runValidate(
   }
 
   for (const pf of parsed.perFile) {
-    renderFileBlock(pf, multi, s, stdout);
+    renderFileBlock(pf, multi, s, stdout, color);
   }
 
   if (multi) {
@@ -136,11 +176,24 @@ export async function runValidate(
     const totalWarnings = perFileWarnings + parsed.duplicateRows.length;
 
     stdout.write("\n");
-    stdout.write(s.validateTotal(totalCount, totalWarnings) + "\n");
+    // Colored by this line's own aggregate (`totalWarnings`, computed just above from all
+    // per-file warnings + duplicate rows) — never re-derived from the last per-file block's
+    // own status, which would silently mis-color whenever the last file happens to be clean
+    // but an earlier file or a cross-file duplicate isn't.
+    stdout.write(
+      wholeLine(
+        s.validateTotal(totalCount, totalWarnings),
+        totalWarnings > 0 ? AMBER : GREEN,
+        color,
+      ) + "\n",
+    );
     for (const dup of parsed.duplicateRows) {
       stdout.write(
-        s.warnDuplicateRow(dup.file1, dup.row1 ?? 0, dup.file2, dup.row2 ?? 0) +
-          "\n",
+        wholeLine(
+          s.warnDuplicateRow(dup.file1, dup.row1 ?? 0, dup.file2, dup.row2 ?? 0),
+          AMBER,
+          color,
+        ) + "\n",
       );
     }
   }

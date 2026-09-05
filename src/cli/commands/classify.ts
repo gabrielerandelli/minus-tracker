@@ -3,6 +3,12 @@ import { classifyToSidecar } from "./classify-core.js";
 import { parseMultipleFiles, MultiFileError } from "../multi-file.js";
 import type { Broker } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
+import { renderSegments } from "../colors.js";
+
+// Palette (Part 18): red for the hard TTY-precondition error. This is checked ahead of the
+// shared try/catch in index.ts (Task 63's scope), so it's colored here directly rather than
+// through that shared error-rendering pass.
+const RED = "#F87171";
 
 export async function runClassify(
   positional: string[],
@@ -10,12 +16,13 @@ export async function runClassify(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  color: boolean = false,
 ): Promise<number> {
   const offline = Boolean(flags["offline"]);
 
   // TTY check — FIRST, before any file I/O
   if (!process.stdin.isTTY && !offline) {
-    stderr.write(s.classifyNonTtyError + "\n");
+    stderr.write(renderSegments([{ text: s.classifyNonTtyError, hex: RED }], color) + "\n");
     return 2;
   }
 
@@ -40,7 +47,12 @@ export async function runClassify(
   // required at N>1 (TC-182, classify slice).
   const sidecarFlag = flags["sidecar"] as string | undefined;
   if (multi && sidecarFlag === undefined) {
-    stderr.write(s.errorMultiFileOutputRequired("--sidecar") + "\n");
+    stderr.write(
+      renderSegments(
+        [{ text: s.errorMultiFileOutputRequired("--sidecar"), hex: RED }],
+        color,
+      ) + "\n",
+    );
     return 2;
   }
 
@@ -53,26 +65,57 @@ export async function runClassify(
     if (err instanceof MultiFileError) {
       switch (err.code) {
         case "DUPLICATE_FILE_PATH":
-          stderr.write(s.errorDuplicateFilePath(err.path!) + "\n");
+          stderr.write(
+            renderSegments(
+              [{ text: s.errorDuplicateFilePath(err.path!), hex: RED }],
+              color,
+            ) + "\n",
+          );
           return 2;
         case "CANNOT_READ_FILE":
-          stderr.write(`Cannot read file: ${err.file}\n`);
+          stderr.write(
+            renderSegments(
+              [{ text: `Cannot read file: ${err.file}`, hex: RED }],
+              color,
+            ) + "\n",
+          );
           return 1;
         case "INVALID_CSV":
-          stderr.write(s.errorInvalidCsv + "\n");
+          stderr.write(
+            renderSegments([{ text: s.errorInvalidCsv, hex: RED }], color) +
+              "\n",
+          );
           return 1;
         case "BROKER_DETECTION_FAILED":
-          stderr.write(s.errorBrokerDetectionFailed + "\n");
+          stderr.write(
+            renderSegments(
+              [{ text: s.errorBrokerDetectionFailed, hex: RED }],
+              color,
+            ) + "\n",
+          );
           return 2;
       }
     }
     if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
-        stderr.write(s.errorInvalidCsv + "\n");
+        stderr.write(
+          renderSegments([{ text: s.errorInvalidCsv, hex: RED }], color) +
+            "\n",
+        );
       } else if (err.code === "MISSING_SECTION") {
-        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
+        stderr.write(
+          renderSegments(
+            [{ text: s.errorMissingSection(err.sectionName!), hex: RED }],
+            color,
+          ) + "\n",
+        );
       } else {
-        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
+        stderr.write(
+          renderSegments(
+            [{ text: s.errorMissingColumn(err.columnName!), hex: RED }],
+            color,
+          ) + "\n",
+        );
       }
       return 1;
     }
@@ -88,6 +131,13 @@ export async function runClassify(
   // whatever transaction list they're given — feeding it the cross-file
   // merged list here is what makes TC-194's cross-file dedup work, with no
   // separate multi-file-specific dedup path.
-  await classifyToSidecar(parsed.transactions, sidecarPath, { offline }, s, stdout);
+  await classifyToSidecar(
+    parsed.transactions,
+    sidecarPath,
+    { offline },
+    s,
+    stdout,
+    color,
+  );
   return 0;
 }

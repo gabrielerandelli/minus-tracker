@@ -12,6 +12,10 @@ import { runStressTest } from "./commands/stress-test.js";
 import { runClassify } from "./commands/classify.js";
 import { ClassificationError } from "../errors.js";
 import { renderBanner } from "./banner.js";
+import { colorize } from "./colors.js";
+
+// Palette (Part 18): red for every hard-error render in the shared catch block below (Task 63).
+const RED = "#F87171";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -51,6 +55,7 @@ export async function runCli(
       sidecar: { type: "string" },
       help: { type: "boolean", default: false },
       version: { type: "boolean", default: false },
+      "no-color": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -65,7 +70,10 @@ export async function runCli(
   const flags = values as Record<string, string | boolean>;
 
   const streamInfo = stdout as Partial<NodeJS.WriteStream>;
-  const color = !process.env["NO_COLOR"] && !!streamInfo.isTTY;
+  // Resolution order, highest to lowest priority: --no-color flag >
+  // NO_COLOR env var > non-TTY stdout > (else) color on.
+  const color =
+    !values["no-color"] && !process.env["NO_COLOR"] && !!streamInfo.isTTY;
   const width = streamInfo.columns;
 
   if (values.version) {
@@ -102,22 +110,63 @@ export async function runCli(
   try {
     switch (command) {
       case "calc":
-        exitCode = await runCalc(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runCalc(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "validate":
-        exitCode = await runValidate(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runValidate(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "rates":
-        exitCode = await runRates(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runRates(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "config":
-        exitCode = await runConfig(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runConfig(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "stress-test":
-        exitCode = await runStressTest(restPositionals, flags, stdout, stderr);
+        exitCode = await runStressTest(
+          restPositionals,
+          flags,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "classify":
-        exitCode = await runClassify(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runClassify(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       default:
         stderr.write(USAGE_LINE);
@@ -125,15 +174,20 @@ export async function runCli(
     }
   } catch (err) {
     if (err instanceof ClassificationError) {
-      stderr.write(err.message + "\n");
+      stderr.write(colorize(err.message, RED, color) + "\n");
       exitCode = 1;
     } else if (err instanceof ParseError) {
       if (err.code === "INVALID_CSV") {
-        stderr.write(s.errorInvalidCsv + "\n");
+        stderr.write(colorize(s.errorInvalidCsv, RED, color) + "\n");
       } else if (err.code === "MISSING_SECTION") {
-        stderr.write(s.errorMissingSection(err.sectionName!) + "\n");
+        stderr.write(
+          colorize(s.errorMissingSection(err.sectionName!), RED, color) +
+            "\n",
+        );
       } else {
-        stderr.write(s.errorMissingColumn(err.columnName!) + "\n");
+        stderr.write(
+          colorize(s.errorMissingColumn(err.columnName!), RED, color) + "\n",
+        );
       }
       exitCode = 1;
     } else if (err instanceof CalculationError) {
@@ -146,7 +200,10 @@ export async function runCli(
       // literal-typed .code check on a plain class, so the guard establishes
       // the invariant and the assertion documents it, same as ParseError.
       if (err.code === "NO_OPEN_LOTS") {
-        stderr.write(s.errorNoOpenLots(err.isin!, err.date!) + "\n");
+        stderr.write(
+          colorize(s.errorNoOpenLots(err.isin!, err.date!), RED, color) +
+            "\n",
+        );
       }
       exitCode = 1;
     } else {

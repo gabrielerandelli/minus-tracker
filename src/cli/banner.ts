@@ -1,13 +1,9 @@
-interface RGB {
-  r: number;
-  g: number;
-  b: number;
-}
+import { type RGB, RESET, ansiTrueColor, stripAnsi } from "./colors.js";
+
+export { stripAnsi };
 
 const GRADIENT_START: RGB = { r: 0x1b, g: 0x49, b: 0x65 }; // navy — minus bar
 const GRADIENT_END: RGB = { r: 0x4a, g: 0xde, b: 0x80 }; // green — arrowhead
-const RESET = "\x1b[0m";
-const ANSI_ESCAPE_RE = /\x1b\[[0-9;]*m/g;
 
 const ICON_LINE_1 = "╾╮ ╭─╮  ▲";
 const ICON_LINE_2 = " ╰─╯ ╰──┤";
@@ -22,10 +18,6 @@ export interface BannerOptions {
   width: number | undefined;
 }
 
-export function stripAnsi(text: string): string {
-  return text.replace(ANSI_ESCAPE_RE, "");
-}
-
 function lerp(a: number, b: number, t: number): number {
   return Math.round(a + (b - a) * t);
 }
@@ -36,10 +28,6 @@ function gradientColorAt(t: number): RGB {
     g: lerp(GRADIENT_START.g, GRADIENT_END.g, t),
     b: lerp(GRADIENT_START.b, GRADIENT_END.b, t),
   };
-}
-
-function ansiTrueColor(rgb: RGB): string {
-  return `\x1b[38;2;${rgb.r};${rgb.g};${rgb.b}m`;
 }
 
 /** Colors non-space characters left-to-right along the brand gradient. No-op when color=false. */
