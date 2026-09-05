@@ -12,6 +12,12 @@ import { generateCsv } from "../../stress/generator.js";
 import { runScenario } from "../../stress/runner.js";
 import { buildReport, formatTable, formatJson } from "../../stress/reporter.js";
 import type { StressManifest } from "../../stress/generator.js";
+import { colorize } from "../colors.js";
+
+// Part 18 palette (docs/prd/18-cli-color-output.md).
+const GREEN = "#4ADE80";
+const RED = "#F87171";
+const AMBER = "#FBBF24";
 
 export async function runStressTest(
   _positionals: string[],
@@ -19,6 +25,11 @@ export async function runStressTest(
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
 ): Promise<number> {
+  // Color resolution mirrors index.ts's existing (pre-`--no-color`) rule:
+  // NO_COLOR env wins, otherwise on iff stdout is a TTY.
+  const streamInfo = stdout as Partial<NodeJS.WriteStream>;
+  const color = !process.env["NO_COLOR"] && !!streamInfo.isTTY;
+
   // 1. Parse --range flag
   const rangeStr = (flags["range"] as string | undefined) ?? "1-100";
   const rangeParts = rangeStr.split("-");
@@ -79,7 +90,13 @@ export async function runStressTest(
     timeout: 15000,
   });
   if ((ratesCheck.status ?? 1) !== 0) {
-    stderr.write("Warning: rates --check failed; ECB rates may be stale.\n");
+    stderr.write(
+      colorize(
+        "Warning: rates --check failed; ECB rates may be stale.",
+        AMBER,
+        color,
+      ) + "\n",
+    );
   }
 
   const configShow = spawnSync("node", [cliBin, "config", "--show"], {
@@ -87,7 +104,7 @@ export async function runStressTest(
     timeout: 15000,
   });
   if ((configShow.status ?? 1) !== 0) {
-    stderr.write("Warning: config --show failed.\n");
+    stderr.write(colorize("Warning: config --show failed.", AMBER, color) + "\n");
   }
 
   // 6. Filter scenarios by range
@@ -102,9 +119,12 @@ export async function runStressTest(
     const csv = generateCsv(scenario);
     const result = runScenario(scenario, csv, outputDir, cliBin);
     results.push(result);
-    stdout.write(
-      `  [${result.pass ? "✓" : "✗"}] ${scenario.id} ${scenario.slug}\n`,
-    );
+    // Colored by its own glyph — green/red, never teal (teal is reserved
+    // for open-ended "still working, no verdict yet" text elsewhere; this
+    // line already states a per-scenario pass/fail verdict).
+    const glyph = result.pass ? "✓" : "✗";
+    const coloredGlyph = colorize(glyph, result.pass ? GREEN : RED, color);
+    stdout.write(`  [${coloredGlyph}] ${scenario.id} ${scenario.slug}\n`);
   }
 
   // 9. Build and output report
@@ -112,7 +132,7 @@ export async function runStressTest(
   if (flags["json"]) {
     stdout.write(formatJson(report) + "\n");
   } else {
-    stdout.write(formatTable(report) + "\n");
+    stdout.write(formatTable(report, color) + "\n");
   }
 
   // 10. Cleanup — only the auto-generated temp dir is ever deleted; a
