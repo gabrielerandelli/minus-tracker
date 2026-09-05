@@ -3,6 +3,12 @@ import { parseMultipleFiles, MultiFileError, multiFileTag } from "../multi-file.
 import type { Broker, FileParseResult } from "../multi-file.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import { warningToEnglish, type WarningEntry } from "../../parser/warnings.js";
+import { renderSegments } from "../colors.js";
+
+// Part 18 palette (docs/prd/18-cli-color-output.md) — green/amber, not yet exposed as shared
+// named constants elsewhere in colors.ts, so scoped here same as renderer.ts's own usage.
+const GREEN = "#4ADE80";
+const AMBER = "#FBBF24";
 
 function renderWarningEntry(entry: WarningEntry, s: LocaleStrings): string {
   let reason: string;
@@ -52,12 +58,30 @@ function renderFileBlock(
   multi: boolean,
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
+  color: boolean,
 ): void {
+  // Whole-line coloring per the granularity rule (Part 18) — these are full sentences with no
+  // single isolable value, so the block's own OK/warning lines share one aggregate-driven color:
+  // green when this file has zero warnings, amber when it has at least one.
+  const hex = pf.warningEntries.length > 0 ? AMBER : GREEN;
   stdout.write(
-    multiFileTag(pf.file, multi) + s.validateOk(pf.transactions.length, 0) + "\n",
+    renderSegments(
+      [
+        {
+          text: multiFileTag(pf.file, multi) + s.validateOk(pf.transactions.length, 0),
+          hex,
+        },
+      ],
+      color,
+    ) + "\n",
   );
   for (const entry of pf.warningEntries) {
-    stdout.write(multiFileTag(pf.file, multi) + renderWarningEntry(entry, s) + "\n");
+    stdout.write(
+      renderSegments(
+        [{ text: multiFileTag(pf.file, multi) + renderWarningEntry(entry, s), hex }],
+        color,
+      ) + "\n",
+    );
   }
 }
 
@@ -67,6 +91,7 @@ export async function runValidate(
   s: LocaleStrings,
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  color: boolean = false,
 ): Promise<number> {
   const files = positional;
   if (files.length === 0) {
@@ -121,7 +146,7 @@ export async function runValidate(
   }
 
   for (const pf of parsed.perFile) {
-    renderFileBlock(pf, multi, s, stdout);
+    renderFileBlock(pf, multi, s, stdout, color);
   }
 
   if (multi) {
@@ -134,13 +159,33 @@ export async function runValidate(
       0,
     );
     const totalWarnings = perFileWarnings + parsed.duplicateRows.length;
+    // validateTotal's color is driven by its own {warnings} count (computed just above), not
+    // re-derived from the last per-file block rendered above.
+    const totalHex = totalWarnings > 0 ? AMBER : GREEN;
 
     stdout.write("\n");
-    stdout.write(s.validateTotal(totalCount, totalWarnings) + "\n");
+    stdout.write(
+      renderSegments(
+        [{ text: s.validateTotal(totalCount, totalWarnings), hex: totalHex }],
+        color,
+      ) + "\n",
+    );
     for (const dup of parsed.duplicateRows) {
       stdout.write(
-        s.warnDuplicateRow(dup.file1, dup.row1 ?? 0, dup.file2, dup.row2 ?? 0) +
-          "\n",
+        renderSegments(
+          [
+            {
+              text: s.warnDuplicateRow(
+                dup.file1,
+                dup.row1 ?? 0,
+                dup.file2,
+                dup.row2 ?? 0,
+              ),
+              hex: AMBER,
+            },
+          ],
+          color,
+        ) + "\n",
       );
     }
   }

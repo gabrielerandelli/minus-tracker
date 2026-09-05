@@ -105,7 +105,14 @@ export async function runCli(
         exitCode = await runCalc(restPositionals, flags, s, stdout, stderr);
         break;
       case "validate":
-        exitCode = await runValidate(restPositionals, flags, s, stdout, stderr);
+        exitCode = await runValidate(
+          restPositionals,
+          flags,
+          s,
+          stdout,
+          stderr,
+          color,
+        );
         break;
       case "rates":
         exitCode = await runRates(restPositionals, flags, s, stdout, stderr);
