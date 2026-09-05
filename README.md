@@ -126,6 +126,17 @@ MINUSVALENZE:  182,75 EUR
 RISULTATO NETTO: 562,05 EUR
 ```
 
+In un terminale interattivo l'output è a colori (verde per le plusvalenze, rosso per le
+minusvalenze, ambra per gli avvisi):
+
+<p align="center">
+  <img
+    src="./.github/assets/cli-color-output.png"
+    alt="Output colorato del comando calc di minus-tracker in un terminale"
+    width="85%"
+  />
+</p>
+
 Con il flag `--json` si ottiene direttamente l'oggetto `GainsReport` in formato JSON — utile per integrazioni programmatiche (vedi [Esempio di utilizzo nel codice](#esempio-di-utilizzo-nel-codice)).
 
 ### Formato CSV DEGIRO
@@ -518,6 +529,17 @@ PLUSVALENZE:    744.80 EUR
 MINUSVALENZE:  182.75 EUR
 NET RESULT: 562.05 EUR
 ```
+
+In an interactive terminal, output is colorized (green for gains, red for losses, amber for
+warnings):
+
+<p align="center">
+  <img
+    src="./.github/assets/cli-color-output.png"
+    alt="Colorized output of minus-tracker's calc command in a terminal"
+    width="85%"
+  />
+</p>
 
 Add `--json` to get the raw `GainsReport` object — useful for programmatic integrations (see [Library Usage](#library-usage)).
 
