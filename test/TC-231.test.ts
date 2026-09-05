@@ -69,6 +69,23 @@ describe("TC-231: stripAnsi(colored) === uncolored, for every command", () => {
     );
 
     const normalize = (s: string) => s.replace(/Generato: .+/, "Generato: <ts>");
+
+    // Warm-up: calc auto-invokes classify (offline mode, Task 38) the first time no
+    // sidecar exists next to the input file, writing one to disk as a side effect. Run
+    // it once here so both comparison calls below see an already-classified fixture —
+    // otherwise only the first of the two would print the auto-classify preamble,
+    // breaking the very equivalence this test checks (caught by CI: the first version of
+    // this test compared a "colored, no sidecar yet" run against an "uncolored, sidecar
+    // now exists" run, not color-on vs color-off of the same output).
+    await runCalc(
+      [fixturePath],
+      {},
+      itStrings,
+      makeWritable().stream,
+      makeWritable().stream,
+      false,
+    );
+
     const colored = makeWritable();
     await runCalc([fixturePath], {}, itStrings, colored.stream, makeWritable().stream, true);
     const uncolored = makeWritable();
