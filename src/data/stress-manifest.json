@@ -1145,7 +1145,7 @@
       "id": "033",
       "category": "05-chf-stocks",
       "slug": "chf-cross-year",
-      "description": "CHF stock, BUY 2024-01-02 SELL 2025-01-02 to test cross-year CHF conversion",
+      "description": "CHF stock, BUY 2024-01-02 SELL 2025-01-02 to test cross-year CHF conversion (single SELL year — no tax-year warning, per TC-173)",
       "transactions": [
         {
           "date": "2024-01-02",
@@ -1172,7 +1172,7 @@
         "json_exit": 0,
         "en_exit": 0,
         "validate_exit": 0,
-        "warning_count": 1
+        "warning_count": 0
       }
     },
     {
@@ -3509,9 +3509,9 @@
     },
     {
       "id": "074",
-      "category": "10-warnings",
-      "slug": "warn-multi-year-span",
-      "description": "EUR stock BUY 2024-01-02 SELL 2025-06-02 — triggers multi-year WARNING",
+      "category": "12-edge-cases",
+      "slug": "edge-buy-prior-year-sell-current-year",
+      "description": "EUR stock BUY 2024-01-02 SELL 2025-06-02 — ordinary cross-year holding, single SELL year, no tax-year warning (TC-173)",
       "transactions": [
         {
           "date": "2024-01-02",
@@ -3538,14 +3538,14 @@
         "json_exit": 0,
         "en_exit": 0,
         "validate_exit": 0,
-        "warning_count": 1
+        "warning_count": 0
       }
     },
     {
       "id": "075",
-      "category": "10-warnings",
-      "slug": "warn-multi-year-two-isins",
-      "description": "2 EUR ISINs both spanning 2024 (BUY) and 2025 (SELL) — multi-year warning",
+      "category": "12-edge-cases",
+      "slug": "edge-two-isins-buy-prior-year-sell-current-year",
+      "description": "2 EUR ISINs, each BUY in 2024 and SELL in 2025 — all SELLs fall in a single year, no tax-year warning (TC-173)",
       "transactions": [
         {
           "date": "2024-01-02",
@@ -3590,7 +3590,7 @@
         "json_exit": 0,
         "en_exit": 0,
         "validate_exit": 0,
-        "warning_count": 1
+        "warning_count": 0
       }
     },
     {
@@ -7261,7 +7261,7 @@
       "id": "095",
       "category": "13-large-portfolios",
       "slug": "large-5eur-isins-cross-year-100rows",
-      "description": "5 EUR ISINs × (10 BUYs in 2024 + 10 SELLs in 2025) = 100 rows, cross-year",
+      "description": "5 EUR ISINs × (10 BUYs in 2024 + 10 SELLs in 2025) = 100 rows, cross-year (all SELLs fall in 2025 — no tax-year warning, per TC-173)",
       "transactions": [
         {
           "date": "2024-01-02",
@@ -8170,7 +8170,7 @@
         "json_exit": 0,
         "en_exit": 0,
         "validate_exit": 0,
-        "warning_count": 1
+        "warning_count": 0
       }
     },
     {

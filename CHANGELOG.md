@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The shipped `stress-test` CLI command misreported 4 of its 100 built-in scenarios (`033`,
+  `074`, `075`, `095`) as failing on a clean, correct build. All four exercise an ordinary
+  "bought in an earlier year, sold in a single later year" holding — ISIN, per-year the SELLs are
+  entirely unambiguous, no `AMBIGUOUS_TAX_YEAR` case — for which `Calculator.calculateGains()` has
+  correctly emitted zero warnings since the v0.11.2 tax-year-inference redesign (only SELL dates
+  are consulted; a BUY-only year spread never triggers ambiguity, regression-guarded by TC-173/
+  TC-179). `src/data/stress-manifest.json` was never updated when that redesign shipped and still
+  asserted the old, since-removed "multi-year warning" behavior (`warning_count: 1`), so
+  `minus-tracker stress-test` failed out of the box even though the underlying calculation was
+  correct. The four scenarios' `warning_count` now correctly reads `0`; the two that were
+  miscategorized as `10-warnings` (`074`, `075`, since they no longer warn) are recategorized to
+  `12-edge-cases` with slugs/descriptions that describe current behavior instead of the removed
+  one. `test/TC-043.test.ts` gained a hardcoded, real-`Calculator`-backed regression test for these
+  four scenarios plus a broader in-process check that cross-validates every runnable manifest
+  scenario's declared `warning_count` against actual `Calculator`/`DEGIROParser` output, so a
+  future manifest/behavior drift fails `npm test` directly instead of only surfacing via a manual
+  `stress-test` run. No calculation logic changed; `DEGIROParser`, `Calculator.calculateGains`,
+  `IBKRParser`, and `Classifier` signatures are unaffected.
+
 ## [0.12.0] - 2026-09-05
 
 ### Added

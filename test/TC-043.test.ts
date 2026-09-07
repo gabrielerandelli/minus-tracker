@@ -23,6 +23,8 @@ import {
 } from "../src/stress/reporter.js";
 import type { StressReport } from "../src/stress/reporter.js";
 import type { ScenarioResult } from "../src/stress/runner.js";
+import { DEGIROParser } from "../src/parser/index.js";
+import { Calculator } from "../src/calculator/index.js";
 
 // ---------------------------------------------------------------------------
 // Manifest (read once)
@@ -318,11 +320,100 @@ describe("TC-043-G3: Manifest Integrity", () => {
       expect(s.expect.json_exit, `scenario ${s.id} json_exit`).toBe(0);
       expect(s.expect.en_exit, `scenario ${s.id} en_exit`).toBe(0);
       expect(s.expect.validate_exit, `scenario ${s.id} validate_exit`).toBe(0);
-      // warning_count is 0 for most, but 1 for cross-year scenarios (e.g. 033, 095)
+      // Cross-year scenarios (e.g. 033, 074, 075, 095) do NOT warn as of
+      // v0.11.2: tax-year inference only considers SELL dates, so a BUY-only
+      // year spread never triggers ambiguity (TC-173/TC-179). warning_count
+      // is 0 for every scenario in this bucket.
       expect(
         s.expect.warning_count,
         `scenario ${s.id} warning_count`,
       ).toBeLessThanOrEqual(1);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Test Group 4: Manifest ↔ real Calculator/parser drift guard
+//
+// Group 3 above only checks internal manifest consistency (e.g. "every
+// category-10 scenario declares warning_count >= 1"), which cannot catch a
+// manifest that was never updated when Calculator behavior changed — exactly
+// what happened to scenarios 033/074/075/095 when v0.11.2 redesigned
+// tax-year inference (TC-173/TC-179) but stress-manifest.json kept asserting
+// the old "BUY/SELL spanning different years always warns" behavior. These
+// tests run scenarios through the real public API in-process (no subprocess,
+// unlike runner.ts — see file header) so a future silent drift fails
+// `npm test` immediately instead of only surfacing via a manual
+// `stress-test` run.
+// ---------------------------------------------------------------------------
+
+describe("TC-043-G4: cross-year no-warning invariant (TC-173/TC-179)", () => {
+  const scenarios: ManifestScenario[] = manifest.scenarios;
+
+  // Deliberately independent of scenario.expect.warning_count: this is the
+  // hardcoded, ground-truth assertion for the contract itself, not a replay
+  // of whatever the manifest currently claims.
+  const crossYearSingleSellYearIds = ["033", "074", "075", "095"];
+
+  it.each(crossYearSingleSellYearIds)(
+    "scenario %s (BUY in an earlier year, all SELLs in one later year) produces zero warnings",
+    (id) => {
+      const scenario = scenarios.find((s) => s.id === id);
+      expect(scenario, `scenario ${id} not found in manifest`).toBeDefined();
+
+      // Sanity-check the premise: every SELL for this scenario really does
+      // fall in a single calendar year (otherwise this wouldn't be testing
+      // TC-173 at all, it'd be testing the genuinely-ambiguous TC-172 case).
+      const sellYears = new Set(
+        scenario!.transactions
+          .filter((t) => t.qty < 0)
+          .map((t) => t.date.slice(0, 4)),
+      );
+      expect(
+        sellYears.size,
+        `scenario ${id} expected to have SELLs in exactly one year`,
+      ).toBe(1);
+
+      const csv = generateCsv(scenario!);
+      const parser = new DEGIROParser();
+      const transactions = parser.parse(csv);
+      const calculator = new Calculator(transactions, parser.warnings);
+      const report = calculator.calculateGains("LIFO");
+
+      // The hardcoded oracle: a BUY-only year spread must never warn.
+      expect(report.warnings).toHaveLength(0);
+    },
+  );
+});
+
+describe("TC-043-G5: manifest scenarios match real Calculator/parser output", () => {
+  const scenarios: ManifestScenario[] = manifest.scenarios;
+
+  // Category 11 scenarios deliberately trigger a thrown ParseError/
+  // CalculationError or a non-zero CLI exit code (invalid CSV, missing
+  // columns, SELL-without-BUY) — that's CLI/exit-code behavior, not
+  // in-process Calculator.warnings output, so it's out of scope here and
+  // stays covered by runner.ts's subprocess-based stress-test instead.
+  const runnable = scenarios.filter((s) => !s.category.startsWith("11-"));
+
+  it("sanity: most scenarios are runnable in-process", () => {
+    expect(runnable.length).toBeGreaterThan(80);
+  });
+
+  it.each(runnable.map((s) => [s.id, s.slug] as const))(
+    "scenario %s (%s): Calculator.calculateGains(...).warnings.length matches expect.warning_count",
+    (id) => {
+      const scenario = scenarios.find((s) => s.id === id)!;
+      const csv = generateCsv(scenario);
+      const parser = new DEGIROParser();
+      const transactions = parser.parse(csv);
+      const calculator = new Calculator(transactions, parser.warnings);
+      const report = calculator.calculateGains("LIFO");
+
+      expect(
+        report.warnings.length,
+        `scenario ${id} (${scenario.slug}): actual warnings ${JSON.stringify(report.warnings)}`,
+      ).toBe(scenario.expect.warning_count);
+    },
+  );
 });
