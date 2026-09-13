@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as https from "node:https";
-import { getActiveSnapshot, type RatesSnapshot } from "../../rates/index.js";
+import {
+  getActiveSnapshot,
+  getRateCoverage,
+  type RatesSnapshot,
+} from "../../rates/index.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import { renderSegments } from "../colors.js";
 
@@ -28,55 +32,40 @@ export function getSnapshotPath(): string {
   return path.join(configDir, "minus-tracker", "ecb-rates.json");
 }
 
-function countMissingBusinessDays(
-  startDate: string,
-  endDate: string,
-  dates: Record<string, number>,
-): number {
-  let missing = 0;
-  const cursor = new Date(startDate + "T00:00:00Z");
-  const end = new Date(endDate + "T00:00:00Z");
-  while (cursor <= end) {
-    const day = cursor.getUTCDay();
-    const iso = cursor.toISOString().slice(0, 10);
-    if (day !== 0 && day !== 6 && dates[iso] === undefined) missing++;
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return missing;
-}
-
-function getCoverage(snapshot: RatesSnapshot): {
+/**
+ * Aggregates the shared per-currency `getRateCoverage()` scan (Task 64) into
+ * the single combined start/end + currency list + gap display this command
+ * has always shown -- retiring the former private, unexported `getCoverage()`
+ * duplicate that computed this aggregate shape from its own independent scan.
+ * Per-currency gap dates now come from exactly one implementation, so this
+ * display and the `check_rate_coverage` MCP tool's raw per-currency output
+ * cannot drift apart (TC-235).
+ */
+function summarizeCoverageForDisplay(snapshot: RatesSnapshot): {
   start: string;
   end: string;
   currencies: string;
   gaps: string;
 } {
+  const { coverage, gaps } = getRateCoverage(snapshot);
+  const currencyKeys = Object.keys(coverage).sort();
+
   let start = "9999-12-31";
   let end = "0000-01-01";
-  const currencies: string[] = [];
-  const gapEntries: string[] = [];
-
-  for (const [ccy, dates] of Object.entries(snapshot)) {
-    currencies.push(ccy);
-    const keys = Object.keys(dates).sort();
-    for (const d of keys) {
-      if (d < start) start = d;
-      if (d > end) end = d;
-    }
-    if (keys.length > 0) {
-      const missing = countMissingBusinessDays(
-        keys[0],
-        keys[keys.length - 1],
-        dates,
-      );
-      if (missing > 0) gapEntries.push(`${ccy}: ${missing}`);
-    }
+  for (const { from, to } of Object.values(coverage)) {
+    if (from < start) start = from;
+    if (to > end) end = to;
   }
+
+  const gapEntries = currencyKeys
+    .filter((ccy) => (gaps[ccy]?.length ?? 0) > 0)
+    .map((ccy) => `${ccy}: ${gaps[ccy].join(", ")}`);
+
   return {
     start,
     end,
-    currencies: currencies.sort().join(", "),
-    gaps: gapEntries.sort().join(", "),
+    currencies: currencyKeys.join(", "),
+    gaps: gapEntries.join(", "),
   };
 }
 
@@ -182,7 +171,8 @@ export async function runRates(
 ): Promise<number> {
   if (flags["check"]) {
     const snapshot = getActiveSnapshot();
-    const { start, end, currencies, gaps } = getCoverage(snapshot);
+    const { start, end, currencies, gaps } =
+      summarizeCoverageForDisplay(snapshot);
     stdout.write(
       renderSegments(
         [{ text: s.ratesCoverage(start, end, currencies), hex: NAVY }],
