@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `DEGIROParser` silently mis-priced a transaction's fee whenever the "Transaction costs
+  currency" column was not EUR: the raw numeric value of "Transaction costs" was used
+  verbatim as `feesEUR`, completely ignoring what currency it was actually billed in — no
+  ECB conversion, no warning. This is a real DEGIRO scenario (e.g. an FX/connectivity
+  surcharge billed in a currency different from the trade's own "Local value currency")
+  and produced a silently wrong `plusvalenza`/`minusvalenza` by the fee's FX delta —
+  `IBKRParser` already handled the equivalent `IBCommission`/`IBCommissionCurrency`
+  columns correctly, so the two parsers disagreed on identical underlying data.
+  `DEGIROParser` now performs an independent ECB rate lookup for "Transaction costs
+  currency" (same `lookupRate()`/3-trading-day-walkback semantics already used for the
+  trade side), converts the fee to EUR, and — mirroring `IBKRParser`'s commission-FX
+  handling exactly — stamps the pre-existing optional `Transaction.feesFxRate`/
+  `feesCurrency` fields only when the fee currency differs from the trade currency. A fee
+  currency with no ECB rate available for its date (or not supported at all) now skips the
+  row with a `NO_ECB_RATE`/`UNSUPPORTED_CURRENCY` warning instead of silently mis-pricing
+  it, consistent with how the trade-side currency already fails. New regression coverage:
+  `test/regression-degiro-nonEUR-fee-fx.test.ts`. No public signatures changed —
+  `DEGIROParser`, `Calculator.calculateGains`, `IBKRParser`, and `Classifier` are
+  unaffected; `Transaction.feesFxRate`/`feesCurrency` already existed in the type and were
+  already read by `Calculator`.
+
 - The shipped `stress-test` CLI command misreported 4 of its 100 built-in scenarios (`033`,
   `074`, `075`, `095`) as failing on a clean, correct build. All four exercise an ordinary
   "bought in an earlier year, sold in a single later year" holding — ISIN, per-year the SELLs are
