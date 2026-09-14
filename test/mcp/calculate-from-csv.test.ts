@@ -124,6 +124,48 @@ describe("TC-237: calculate_from_csv — unresolved ISINs → Bucket B default +
   });
 });
 
+describe("TC-237b: calculate_from_csv — mixed portfolio, partial resolution", () => {
+  it("only the truly-unresolved ISIN lands in unresolvedIsins; the resolved one still splits into bucketA", async () => {
+    // Every TC-236/237 fixture above uses a single-ISIN CSV, which can't
+    // distinguish "scans the whole classification map" from "only looks at
+    // the first/last entry". This regression guard uses a two-ISIN CSV
+    // (one OpenFIGI-resolvable, one not) so collectUnresolvedIsins's
+    // Object.entries(classification) scan is actually exercised across more
+    // than one entry.
+    const csv = [
+      HEADER,
+      buyRow(ETF_ISIN, "10-01-2024", 10, 100),
+      sellRow(ETF_ISIN, "10-06-2024", 10, 140),
+      buyRow(STOCK_ISIN, "10-01-2024", 10, 100),
+      sellRow(STOCK_ISIN, "10-06-2024", 10, 70),
+    ].join("\n");
+
+    const mockHttp = vi.fn().mockImplementation(async (_url: string, body: string) => {
+      const items = JSON.parse(body) as { idValue: string }[];
+      return jsonResult(
+        200,
+        items.map((item) => ({
+          data: [
+            { securityType: item.idValue === ETF_ISIN ? "ETF" : "REIT" },
+          ],
+        })),
+      );
+    });
+
+    const result = await handleCalculateFromCsv(
+      { csv, method: "LIFO" },
+      mockHttp,
+    );
+
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.content[0].text);
+
+    expect(body.unresolvedIsins).toEqual([STOCK_ISIN]);
+    expect(body.report.bucketA.groups[0].plusvalenze).toBe(396);
+    expect(body.report.bucketB.minusvalenze).toBe(304);
+  });
+});
+
 describe("TC-238: calculate_from_csv — overrides correction retry resolves ISINs", () => {
   it("a retry with overrides for the unresolved ISIN clears it and re-routes the gain", async () => {
     const csv = [

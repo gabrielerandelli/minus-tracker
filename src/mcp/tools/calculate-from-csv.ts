@@ -2,7 +2,6 @@ import { handleParseTransactions } from "./parse-transactions.js";
 import { handleClassifyInstruments } from "./classify-instruments.js";
 import { handleCalculateGains } from "./calculate-gains.js";
 import type {
-  AssetClass,
   CarryForward,
   ClassificationMap,
   ClassifyInstrumentsInput,
