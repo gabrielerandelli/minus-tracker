@@ -79,6 +79,72 @@ function subtractDays(isoDate: string, days: number): string {
 }
 
 /**
+ * Every calendar-day date strictly between (inclusive) `startDate` and
+ * `endDate` that falls on a weekday and has no entry in `dates` — the actual
+ * missing-date list, not just a count.
+ */
+function listMissingBusinessDays(
+  startDate: string,
+  endDate: string,
+  dates: Record<string, number>,
+): string[] {
+  const missing: string[] = [];
+  const cursor = new Date(startDate + "T00:00:00Z");
+  const end = new Date(endDate + "T00:00:00Z");
+  while (cursor <= end) {
+    const day = cursor.getUTCDay();
+    const iso = cursor.toISOString().slice(0, 10);
+    if (day !== 0 && day !== 6 && dates[iso] === undefined) missing.push(iso);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return missing;
+}
+
+export interface CurrencyCoverage {
+  /** Earliest date present for this currency, "" if the currency has no data at all. */
+  from: string;
+  /** Latest date present for this currency, "" if the currency has no data at all. */
+  to: string;
+  /** Weekday dates within [from, to] with no rate entry. */
+  missing: string[];
+}
+
+/**
+ * Per-currency coverage: the actual `{ from, to }` date range plus the real
+ * missing-date list within it, for each requested currency (default: every
+ * currency present in `snapshot`). Module-internal — not part of the frozen
+ * public API (`getActiveSnapshot`/`isSnapshotStale`/`lookupRate`).
+ *
+ * This is the single shared implementation behind both the CLI's
+ * `rates --check` (`src/cli/commands/rates.ts`) and the MCP
+ * `check_rate_coverage` tool (`src/mcp/tools/check-rate-coverage.ts`) — a
+ * superset of the combined-range/gap-count shape the CLI computed on its own
+ * before v0.13.0 (see docs/prd/19-mcp-server-extensions.md). Retiring that
+ * private duplicate in favor of this one function is required, not optional
+ * — otherwise the two call sites can silently drift apart on what counts as
+ * "covered".
+ */
+export function getCurrencyCoverage(
+  snapshot: RatesSnapshot,
+  currencies?: string[],
+): Record<string, CurrencyCoverage> {
+  const keys = currencies ?? Object.keys(snapshot);
+  const result: Record<string, CurrencyCoverage> = {};
+  for (const ccy of keys) {
+    const dates = snapshot[ccy] ?? {};
+    const sortedDates = Object.keys(dates).sort();
+    if (sortedDates.length === 0) {
+      result[ccy] = { from: "", to: "", missing: [] };
+      continue;
+    }
+    const from = sortedDates[0];
+    const to = sortedDates[sortedDates.length - 1];
+    result[ccy] = { from, to, missing: listMissingBusinessDays(from, to, dates) };
+  }
+  return result;
+}
+
+/**
  * Look up ECB rate for a currency on a given date.
  * Returns 1.0 for EUR. Walks back up to 3 calendar days for weekend/holiday gaps.
  * Returns null if not found within the window.

@@ -170,6 +170,27 @@ export interface CalculateGainsInput {
   incomeRows?: IncomeRow[];
 }
 
+// Input shapes for the MCP server's 2 v0.13.0 extension tools (Part 19).
+// Same "single source of truth for scripts/generate-mcp-schemas.js" rule as
+// the 3 tools above.
+
+export interface CalculateFromCsvInput {
+  csv: string;
+  method: LotMethod;
+  // Same AJV-enum-validated type as ClassifyInstrumentsInput's `overrides`
+  // (Part 15) — not a new free-form string field.
+  overrides?: Record<string, AssetClass>;
+  offline?: boolean;
+  // Required on any return visit for a returning user with prior-year
+  // losses — this composite tool has no way to derive it from `csv` alone
+  // (see docs/prd/19-mcp-server-extensions.md).
+  carryForward?: CarryForward[];
+}
+
+export interface CheckRateCoverageInput {
+  currencies?: ("USD" | "GBP" | "CHF")[];
+}
+
 export interface Transaction {
   isin: string;
   product: string;
