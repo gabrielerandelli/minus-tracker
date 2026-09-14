@@ -37,6 +37,10 @@ const TOOL_SCHEMAS = [
     typeName: "ClassifyInstrumentsInput",
   },
   { constName: "calculateGainsInputSchema", typeName: "CalculateGainsInput" },
+  {
+    constName: "calculateFromCsvInputSchema",
+    typeName: "CalculateFromCsvInput",
+  },
 ];
 
 // Shared domain types referenced by the tool-wrapper shapes above. Generated

@@ -170,6 +170,28 @@ export interface CalculateGainsInput {
   incomeRows?: IncomeRow[];
 }
 
+/**
+ * Input for the `calculate_from_csv` composite MCP tool (v0.13.0, Tasks
+ * 65-66) — a single-call convenience wrapper directly composing
+ * `parse_transactions` -> `classify_instruments` -> `calculate_gains`
+ * in-process. No new tax logic: `transactions`/`parseWarnings`/`incomeRows`
+ * are derived internally from the parse step rather than accepted here.
+ * `existingClassification`/`overrides`/`offline` are forwarded as-is into
+ * the internal `classify_instruments` call (reusing its already
+ * AJV-enum-validated `overrides` type — no new free-form string field);
+ * `carryForward` is forwarded as-is into the internal `calculate_gains`
+ * call (see CalculatorOptions.carryForward — statelessness means a retry
+ * that omits it loses its effect, by design, not a bug: TC-241).
+ */
+export interface CalculateFromCsvInput {
+  csv: string;
+  method: LotMethod;
+  existingClassification?: ClassificationMap;
+  overrides?: Record<string, AssetClass>;
+  offline?: boolean;
+  carryForward?: CarryForward[];
+}
+
 export interface Transaction {
   isin: string;
   product: string;
