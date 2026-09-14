@@ -11,6 +11,7 @@ import {
   parseTransactionsInputSchema,
   classifyInstrumentsInputSchema,
   calculateGainsInputSchema,
+  calculateFromCsvInputSchema,
   transactionSchema,
   classificationMapSchema,
   classificationEntrySchema,
@@ -31,7 +32,7 @@ const repoRoot = path.join(__dirname, "../..");
  * are valid, standalone-compilable JSON Schema.
  */
 describe("TC-115 — protocol-level tool registration and schema validity", () => {
-  it("lists exactly the 3 expected tools with compilable inputSchemas", async () => {
+  it("lists exactly the 4 expected tools with compilable inputSchemas", async () => {
     const { server } = await import("../../src/mcp/server.js");
     const client = new Client({ name: "test-client", version: "0.0.0" });
     const [clientTransport, serverTransport] =
@@ -45,7 +46,12 @@ describe("TC-115 — protocol-level tool registration and schema validity", () =
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
-      ["calculate_gains", "classify_instruments", "parse_transactions"].sort(),
+      [
+        "calculate_from_csv",
+        "calculate_gains",
+        "classify_instruments",
+        "parse_transactions",
+      ].sort(),
     );
 
     const ajv = new Ajv({ strict: false });
@@ -318,6 +324,25 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
         ["transactions", "method"].sort(),
       );
     });
+
+    it("calculate_from_csv input (CalculateFromCsvInput)", () => {
+      expect(calculateFromCsvInputSchema.type).toBe("object");
+      expect(
+        Object.keys(calculateFromCsvInputSchema.properties).sort(),
+      ).toEqual(
+        [
+          "csv",
+          "method",
+          "existingClassification",
+          "overrides",
+          "offline",
+          "carryForward",
+        ].sort(),
+      );
+      expect(calculateFromCsvInputSchema.required.slice().sort()).toEqual(
+        ["csv", "method"].sort(),
+      );
+    });
   });
 
   describe("Step 3: adding a field to a fixture copy of types.ts and regenerating surfaces it automatically", () => {
@@ -363,5 +388,45 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
         /parseTransactionsInputSchema[\s\S]*"driftTestField"/,
       );
     });
+  });
+});
+
+/**
+ * TC-245: Task 66 — protocol-level registration of the v0.13.0 composite
+ * tool(s), same in-memory-transport approach as TC-115 above.
+ *
+ * Note: this repo currently implements only `calculate_from_csv` (Tasks
+ * 65-66) — `check_rate_coverage` is Task 64, which Task 66's own Dependency
+ * Order section names as a co-requisite ("Task 66 ... depends on Tasks 64
+ * and 65 both existing") but which is out of this task's file list, so it
+ * is not asserted here. This test still proves the real acceptance
+ * criterion Task 66 owns: `calculate_from_csv` is discoverable via
+ * `tools/list` over a real (in-memory) MCP transport, with a schema ajv
+ * can compile standalone — not just importable as a TS handler function.
+ */
+describe("TC-245 — calculate_from_csv registered with a valid schema over the MCP protocol", () => {
+  it("lists calculate_from_csv with a standalone-compilable inputSchema", async () => {
+    const { server } = await import("../../src/mcp/server.js");
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+
+    await Promise.all([
+      client.connect(clientTransport),
+      server.connect(serverTransport),
+    ]);
+
+    const { tools } = await client.listTools();
+    const tool = tools.find((t) => t.name === "calculate_from_csv");
+    expect(tool).toBeDefined();
+
+    const ajv = new Ajv({ strict: false });
+    expect(() => ajv.compile(tool!.inputSchema)).not.toThrow();
+    expect(Object.keys(tool!.inputSchema.properties ?? {}).sort()).toEqual(
+      ["csv", "method", "existingClassification", "overrides", "offline", "carryForward"].sort(),
+    );
+
+    await client.close();
+    await server.close();
   });
 });
