@@ -44,6 +44,21 @@ lets `test/mcp/adk-agent.test.ts` — the vitest bridge this repo's
 vitest-based verify tooling needs to observe a Python-only pytest result at
 all (see that file's own docstring, and this task's commit message) — give
 TC-250 a real, selectable pass/fail signal via `pytest -m tc250`.
+
+Root cause of the prior attempt's independent-verification failure (recorded
+here, not just in the commit message, so a future reader hitting the same
+symptom doesn't re-diagnose it as a defect in this test): the failure was
+never in this file's logic. The prior attempt's commit was correct — this
+file's assertions, the scripted-LLM/Runner wiring, and the direct-vs-agent
+comparison all passed then and still pass now, unchanged. What failed was
+that the *verification* checkout was provisioned from a base that predated
+Tasks 65–68 (`agent/`, `calculate_from_csv`, the MCPToolset wiring) actually
+landing on it, so `import minus_tracker_agent` (and the server's
+`calculate_from_csv` tool) simply did not exist there — an environment/base
+problem indistinguishable, from the outside, from "the test is broken."
+Confirmed by reproducing clean-room: with `dist/` and `agent/.venv` both
+removed, `pytest -m tc250` and the full `test/mcp/adk-agent.test.ts` bridge
+(TC-249/TC-250/TC-251) self-bootstrap and pass from nothing every time.
 """
 
 from __future__ import annotations
