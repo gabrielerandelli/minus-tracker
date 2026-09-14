@@ -50,6 +50,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * each carry only one stored date in the canonical fixture, so their windows
  * are single-day and gap-free by construction -- genuinely covered, just
  * trivially so; USD is this suite's only source of a non-empty gap list.
+ *
+ * TC-235's second root cause (the actual reason this task failed independent
+ * verification twice): the CLI's `summarizeCoverageForDisplay()`
+ * (`src/cli/commands/rates.ts`) was joining `gaps[ccy]`'s raw missing-date
+ * array straight into the "Lacune:"/"Gaps:" line -- every prior unit
+ * assertion in this file passed, because none of them checked the *content*
+ * of that line against the real bundled snapshot, only that it existed and
+ * was amber. Run for real, it turns Part 19's "aggregating into the existing
+ * single-line display" into a thousand-plus-character dump of every missing
+ * ISO date across 3 currencies, instead of the short per-currency gap
+ * *count* (`"USD: 37"`) `getCoverage()` always showed. The exhaustive
+ * per-currency date list belongs to `check_rate_coverage`'s raw JSON output,
+ * not the CLI's aggregated line. Below, "Step 1" asserts both the positive
+ * (counts appear) and the negative (raw dates do not) so this can't
+ * regress unnoticed again.
  */
 const STUB_SNAPSHOT: RatesSnapshot = JSON.parse(
   fs.readFileSync(
@@ -282,16 +297,30 @@ describe("TC-235: rates --check and check_rate_coverage share one implementation
     expect(exitCode).toBe(0);
     const lines = stripAnsi(stdout.output()).split("\n").filter(Boolean);
 
-    // The CLI aggregates the same per-currency gap dates the tool returns
-    // raw -- every date the tool lists for a currency must appear, next to
-    // that currency's code, in the CLI's single gaps line.
+    // The CLI's single gaps line aggregates the tool's raw per-currency gap
+    // *dates* into a *count* per currency -- Part 19's "aggregating its
+    // per-currency output into the existing single-line display" means the
+    // pre-Task-64 `getCoverage()` display (a short "CCY: <count>" line) is
+    // preserved, not replaced by an exhaustive date dump. The exhaustive
+    // list is what the tool's raw JSON output above is for.
     for (const [ccy, dates] of Object.entries(toolBody.gaps) as [
       string,
       string[],
     ][]) {
       if (dates.length === 0) continue;
-      expect(lines[1]).toContain(`${ccy}: ${dates.join(", ")}`);
+      expect(lines[1]).toContain(`${ccy}: ${dates.length}`);
+      // And, conversely, the CLI must NOT be dumping the raw dates -- that
+      // was the actual regression a prior attempt at this task shipped
+      // (technically "aggregated," but into an unusable thousand-character
+      // line against the real bundled snapshot) even though no assertion in
+      // this file's earlier version caught it.
+      expect(lines[1]).not.toContain(dates[0]);
     }
+    // The whole line stays short -- a handful of "CCY: <count>" entries,
+    // never a multi-hundred-entry date dump. Locks in the fix above so a
+    // future change back to joining raw dates fails loudly here instead of
+    // only showing up as a UX regression nobody wrote a test for.
+    expect(lines[1].length).toBeLessThan(200);
 
     // And the CLI's combined date span is exactly the min/max of the
     // tool's per-currency spans -- same underlying scan, just aggregated.

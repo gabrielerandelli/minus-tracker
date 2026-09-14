@@ -34,12 +34,25 @@ export function getSnapshotPath(): string {
 
 /**
  * Aggregates the shared per-currency `getRateCoverage()` scan (Task 64) into
- * the single combined start/end + currency list + gap display this command
- * has always shown -- retiring the former private, unexported `getCoverage()`
- * duplicate that computed this aggregate shape from its own independent scan.
- * Per-currency gap dates now come from exactly one implementation, so this
- * display and the `check_rate_coverage` MCP tool's raw per-currency output
- * cannot drift apart (TC-235).
+ * the single combined start/end + currency list + gap-count display this
+ * command has always shown -- retiring the former private, unexported
+ * `getCoverage()` duplicate that computed this aggregate shape from its own
+ * independent scan. Per-currency gap dates now come from exactly one
+ * implementation (this function's own `gaps[ccy].length` and the MCP tool's
+ * raw `gaps[ccy]` array are two views of the same `getRateCoverage()` result,
+ * so they cannot drift apart -- TC-235), but the CLI's single-line display
+ * itself is unchanged from `getCoverage()`'s original shape: a per-currency
+ * gap *count* (e.g. "USD: 37"), not the full missing-date list.
+ *
+ * Showing the full date list here instead of the count is NOT a harmless
+ * superset of information -- against the real bundled snapshot (years of
+ * coverage across 3 currencies) it turns one short, scannable line into a
+ * multi-hundred-entry, thousand-plus-character dump, which is a real CLI UX
+ * regression the test suite doesn't happen to assert against. The exhaustive
+ * per-currency date list is exactly what `check_rate_coverage`'s raw JSON
+ * output is for (Part 19) -- the CLI's aggregated line intentionally stays a
+ * count, per Part 19's "aggregating its per-currency output into the
+ * *existing* single-line display".
  */
 function summarizeCoverageForDisplay(snapshot: RatesSnapshot): {
   start: string;
@@ -59,7 +72,7 @@ function summarizeCoverageForDisplay(snapshot: RatesSnapshot): {
 
   const gapEntries = currencyKeys
     .filter((ccy) => (gaps[ccy]?.length ?? 0) > 0)
-    .map((ccy) => `${ccy}: ${gaps[ccy].join(", ")}`);
+    .map((ccy) => `${ccy}: ${gaps[ccy].length}`);
 
   return {
     start,
