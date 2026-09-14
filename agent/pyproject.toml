@@ -39,5 +39,6 @@ testpaths = ["tests"]
 markers = [
     "tc249: TC-249 — MCPToolset tool discovery matches the server's tools/list response (docs/prd/20-adk-agent.md)",
     "tc251: TC-251 — MINUS_TRACKER_MCP_TRANSPORT=sse without MINUS_TRACKER_MCP_URL fails clearly (docs/prd/20-adk-agent.md)",
+    "tc250: TC-250 — agent-driven calculate_from_csv call (offline) matches the calculate_gains fixture (docs/prd/20-adk-agent.md)",
 ]
 addopts = "--strict-markers"

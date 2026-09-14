@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 /**
- * TC-249, TC-251 (docs/prd/20-adk-agent.md, Task 68) — vitest bridge.
+ * TC-249, TC-251, TC-250 (docs/prd/20-adk-agent.md, Tasks 68-69) — vitest bridge.
  *
  * The ADK agent in `minus-tracker/agent/` is a deliberately separate Python
  * subproject (its own `pyproject.toml`, its own `pytest` suite in
@@ -40,10 +40,16 @@ import { execFileSync } from "node:child_process";
  *
  * If Python 3.10+ (per `agent/pyproject.toml`'s `requires-python`) or a
  * network path to install `google-adk`/`mcp` genuinely isn't available in a
- * given environment, both tests below skip (loudly, via console.error) —
+ * given environment, all tests below skip (loudly, via console.error) —
  * an environment limitation, not a finding about this task's own code,
  * exactly the same distinction `mcp_server_command` already draws for a
  * missing Node/npm toolchain.
+ *
+ * TC-250 (Task 69, `agent/tests/test_smoke.py`) reuses the exact same
+ * bootstrap/bridge machinery below via its own `tc250` marker — it needed no
+ * changes here beyond this docstring and a third `describe` block, which is
+ * exactly the point of having built this bridge generically in Task 68
+ * rather than hardcoding it to TC-249/TC-251's two markers.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -169,6 +175,21 @@ describe("TC-251 — MINUS_TRACKER_MCP_TRANSPORT=sse without MINUS_TRACKER_MCP_U
       }
       const { code, output } = runPytestMarker("tc251");
       expect(code, `pytest -m tc251 in agent/ failed:\n${output}`).toBe(0);
+    },
+    PYTEST_TIMEOUT_MS,
+  );
+});
+
+describe("TC-250 — ADK agent smoke test: end-to-end calculate_from_csv call (offline)", () => {
+  it(
+    "pytest -m tc250 passes (agent/tests/test_smoke.py)",
+    (ctx) => {
+      if (!pythonEnv.ok) {
+        ctx.skip();
+        return;
+      }
+      const { code, output } = runPytestMarker("tc250");
+      expect(code, `pytest -m tc250 in agent/ failed:\n${output}`).toBe(0);
     },
     PYTEST_TIMEOUT_MS,
   );
