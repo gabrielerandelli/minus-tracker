@@ -29,3 +29,15 @@ packages = ["minus_tracker_agent"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Registered so `pytest -m tc249` / `-m tc251` (used by the sibling vitest
+# bridge, test/mcp/adk-agent.test.ts, per docs/test_plan.md's TC-249/TC-251
+# mapping) can select exactly one TC's tests without depending on function
+# names, which are free to change; --strict-markers below then makes a typo'd
+# marker fail loudly rather than silently matching nothing, matching this
+# repo's own no-silent-default convention (the very thing TC-251 itself
+# tests for on the agent side).
+markers = [
+    "tc249: TC-249 — MCPToolset tool discovery matches the server's tools/list response (docs/prd/20-adk-agent.md)",
+    "tc251: TC-251 — MINUS_TRACKER_MCP_TRANSPORT=sse without MINUS_TRACKER_MCP_URL fails clearly (docs/prd/20-adk-agent.md)",
+]
+addopts = "--strict-markers"

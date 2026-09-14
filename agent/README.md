@@ -50,6 +50,9 @@ pytest
 `tests/test_tool_discovery.py` builds the sibling TypeScript package (`npm run build`, if not
 already built) and asserts `MCPToolset` tool discovery matches the running `minus-tracker-mcp`'s
 own `tools/list` response exactly — never a hardcoded tool list — plus the guaranteed-baseline-tool
-and `sse`-transport configuration-error checks described in that file's own module docstring.
+and `sse`-transport configuration-error checks described in that file's own module docstring. Each
+test carries a `tc249`/`tc251` marker (`pyproject.toml`) so `pytest -m tc249`/`-m tc251` selects
+exactly one TC's tests; `npm test` at the repo root also runs this suite by that same selection,
+via `test/mcp/adk-agent.test.ts` — a thin vitest bridge that bootstraps `agent/.venv` on first run.
 
 minus-tracker (and, by extension, this agent) is a calculation aid, not tax advice.
