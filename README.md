@@ -48,6 +48,16 @@ Il tool elabora i dati partendo direttamente dal formato CSV esportato da DEGIRO
 - Output disponibile in **italiano** (default) o **inglese** (`--lang en`)
 - Disponibile come pacchetto NPM con supporto CLI
 
+**Novità in v0.13.0:**
+
+- **Due nuovi tool MCP**: `calculate_from_csv` (parsing, classificazione e calcolo in un'unica
+  chiamata, pensato per agenti orchestrati da un LLM) e `check_rate_coverage` (copertura/lacune
+  dei tassi BCE per valuta, sola lettura). Il server `minus-tracker-mcp` espone ora un secondo
+  trasporto opzionale (`--transport sse --port <n>`) accanto allo stdio predefinito, utile per
+  framework di agenti che parlano HTTP. `agent/` è un nuovo sottoprogetto Python di esempio
+  (mai incluso nella build npm) che collega un `LlmAgent` ADK al server via `MCPToolset` — vedi
+  [`agent/README.md`](agent/README.md).
+
 **Novità in v0.12.0:**
 
 - **Output CLI a colori**: `calc`, `validate`, `classify`, `rates`, `config` e `stress-test`
@@ -488,6 +498,16 @@ It loads data following the CSV format used by DEGIRO.
 - Test suite based on **Agenzia Entrate FAQ**
 - Output in **Italian** (default) or **English** (`--lang en`)
 - minus-tracker is an NPM package with CLI support
+
+**New in v0.13.0:**
+
+- **Two new MCP tools**: `calculate_from_csv` (parse, classify, and calculate in a single call,
+  aimed at LLM-orchestrated callers) and `check_rate_coverage` (per-currency ECB rate
+  coverage/gaps, read-only). `minus-tracker-mcp` now also exposes a second, opt-in transport
+  (`--transport sse --port <n>`) alongside the default stdio, useful for agent frameworks that
+  talk HTTP. `agent/` is a new example Python subproject (never bundled into the npm build)
+  wiring an ADK `LlmAgent` to the server via `MCPToolset` — see
+  [`agent/README.md`](agent/README.md).
 
 **New in v0.12.0:**
 
