@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as https from "node:https";
-import { getActiveSnapshot, type RatesSnapshot } from "../../rates/index.js";
+import {
+  getActiveSnapshot,
+  getCurrencyCoverage,
+  type RatesSnapshot,
+} from "../../rates/index.js";
 import type { LocaleStrings } from "../../i18n/types.js";
 import { renderSegments } from "../colors.js";
 
@@ -28,48 +32,29 @@ export function getSnapshotPath(): string {
   return path.join(configDir, "minus-tracker", "ecb-rates.json");
 }
 
-function countMissingBusinessDays(
-  startDate: string,
-  endDate: string,
-  dates: Record<string, number>,
-): number {
-  let missing = 0;
-  const cursor = new Date(startDate + "T00:00:00Z");
-  const end = new Date(endDate + "T00:00:00Z");
-  while (cursor <= end) {
-    const day = cursor.getUTCDay();
-    const iso = cursor.toISOString().slice(0, 10);
-    if (day !== 0 && day !== 6 && dates[iso] === undefined) missing++;
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return missing;
-}
-
+// Aggregates the shared per-currency `getCurrencyCoverage()` (src/rates/index.ts)
+// into the single-line combined shape this CLI display has always used — one
+// combined start/end across all currencies, and a per-currency gap *count*
+// (not the full missing-date list `check_rate_coverage`, the MCP equivalent,
+// returns). The per-currency scan itself is no longer duplicated here.
 function getCoverage(snapshot: RatesSnapshot): {
   start: string;
   end: string;
   currencies: string;
   gaps: string;
 } {
+  const perCurrency = getCurrencyCoverage(snapshot);
   let start = "9999-12-31";
   let end = "0000-01-01";
   const currencies: string[] = [];
   const gapEntries: string[] = [];
 
-  for (const [ccy, dates] of Object.entries(snapshot)) {
+  for (const [ccy, coverage] of Object.entries(perCurrency)) {
     currencies.push(ccy);
-    const keys = Object.keys(dates).sort();
-    for (const d of keys) {
-      if (d < start) start = d;
-      if (d > end) end = d;
-    }
-    if (keys.length > 0) {
-      const missing = countMissingBusinessDays(
-        keys[0],
-        keys[keys.length - 1],
-        dates,
-      );
-      if (missing > 0) gapEntries.push(`${ccy}: ${missing}`);
+    if (coverage.from && coverage.from < start) start = coverage.from;
+    if (coverage.to && coverage.to > end) end = coverage.to;
+    if (coverage.missing.length > 0) {
+      gapEntries.push(`${ccy}: ${coverage.missing.length}`);
     }
   }
   return {

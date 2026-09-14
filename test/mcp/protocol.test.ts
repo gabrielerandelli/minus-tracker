@@ -23,7 +23,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, "../..");
 
 /**
- * TC-115: Protocol-level — all 3 tools registered with valid JSON schemas.
+ * TC-115: Protocol-level — all 5 tools registered with valid JSON schemas
+ * (3 from Part 15, plus `calculate_from_csv`/`check_rate_coverage` from
+ * Part 19's v0.13.0 extension).
  *
  * Connects an in-memory Client/Server transport pair, lists tools, and
  * compiles each returned inputSchema with a fresh ajv instance (independent
@@ -31,7 +33,7 @@ const repoRoot = path.join(__dirname, "../..");
  * are valid, standalone-compilable JSON Schema.
  */
 describe("TC-115 — protocol-level tool registration and schema validity", () => {
-  it("lists exactly the 3 expected tools with compilable inputSchemas", async () => {
+  it("lists exactly the 5 expected tools with compilable inputSchemas", async () => {
     const { server } = await import("../../src/mcp/server.js");
     const client = new Client({ name: "test-client", version: "0.0.0" });
     const [clientTransport, serverTransport] =
@@ -45,11 +47,55 @@ describe("TC-115 — protocol-level tool registration and schema validity", () =
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
-      ["calculate_gains", "classify_instruments", "parse_transactions"].sort(),
+      [
+        "calculate_gains",
+        "calculate_from_csv",
+        "check_rate_coverage",
+        "classify_instruments",
+        "parse_transactions",
+      ].sort(),
     );
 
     const ajv = new Ajv({ strict: false });
     for (const tool of tools) {
+      expect(() => ajv.compile(tool.inputSchema)).not.toThrow();
+    }
+
+    await client.close();
+    await server.close();
+  });
+});
+
+/**
+ * TC-245: Both new v0.13.0 tools (`calculate_from_csv`, `check_rate_coverage`)
+ * are registered with valid schemas via the MCP SDK's in-memory transport —
+ * asserted as its own, narrower test (rather than folded only into TC-115's
+ * broader 5-tool listing above) so this task's own acceptance criterion has
+ * a directly corresponding test that fails on its own if either new tool's
+ * registration regresses.
+ */
+describe("TC-245 — calculate_from_csv and check_rate_coverage registered with valid schemas", () => {
+  it("both new tools appear in tools/list with standalone-compilable inputSchemas", async () => {
+    const { server } = await import("../../src/mcp/server.js");
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+
+    await Promise.all([
+      client.connect(clientTransport),
+      server.connect(serverTransport),
+    ]);
+
+    const { tools } = await client.listTools();
+    const newTools = tools.filter(
+      (t) => t.name === "calculate_from_csv" || t.name === "check_rate_coverage",
+    );
+    expect(newTools.map((t) => t.name).sort()).toEqual(
+      ["calculate_from_csv", "check_rate_coverage"].sort(),
+    );
+
+    const ajv = new Ajv({ strict: false });
+    for (const tool of newTools) {
       expect(() => ajv.compile(tool.inputSchema)).not.toThrow();
     }
 
