@@ -245,9 +245,44 @@ export class DEGIROParser implements Parser {
         fxRate = rate;
       }
 
-      // --- Fees ---
+      // --- Fees (independent FX lookup, mirroring the Commission FX block
+      // in IBKRParser.parseTradesRow for IBCommission/IBCommissionCurrency) ---
       const rawFees = parseNumericField(get("Transaction costs"));
-      const feesEUR = Math.abs(isNaN(rawFees) ? 0 : rawFees);
+      const feesCurrencyRaw = get("Transaction costs currency");
+
+      let feesEUR: number;
+      let feesFxRate: number | undefined;
+      let feesCurrency: string | undefined;
+
+      if (isNaN(rawFees) || rawFees === 0) {
+        feesEUR = 0;
+      } else if (feesCurrencyRaw === "EUR") {
+        feesEUR = Math.abs(rawFees);
+      } else {
+        const feeRate = lookupRate(feesCurrencyRaw, isoDate, snapshot);
+        if (feeRate === null) {
+          if (snapshot[feesCurrencyRaw] === undefined) {
+            this._warningEntries.push({
+              code: "UNSUPPORTED_CURRENCY",
+              row: rowIndex,
+              currency: feesCurrencyRaw,
+            });
+          } else {
+            this._warningEntries.push({
+              code: "NO_ECB_RATE",
+              row: rowIndex,
+              currency: feesCurrencyRaw,
+              date: isoDate,
+            });
+          }
+          continue;
+        }
+        feesEUR = Math.abs(rawFees) / feeRate;
+        if (feesCurrencyRaw !== currency) {
+          feesFxRate = feeRate;
+          feesCurrency = feesCurrencyRaw;
+        }
+      }
 
       // --- Remaining fields ---
       const pricePerUnit = parseNumericField(get("Price"));
@@ -264,6 +299,8 @@ export class DEGIROParser implements Parser {
         totalEUR,
         feesEUR,
         fxRate,
+        feesFxRate,
+        feesCurrency,
         sourceRow: rowIndex,
       });
     }

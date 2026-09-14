@@ -160,6 +160,8 @@ Le righe con ISIN mancante, valuta non supportata o nessun tasso BCE disponibile
 
 Le colonne numeriche (`Quantity`, `Price`, `Local value`, `Transaction costs`) possono usare la virgola come separatore delle migliaia (es. `2,500`), formattazione che alcuni fogli di calcolo aggiungono risalvando un CSV — il parser la normalizza correttamente invece di interpretarla male.
 
+`Transaction costs currency` viene letta indipendentemente da `Local value currency` — una commissione fatturata in una valuta diversa da quella della transazione (es. un supplemento FX/di connettività su una transazione altrimenti in EUR) viene convertita in EUR usando il tasso BCE della sua valuta e data, senza assumere che sia già in EUR. Alla valuta della commissione si applica la stessa regola di salto-con-avviso vista sopra per ISIN mancante/valuta non supportata/tasso BCE assente.
+
 ### Formato CSV Interactive Brokers (beta)
 
 > ⚠️ **Supporto beta.** Lo schema delle colonne IBKR è stato ricavato dalla documentazione
@@ -571,6 +573,8 @@ Dates in the DEGIRO export are in `DD-MM-YYYY` format; the parser converts them 
 Rows with a missing ISIN, unsupported currency, or no ECB rate within 3 trading days of the trade date are skipped with a warning (not an error) — run `validate` to inspect them before calculating.
 
 Numeric columns (`Quantity`, `Price`, `Local value`, `Transaction costs`) may use a thousands-separator comma (e.g. `2,500`), which some spreadsheet software adds when re-saving a CSV — the parser normalizes these correctly rather than misreading them.
+
+`Transaction costs currency` is read independently from `Local value currency` — a fee billed in a different currency than the trade itself (e.g. an FX/connectivity surcharge on an otherwise EUR-denominated trade) is converted to EUR using the ECB rate for its own currency and date, not assumed to already be in EUR. The same missing-ISIN/unsupported-currency/no-ECB-rate skip-with-warning rule above applies to the fee currency too.
 
 ### Interactive Brokers CSV Format (beta)
 

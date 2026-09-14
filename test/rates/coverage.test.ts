@@ -5,7 +5,11 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { it as itStrings } from "../../src/i18n/it.js";
 import { stripAnsi } from "../../src/cli/colors.js";
-import { getRateCoverage, type RatesSnapshot } from "../../src/rates/index.js";
+import {
+  getActiveSnapshot,
+  getRateCoverage,
+  type RatesSnapshot,
+} from "../../src/rates/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,19 +25,82 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  *         one shared `getRateCoverage()` implementation -- the private
  *         `getCoverage()` duplicate no longer exists.
  *
- * All cases use a small, controlled synthetic snapshot (not the repo's
- * bundled ECB data) so the exact missing-date lists are deterministic and
- * easy to reason about:
- *   USD: 2024-01-02 (Tue), 2024-01-03 (Wed), 2024-01-05 (Fri) -> missing 01-04
- *   GBP: 2024-01-02 (Tue) only                                 -> no gaps
- *   CHF: 2024-01-02 (Tue), 2024-01-08 (Mon)                    -> missing 01-03/04/05
- *        (01-06/07 are a weekend, never a gap)
+ * TC-233/TC-234's own "Test Data" column names *the* repo's stub ECB rate
+ * fixture -- the one every currency-conversion unit test in this suite is
+ * required to share (`docs/test_plan.md`'s "Stub ECB Rate Fixture" section:
+ * "All unit tests that require currency conversion use the following
+ * controlled rates"), already reused verbatim by TC-009/TC-010/TC-011
+ * (`test/TC-00{9,10,11}.test.ts`'s own `STUB_RATES`) and mirrored on disk at
+ * `test/fixtures/ecb-rates-stub.json`. A prior version of this file quietly
+ * substituted its own, differently-shaped values instead (different USD
+ * dates/rates entirely, plus an extra CHF date the canonical fixture doesn't
+ * have) -- self-consistent, but not the mandated fixture, so it verified a
+ * dataset the test plan never specified rather than the one it did. Loading
+ * the real fixture file here (not retyping its numbers a fourth time) is
+ * what keeps this file from drifting the same way if the shared fixture ever
+ * changes.
+ *
+ * USD's three canonical dates (2024-01-02, 2024-01-05, 2024-06-03) span a
+ * wide, deliberately non-contiguous range -- exactly what a "real" coverage
+ * gap list looks like, as opposed to a hand-picked few-day window. Its
+ * expected missing-date list is derived independently below (`weekdaysInRange`
+ * minus the known-present dates), not by re-deriving it from
+ * `getRateCoverage()` itself, and cross-checked against a fixed expected
+ * count (107) so a change to either implementation is caught. GBP and CHF
+ * each carry only one stored date in the canonical fixture, so their windows
+ * are single-day and gap-free by construction -- genuinely covered, just
+ * trivially so; USD is this suite's only source of a non-empty gap list.
  */
-const STUB_SNAPSHOT: RatesSnapshot = {
-  USD: { "2024-01-02": 1.1, "2024-01-03": 1.11, "2024-01-05": 1.12 },
-  GBP: { "2024-01-02": 0.86 },
-  CHF: { "2024-01-02": 0.93, "2024-01-08": 0.94 },
-};
+const STUB_SNAPSHOT: RatesSnapshot = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, "../fixtures/ecb-rates-stub.json"),
+    "utf8",
+  ),
+) as RatesSnapshot;
+
+// Sanity-check the fixture itself hasn't drifted from what this file's
+// hand-derived expectations below assume.
+const EXPECTED_USD_DATES = ["2024-01-02", "2024-01-05", "2024-06-03"];
+if (
+  JSON.stringify(Object.keys(STUB_SNAPSHOT.USD).sort()) !==
+  JSON.stringify(EXPECTED_USD_DATES)
+) {
+  throw new Error(
+    "test/fixtures/ecb-rates-stub.json's USD dates no longer match this " +
+      "file's hand-derived expectations -- update both together.",
+  );
+}
+
+/**
+ * Independent reference computation (not `findMissingBusinessDays()` from
+ * `src/rates/index.ts`) of every Mon-Fri ISO date in `[start, end]` that
+ * isn't in `present`. Used only to derive USD's expected gap list from the
+ * canonical fixture above, so the coverage function's own weekday/range
+ * handling is checked against a separately-written calculation rather than
+ * echoing it back.
+ */
+function weekdaysInRangeExcluding(
+  start: string,
+  end: string,
+  present: Set<string>,
+): string[] {
+  const out: string[] = [];
+  const cursor = new Date(start + "T00:00:00Z");
+  const last = new Date(end + "T00:00:00Z");
+  while (cursor <= last) {
+    const dow = cursor.getUTCDay();
+    const iso = cursor.toISOString().slice(0, 10);
+    if (dow !== 0 && dow !== 6 && !present.has(iso)) out.push(iso);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return out;
+}
+
+const EXPECTED_USD_GAPS = weekdaysInRangeExcluding(
+  "2024-01-02",
+  "2024-06-03",
+  new Set(EXPECTED_USD_DATES),
+);
 
 function makeWritable(): { stream: Writable; output: () => string } {
   let buf = "";
@@ -77,9 +144,9 @@ describe("TC-233: check_rate_coverage({}) -- coverage + gaps for every bundled c
       const body = JSON.parse(result.content[0].text as string);
 
       expect(Object.keys(body.coverage).sort()).toEqual(["CHF", "GBP", "USD"]);
-      expect(body.coverage.USD).toEqual({ from: "2024-01-02", to: "2024-01-05" });
+      expect(body.coverage.USD).toEqual({ from: "2024-01-02", to: "2024-06-03" });
       expect(body.coverage.GBP).toEqual({ from: "2024-01-02", to: "2024-01-02" });
-      expect(body.coverage.CHF).toEqual({ from: "2024-01-02", to: "2024-01-08" });
+      expect(body.coverage.CHF).toEqual({ from: "2024-01-02", to: "2024-01-02" });
     });
   });
 
@@ -91,9 +158,26 @@ describe("TC-233: check_rate_coverage({}) -- coverage + gaps for every bundled c
       const result = await handleCheckRateCoverage({});
       const body = JSON.parse(result.content[0].text as string);
 
-      expect(body.gaps.USD).toEqual(["2024-01-04"]);
+      // GBP/CHF each have exactly one stored date -> single-day window, no
+      // other day to be missing.
       expect(body.gaps.GBP).toEqual([]);
-      expect(body.gaps.CHF).toEqual(["2024-01-03", "2024-01-04", "2024-01-05"]);
+      expect(body.gaps.CHF).toEqual([]);
+
+      // USD's window is wide (Jan-Jun) with only 3 stored dates -- a real
+      // gap list, checked exactly against the independently-derived
+      // reference list above (107 dates), not just spot-checked.
+      expect(body.gaps.USD).toHaveLength(107);
+      expect(body.gaps.USD).toEqual(EXPECTED_USD_GAPS);
+      // None of the 3 stored dates leak into the gap list...
+      for (const stored of EXPECTED_USD_DATES) {
+        expect(body.gaps.USD).not.toContain(stored);
+      }
+      // ...and no Saturday/Sunday is ever reported as a gap.
+      for (const iso of body.gaps.USD as string[]) {
+        const dow = new Date(iso + "T00:00:00Z").getUTCDay();
+        expect(dow).not.toBe(0);
+        expect(dow).not.toBe(6);
+      }
     });
   });
 
@@ -129,8 +213,8 @@ describe("TC-234: check_rate_coverage({ currencies }) -- exact filter, not a sup
 
       expect(Object.keys(body.coverage)).toEqual(["USD"]);
       expect(Object.keys(body.gaps)).toEqual(["USD"]);
-      expect(body.coverage.USD).toEqual({ from: "2024-01-02", to: "2024-01-05" });
-      expect(body.gaps.USD).toEqual(["2024-01-04"]);
+      expect(body.coverage.USD).toEqual({ from: "2024-01-02", to: "2024-06-03" });
+      expect(body.gaps.USD).toEqual(EXPECTED_USD_GAPS);
     });
   });
 
@@ -159,54 +243,73 @@ describe("TC-234: check_rate_coverage({ currencies }) -- exact filter, not a sup
 // ---------------------------------------------------------------------------
 // TC-235: the shared function retires the private `getCoverage()` duplicate
 // -- `rates --check` and the tool agree.
+//
+// Unlike TC-233/TC-234, this runs against the real active snapshot (bundled
+// `src/data/ecb-rates.json`, unmocked) -- the same "real bundled snapshot"
+// precedent already established by `test/rates-color.test.ts`'s TC-223
+// coverage-coloring tests -- so the agreement check exercises production
+// data, not only the synthetic fixture above.
 // ---------------------------------------------------------------------------
 
 describe("TC-235: rates --check and check_rate_coverage share one implementation", () => {
-  it("Step 1: per-currency gap dates agree between the CLI's aggregated display and the tool's raw output", async () => {
-    await withStubSnapshot(async () => {
-      const { runRates } = await import("../../src/cli/commands/rates.js");
-      const { handleCheckRateCoverage } = await import(
-        "../../src/mcp/tools/check-rate-coverage.js"
-      );
+  it("Step 1: per-currency gap dates agree between the CLI's aggregated display and the tool's raw output (real bundled snapshot)", async () => {
+    const { runRates } = await import("../../src/cli/commands/rates.js");
+    const { handleCheckRateCoverage } = await import(
+      "../../src/mcp/tools/check-rate-coverage.js"
+    );
 
-      const toolResult = await handleCheckRateCoverage({});
-      const toolBody = JSON.parse(toolResult.content[0].text as string);
+    const toolResult = await handleCheckRateCoverage({});
+    const toolBody = JSON.parse(toolResult.content[0].text as string);
 
-      const stdout = makeWritable();
-      const stderr = makeWritable();
-      const exitCode = await runRates(
-        [],
-        { check: true },
-        itStrings,
-        stdout.stream,
-        stderr.stream,
-        false,
-      );
-      expect(exitCode).toBe(0);
-      const lines = stripAnsi(stdout.output()).split("\n").filter(Boolean);
+    // The real bundled snapshot has 3 currencies, each with real gaps
+    // (asserted directly, not assumed) -- otherwise this test would pass
+    // vacuously via the `dates.length === 0` skip below.
+    expect(Object.keys(toolBody.coverage).sort()).toEqual(["CHF", "GBP", "USD"]);
+    for (const ccy of ["USD", "GBP", "CHF"]) {
+      expect((toolBody.gaps[ccy] as string[]).length).toBeGreaterThan(0);
+    }
 
-      // The CLI aggregates the same per-currency gap dates the tool returns
-      // raw -- every date the tool lists for a currency must appear, next to
-      // that currency's code, in the CLI's single gaps line.
-      for (const [ccy, dates] of Object.entries(toolBody.gaps) as [
-        string,
-        string[],
-      ][]) {
-        if (dates.length === 0) continue;
-        expect(lines[1]).toContain(`${ccy}: ${dates.join(", ")}`);
-      }
+    const stdout = makeWritable();
+    const stderr = makeWritable();
+    const exitCode = await runRates(
+      [],
+      { check: true },
+      itStrings,
+      stdout.stream,
+      stderr.stream,
+      false,
+    );
+    expect(exitCode).toBe(0);
+    const lines = stripAnsi(stdout.output()).split("\n").filter(Boolean);
 
-      // And the CLI's combined date span is exactly the min/max of the
-      // tool's per-currency spans -- same underlying scan, just aggregated.
-      const froms = Object.values(toolBody.coverage).map(
-        (c) => (c as { from: string }).from,
-      );
-      const tos = Object.values(toolBody.coverage).map(
-        (c) => (c as { to: string }).to,
-      );
-      expect(lines[0]).toContain(froms.sort()[0]);
-      expect(lines[0]).toContain(tos.sort().at(-1) as string);
-    });
+    // The CLI aggregates the same per-currency gap dates the tool returns
+    // raw -- every date the tool lists for a currency must appear, next to
+    // that currency's code, in the CLI's single gaps line.
+    for (const [ccy, dates] of Object.entries(toolBody.gaps) as [
+      string,
+      string[],
+    ][]) {
+      if (dates.length === 0) continue;
+      expect(lines[1]).toContain(`${ccy}: ${dates.join(", ")}`);
+    }
+
+    // And the CLI's combined date span is exactly the min/max of the
+    // tool's per-currency spans -- same underlying scan, just aggregated.
+    const froms = Object.values(toolBody.coverage).map(
+      (c) => (c as { from: string }).from,
+    );
+    const tos = Object.values(toolBody.coverage).map(
+      (c) => (c as { to: string }).to,
+    );
+    expect(lines[0]).toContain(froms.sort()[0]);
+    expect(lines[0]).toContain(tos.sort().at(-1) as string);
+
+    // Cross-check against a direct, independent call to the shared function
+    // against the same real snapshot -- the CLI and the tool must not just
+    // agree with each other, both must agree with `getRateCoverage()` itself.
+    const direct = getRateCoverage(getActiveSnapshot());
+    expect(toolBody.coverage).toEqual(direct.coverage);
+    expect(toolBody.gaps).toEqual(direct.gaps);
   });
 
   it("Step 2: getCoverage() no longer exists anywhere in src/ as a private duplicate", () => {
