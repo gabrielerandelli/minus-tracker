@@ -170,6 +170,57 @@ export interface CalculateGainsInput {
   incomeRows?: IncomeRow[];
 }
 
+/**
+ * Input for the `calculate_from_csv` composite MCP tool (v0.13.0, Part 19,
+ * Tasks 65-66) — a single-call convenience wrapper directly composing
+ * `parse_transactions` -> `classify_instruments` -> `calculate_gains`
+ * in-process, so an LLM-orchestrated caller only ever relays the original
+ * CSV text and never has to re-emit a parsed `Transaction[]` as a tool-call
+ * argument. `transactions`/`parseWarnings`/`incomeRows` are therefore
+ * deliberately absent here — they're derived internally from the parse step.
+ *
+ * `overrides` reuses `ClassifyInstrumentsInput`'s existing AJV-enum-validated
+ * `AssetClass` map, not a new free-form string field, and is forwarded as-is
+ * into the internal `classify_instruments` call, along with `offline`.
+ * `carryForward` is forwarded as-is into the internal `calculate_gains` call
+ * (external prior-year-loss state the composed CSV parse has no way to
+ * derive; omitting it on a retry silently loses its effect, by design, not a
+ * bug — see Part 19's PRD).
+ *
+ * Deliberately has NO `existingClassification` field, unlike
+ * `ClassifyInstrumentsInput`: Part 19's PRD is explicit that a correction
+ * retry re-runs the full pipeline from the CSV every time (re-querying
+ * OpenFIGI for every ISIN, not just the previously-unresolved ones) — this
+ * tool stays fully stateless, so accepting a prior run's classification map
+ * back in as input is out of scope, not an oversight. Promoted here from a
+ * handler-local declaration in `src/mcp/tools/calculate-from-csv.ts` (Task 65)
+ * so it gets build-time-generated schema wiring like the other three tools'
+ * input types (Task 66).
+ */
+export interface CalculateFromCsvInput {
+  csv: string;
+  method: LotMethod;
+  overrides?: Record<string, AssetClass>;
+  offline?: boolean;
+  carryForward?: CarryForward[];
+}
+
+/**
+ * Input for the `check_rate_coverage` MCP tool (v0.13.0, Part 19, Task 64) —
+ * a read-only equivalent of `rates --check` that lets a caller confirm ECB FX
+ * date coverage before running `calculate_gains`/`calculate_from_csv`,
+ * without ever writing to disk or touching the network. `currencies` mirrors
+ * the bundled-currency union `getActiveSnapshot()` can ever populate
+ * (`src/rates/index.ts`, Part 4); omitting it scans every bundled currency.
+ * Promoted here from a handler-local declaration in
+ * `src/mcp/tools/check-rate-coverage.ts` (Task 64) so it gets build-time-
+ * generated schema wiring and `server.ts` registration like the other tools'
+ * input types (Task 66).
+ */
+export interface CheckRateCoverageInput {
+  currencies?: ("USD" | "GBP" | "CHF")[];
+}
+
 export interface Transaction {
   isin: string;
   product: string;

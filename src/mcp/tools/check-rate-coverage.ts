@@ -1,18 +1,5 @@
 import { getActiveSnapshot, getRateCoverage } from "../../rates/index.js";
-
-/**
- * Input shape for the `check_rate_coverage` tool (Part 19). Declared locally
- * rather than in `src/types.ts` -- this tool's schema wiring (build-time JSON
- * Schema generation + `server.ts` registration) is separate follow-up work
- * (Task 66); this task only needs the handler and its own input type.
- *
- * `currencies` mirrors the bundled-currency union `getActiveSnapshot()` can
- * ever populate (`src/rates/index.ts`, Part 4) -- omit it to scan every
- * bundled currency.
- */
-export interface CheckRateCoverageInput {
-  currencies?: ("USD" | "GBP" | "CHF")[];
-}
+import type { CheckRateCoverageInput } from "../../types.js";
 
 /**
  * MCP tool handler for `check_rate_coverage` -- the read-only equivalent of

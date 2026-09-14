@@ -11,6 +11,8 @@ import {
   parseTransactionsInputSchema,
   classifyInstrumentsInputSchema,
   calculateGainsInputSchema,
+  calculateFromCsvInputSchema,
+  checkRateCoverageInputSchema,
   transactionSchema,
   classificationMapSchema,
   classificationEntrySchema,
@@ -23,15 +25,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, "../..");
 
 /**
- * TC-115: Protocol-level — all 3 tools registered with valid JSON schemas.
+ * TC-115: Protocol-level — all 5 tools registered with valid JSON schemas.
  *
  * Connects an in-memory Client/Server transport pair, lists tools, and
  * compiles each returned inputSchema with a fresh ajv instance (independent
  * of the validator instance server.ts uses internally) to prove the schemas
- * are valid, standalone-compilable JSON Schema.
+ * are valid, standalone-compilable JSON Schema. `calculate_from_csv` and
+ * `check_rate_coverage` (v0.13.0, Part 19, Tasks 64-66) are registered
+ * alongside Part 15's original 3 tools.
  */
 describe("TC-115 — protocol-level tool registration and schema validity", () => {
-  it("lists exactly the 3 expected tools with compilable inputSchemas", async () => {
+  it("lists exactly the 5 expected tools with compilable inputSchemas", async () => {
     const { server } = await import("../../src/mcp/server.js");
     const client = new Client({ name: "test-client", version: "0.0.0" });
     const [clientTransport, serverTransport] =
@@ -45,7 +49,13 @@ describe("TC-115 — protocol-level tool registration and schema validity", () =
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
-      ["calculate_gains", "classify_instruments", "parse_transactions"].sort(),
+      [
+        "calculate_from_csv",
+        "calculate_gains",
+        "check_rate_coverage",
+        "classify_instruments",
+        "parse_transactions",
+      ].sort(),
     );
 
     const ajv = new Ajv({ strict: false });
@@ -318,6 +328,34 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
         ["transactions", "method"].sort(),
       );
     });
+
+    it("calculate_from_csv input (CalculateFromCsvInput)", () => {
+      expect(calculateFromCsvInputSchema.type).toBe("object");
+      expect(
+        Object.keys(calculateFromCsvInputSchema.properties).sort(),
+      ).toEqual(
+        ["csv", "method", "overrides", "offline", "carryForward"].sort(),
+      );
+      expect(calculateFromCsvInputSchema.required.slice().sort()).toEqual(
+        ["csv", "method"].sort(),
+      );
+      // Deliberately NOT present: unlike classify_instruments'
+      // ClassifyInstrumentsInput, calculate_from_csv takes no
+      // existingClassification — Part 19's PRD is explicit that a
+      // correction retry re-runs the full pipeline statelessly every time.
+      expect(
+        Object.keys(calculateFromCsvInputSchema.properties),
+      ).not.toContain("existingClassification");
+    });
+
+    it("check_rate_coverage input (CheckRateCoverageInput)", () => {
+      expect(checkRateCoverageInputSchema.type).toBe("object");
+      expect(
+        Object.keys(checkRateCoverageInputSchema.properties).sort(),
+      ).toEqual(["currencies"].sort());
+      // Fully optional — omitting currencies scans every bundled currency.
+      expect(checkRateCoverageInputSchema.required ?? []).toEqual([]);
+    });
   });
 
   describe("Step 3: adding a field to a fixture copy of types.ts and regenerating surfaces it automatically", () => {
@@ -363,5 +401,45 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
         /parseTransactionsInputSchema[\s\S]*"driftTestField"/,
       );
     });
+  });
+});
+
+/**
+ * TC-245: Task 66 — protocol-level registration of both v0.13.0 tools
+ * (`calculate_from_csv`, Tasks 65-66, and `check_rate_coverage`, Task 64),
+ * same in-memory-transport approach as TC-115 above, run as its own
+ * connect/close pair so it stays independent of TC-115's assertions.
+ */
+describe("TC-245 — both new v0.13.0 tools registered with valid schemas over the MCP protocol", () => {
+  it("lists calculate_from_csv and check_rate_coverage, each with a standalone-compilable inputSchema", async () => {
+    const { server } = await import("../../src/mcp/server.js");
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+
+    await Promise.all([
+      client.connect(clientTransport),
+      server.connect(serverTransport),
+    ]);
+
+    const { tools } = await client.listTools();
+    const ajv = new Ajv({ strict: false });
+
+    const calcFromCsv = tools.find((t) => t.name === "calculate_from_csv");
+    expect(calcFromCsv).toBeDefined();
+    expect(() => ajv.compile(calcFromCsv!.inputSchema)).not.toThrow();
+    expect(Object.keys(calcFromCsv!.inputSchema.properties ?? {}).sort()).toEqual(
+      ["csv", "method", "overrides", "offline", "carryForward"].sort(),
+    );
+
+    const checkCoverage = tools.find((t) => t.name === "check_rate_coverage");
+    expect(checkCoverage).toBeDefined();
+    expect(() => ajv.compile(checkCoverage!.inputSchema)).not.toThrow();
+    expect(
+      Object.keys(checkCoverage!.inputSchema.properties ?? {}).sort(),
+    ).toEqual(["currencies"].sort());
+
+    await client.close();
+    await server.close();
   });
 });

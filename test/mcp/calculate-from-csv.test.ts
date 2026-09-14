@@ -1,17 +1,24 @@
 import { describe, it, expect, vi } from "vitest";
+import { DEGIROParser } from "../../src/parser/index.js";
+import { handleParseTransactions } from "../../src/mcp/tools/parse-transactions.js";
+import { handleClassifyInstruments } from "../../src/mcp/tools/classify-instruments.js";
+import { handleCalculateGains } from "../../src/mcp/tools/calculate-gains.js";
 import { handleCalculateFromCsv } from "../../src/mcp/tools/calculate-from-csv.js";
 
 /**
  * Category 21 — MCP Server: `calculate_from_csv` composite tool (v0.13.0)
  *
- * Covers TC-236 through TC-242 from docs/test_plan.md (Part 19). Unit-level:
- * calls `handleCalculateFromCsv` directly, no MCP transport/client. Every
- * test injects a fake OpenFIGI `_httpPost` (or uses `offline: true`) so
- * these stay deterministic and network-free, per Part 19's Testing Approach.
+ * TC-236 through TC-242 (Task 65's core composition, below) call
+ * `handleCalculateFromCsv` directly with `(args, extra, _httpPost)` — every
+ * one passes `undefined` for `extra` since none of them need progress
+ * notifications, and every one injects a fake OpenFIGI `_httpPost` (or uses
+ * `offline: true`) so they stay deterministic and network-free, per Part
+ * 19's Testing Approach.
  *
- * `extra` (progressToken) forwarding, error-shape parity with the granular
- * tools, and protocol-level registration are Task 66's scope (TC-243/244/
- * 245) — deliberately not covered here.
+ * TC-243/TC-244 (Task 66, at the bottom of this file) cover `extra`
+ * forwarding and error-shape parity with the granular tools this handler
+ * composes; TC-245 (protocol-level registration) lives in
+ * `test/mcp/protocol.test.ts`.
  */
 
 const HEADER =
@@ -70,6 +77,7 @@ describe("TC-236: calculate_from_csv — every ISIN resolves → full report, no
 
     const result = await handleCalculateFromCsv(
       { csv, method: "LIFO" },
+      undefined,
       mockHttpAlwaysEtf(),
     );
 
@@ -106,6 +114,7 @@ describe("TC-237: calculate_from_csv — unresolved ISINs → Bucket B default +
 
     const result = await handleCalculateFromCsv(
       { csv, method: "LIFO" },
+      undefined,
       mockHttpAlwaysUnknown(),
     );
 
@@ -162,7 +171,11 @@ describe("TC-237b: calculate_from_csv — mixed portfolio, partial resolution", 
         );
       });
 
-    const result = await handleCalculateFromCsv({ csv, method: "LIFO" }, mockHttp);
+    const result = await handleCalculateFromCsv(
+      { csv, method: "LIFO" },
+      undefined,
+      mockHttp,
+    );
 
     expect(result.isError).toBeUndefined();
     const body = JSON.parse(result.content[0].text);
@@ -183,6 +196,7 @@ describe("TC-238: calculate_from_csv — overrides correction retry resolves ISI
 
     const first = await handleCalculateFromCsv(
       { csv, method: "LIFO" },
+      undefined,
       mockHttpAlwaysUnknown(),
     );
     const firstBody = JSON.parse(first.content[0].text);
@@ -197,6 +211,7 @@ describe("TC-238: calculate_from_csv — overrides correction retry resolves ISI
     const mockHttpRetry = mockHttpAlwaysUnknown();
     const retry = await handleCalculateFromCsv(
       { csv, method: "LIFO", overrides: { [STOCK_ISIN]: "ETF" } },
+      undefined,
       mockHttpRetry,
     );
 
@@ -230,6 +245,7 @@ describe("TC-239: calculate_from_csv — offline: true skips OpenFIGI entirely",
 
     const result = await handleCalculateFromCsv(
       { csv, method: "LIFO", offline: true },
+      undefined,
       mockHttp,
     );
 
@@ -255,6 +271,7 @@ describe("TC-240: calculate_from_csv — carryForward forwarded to calculate_gai
 
     const withoutCarryForward = await handleCalculateFromCsv(
       { csv, method: "LIFO", offline: true },
+      undefined,
       vi.fn(),
     );
     const withoutBody = JSON.parse(withoutCarryForward.content[0].text);
@@ -268,6 +285,7 @@ describe("TC-240: calculate_from_csv — carryForward forwarded to calculate_gai
         offline: true,
         carryForward: [{ year: 2023, amount: 100 }],
       },
+      undefined,
       vi.fn(),
     );
     const withBody = JSON.parse(withCarryForward.content[0].text);
@@ -294,6 +312,7 @@ describe("TC-241: calculate_from_csv — carryForward omitted on retry loses eff
         offline: true,
         carryForward: [{ year: 2023, amount: 100 }],
       },
+      undefined,
       vi.fn(),
     );
     const originalBody = JSON.parse(original.content[0].text);
@@ -312,6 +331,7 @@ describe("TC-241: calculate_from_csv — carryForward omitted on retry loses eff
         offline: true,
         overrides: { [STOCK_ISIN]: "Stock" },
       },
+      undefined,
       vi.fn(),
     );
     const retryBody = JSON.parse(retry.content[0].text);
@@ -338,6 +358,7 @@ describe("TC-242: calculate_from_csv — incomeRows wired internally into calcul
 
     const result = await handleCalculateFromCsv(
       { csv, method: "LIFO", offline: true },
+      undefined,
       vi.fn(),
     );
 
@@ -354,5 +375,220 @@ describe("TC-242: calculate_from_csv — incomeRows wired internally into calcul
       },
     ]);
     expect(body.report.dichiarazione.quadroRM.cedole).toEqual([]);
+  });
+});
+
+/**
+ * Task 66. Covers TC-243 and TC-244 from docs/test_plan.md. `extra`
+ * forwarding and error-shape parity are the only Task 66 surface added on
+ * top of Task 65's core composition above — everything else in this file
+ * is unchanged apart from `undefined` now needing to be threaded through as
+ * the new `extra` parameter.
+ */
+
+describe("TC-243: calculate_from_csv — error shapes match the granular tools it composes", () => {
+  it("ParseError (INVALID_CSV): identical isError payload to a direct parse_transactions call", async () => {
+    const garbage = "\x00\x00binary garbage\x00\x00";
+
+    const direct = await handleParseTransactions({ csv: garbage });
+    const composed = await handleCalculateFromCsv({
+      csv: garbage,
+      method: "LIFO",
+    });
+
+    expect(direct.isError).toBe(true);
+    expect(composed.isError).toBe(true);
+    expect(composed.content[0].text).toEqual(direct.content[0].text);
+
+    const body = JSON.parse(composed.content[0].text);
+    expect(body.code).toBe("INVALID_CSV");
+  });
+
+  it("ParseError (MISSING_COLUMN): identical isError payload to a direct parse_transactions call", async () => {
+    const headerNoISIN =
+      "Date,Time,Product,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID";
+    const row =
+      "14-01-2024,09:05,Apple Inc,XNAS,XNAS,10,150.00,-1500.00,EUR,-1500.00,EUR,1,-2.00,EUR,-1502.00,EUR,abc-123";
+    const csv = [headerNoISIN, row].join("\n");
+
+    const direct = await handleParseTransactions({ csv });
+    const composed = await handleCalculateFromCsv({ csv, method: "LIFO" });
+
+    expect(direct.isError).toBe(true);
+    expect(composed.isError).toBe(true);
+    expect(composed.content[0].text).toEqual(direct.content[0].text);
+
+    const body = JSON.parse(composed.content[0].text);
+    expect(body.code).toBe("MISSING_COLUMN");
+    expect(body.columnName).toBe("ISIN");
+  });
+
+  it("ClassificationError (NETWORK_ERROR): identical isError payload to a direct classify_instruments call", async () => {
+    const buyRowRaw =
+      "14-01-2024,09:05,Apple Inc,US0378331005,XNAS,XNAS,10,150.00,-1500.00,EUR,-1500.00,EUR,1,-2.00,EUR,-1502.00,EUR,abc-123";
+    const csv = [HEADER, buyRowRaw].join("\n");
+    const transactions = new DEGIROParser().parse(csv);
+
+    const mockHttp503 = vi.fn().mockResolvedValue({ status: 503, data: "" });
+
+    const direct = await handleClassifyInstruments(
+      { transactions },
+      undefined,
+      mockHttp503,
+    );
+    const composed = await handleCalculateFromCsv(
+      { csv, method: "LIFO" },
+      undefined,
+      mockHttp503,
+    );
+
+    expect(direct.isError).toBe(true);
+    expect(composed.isError).toBe(true);
+    expect(composed.content[0].text).toEqual(direct.content[0].text);
+
+    const body = JSON.parse(composed.content[0].text);
+    expect(body.code).toBe("NETWORK_ERROR");
+  });
+
+  it("CalculationError (NO_OPEN_LOTS via CALCULATION_ERROR): identical isError payload to a direct calculate_gains call", async () => {
+    const sellRowRaw =
+      "03-06-2024,14:20,Apple Inc,US0378331005,XNAS,XNAS,-10,180.00,1800.00,EUR,1800.00,EUR,1,-2.00,EUR,1798.00,EUR,abc-456";
+    const csv = [HEADER, sellRowRaw].join("\n");
+    const transactions = new DEGIROParser().parse(csv);
+
+    const mockHttp = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResult(200, [{ data: [{ securityType: "Common Stock" }] }]),
+      );
+
+    // The SELL-only fixture has no open BUY lot, so the CalculationError is
+    // thrown during lot matching itself — before two-bucket routing ever
+    // consults the classification map — so a direct calculate_gains call
+    // with no classification produces the exact same error as the composed
+    // pipeline (which does classify first, via `offline: true` so this test
+    // stays network-free regardless).
+    const direct = await handleCalculateGains({ transactions, method: "LIFO" });
+    const composed = await handleCalculateFromCsv(
+      { csv, method: "LIFO", offline: true },
+      undefined,
+      mockHttp,
+    );
+
+    expect(direct.isError).toBe(true);
+    expect(composed.isError).toBe(true);
+    expect(composed.content[0].text).toEqual(direct.content[0].text);
+
+    const body = JSON.parse(composed.content[0].text);
+    expect(body.code).toBe("CALCULATION_ERROR");
+    expect(body.isin).toBe("US0378331005");
+    expect(body.date).toBe("2024-06-03");
+  });
+});
+
+describe("TC-244: calculate_from_csv — extra forwarded; multi-batch progress fires", () => {
+  // > Classifier's batch size of 10 (src/classifier/index.ts) to force a
+  // multi-batch OpenFIGI run, mirroring TC-112's classify_instruments setup.
+  const manyIsins = Array.from(
+    { length: 25 },
+    (_, i) => `XX${String(i).padStart(10, "0")}`,
+  );
+  const manyRows = manyIsins.map(
+    (isin, i) =>
+      `14-01-2024,09:05,Test Stock ${i},${isin},XNAS,XNAS,10,150.00,-1500.00,EUR,-1500.00,EUR,1,-2.00,EUR,-1502.00,EUR,abc-${i}`,
+  );
+  const manyIsinCsv = [HEADER, ...manyRows].join("\n");
+
+  function makeMockHttp() {
+    return vi.fn().mockImplementation(async (_url: string, body: string) => {
+      const items = JSON.parse(body) as unknown[];
+      return jsonResult(
+        200,
+        items.map(() => ({ data: [{ securityType: "Common Stock" }] })),
+      );
+    });
+  }
+
+  it("with a progressToken, sends the same notifications/progress sequence a direct classify_instruments call would", async () => {
+    vi.useFakeTimers();
+    try {
+      const transactions = new DEGIROParser().parse(manyIsinCsv);
+
+      const directHttp = makeMockHttp();
+      const directSend = vi.fn().mockResolvedValue(undefined);
+      const directPromise = handleClassifyInstruments(
+        { transactions },
+        { _meta: { progressToken: "tok-1" }, sendNotification: directSend },
+        directHttp,
+      );
+      await vi.advanceTimersByTimeAsync(6000);
+      await vi.advanceTimersByTimeAsync(6000);
+      await directPromise;
+
+      const composedHttp = makeMockHttp();
+      const composedSend = vi.fn().mockResolvedValue(undefined);
+      const composedPromise = handleCalculateFromCsv(
+        { csv: manyIsinCsv, method: "LIFO" },
+        { _meta: { progressToken: "tok-1" }, sendNotification: composedSend },
+        composedHttp,
+      );
+      await vi.advanceTimersByTimeAsync(6000);
+      await vi.advanceTimersByTimeAsync(6000);
+      const composedResult = await composedPromise;
+
+      expect(composedResult.isError).toBeUndefined();
+      expect(composedSend).toHaveBeenCalledTimes(3);
+      expect(composedSend.mock.calls).toEqual(directSend.mock.calls);
+      expect(composedSend).toHaveBeenNthCalledWith(1, {
+        method: "notifications/progress",
+        params: { progressToken: "tok-1", progress: 1, total: 3 },
+      });
+      expect(composedSend).toHaveBeenNthCalledWith(3, {
+        method: "notifications/progress",
+        params: { progressToken: "tok-1", progress: 3, total: 3 },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("without a progressToken, sends zero notifications, same as classify_instruments", async () => {
+    vi.useFakeTimers();
+    try {
+      const composedHttp = makeMockHttp();
+      const sendNotification = vi.fn().mockResolvedValue(undefined);
+      const promise = handleCalculateFromCsv(
+        { csv: manyIsinCsv, method: "LIFO" },
+        { sendNotification },
+        composedHttp,
+      );
+      await vi.advanceTimersByTimeAsync(6000);
+      await vi.advanceTimersByTimeAsync(6000);
+      const result = await promise;
+
+      expect(result.isError).toBeUndefined();
+      expect(sendNotification).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("without any extra argument at all, still completes (extra is fully optional)", async () => {
+    vi.useFakeTimers();
+    try {
+      const composedHttp = makeMockHttp();
+      const promise = handleCalculateFromCsv(
+        { csv: manyIsinCsv, method: "LIFO" },
+        undefined,
+        composedHttp,
+      );
+      await vi.advanceTimersByTimeAsync(6000);
+      await vi.advanceTimersByTimeAsync(6000);
+      const result = await promise;
+
+      expect(result.isError).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

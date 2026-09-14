@@ -1,13 +1,14 @@
 import { handleParseTransactions } from "./parse-transactions.js";
-import { handleClassifyInstruments } from "./classify-instruments.js";
+import {
+  handleClassifyInstruments,
+  type ClassifyInstrumentsExtra,
+} from "./classify-instruments.js";
 import { handleCalculateGains } from "./calculate-gains.js";
 import type {
-  CarryForward,
+  CalculateFromCsvInput,
   ClassificationMap,
-  ClassifyInstrumentsInput,
   GainsReport,
   IncomeRow,
-  LotMethod,
   Transaction,
 } from "../../types.js";
 
@@ -25,24 +26,6 @@ type HttpPost = (
   body: string,
   timeoutMs: number,
 ) => Promise<{ status: number; data: string }>;
-
-/**
- * Input shape for `calculate_from_csv` (v0.13.0, Part 19). `overrides` reuses
- * `ClassifyInstrumentsInput`'s existing AJV-enum-validated `AssetClass` map
- * (`types.ts`) rather than a new free-form string field. `incomeRows` is
- * deliberately absent from this input — unlike `carryForward` (external state
- * a caller must supply), it's derived from the same `csv` this tool already
- * parses, so `handleCalculateFromCsv` wires the parse step's own
- * `incomeRows` into the internal `calculate_gains` call automatically (see
- * below).
- */
-export interface CalculateFromCsvInput {
-  csv: string;
-  method: LotMethod;
-  overrides?: ClassifyInstrumentsInput["overrides"];
-  offline?: boolean;
-  carryForward?: CarryForward[];
-}
 
 /**
  * The MCP SDK's `CallToolResult` shape, narrowed to the single
@@ -114,20 +97,27 @@ function collectUnresolvedIsins(classification: ClassificationMap): string[] {
  * `handleParseTransactions`, so it's wired into the internal
  * `calculate_gains` call automatically.
  *
- * `extra` (progressToken/sendNotification) forwarding into the inner
- * `classify_instruments` call, and MCP protocol registration, are added in
- * a later task (Part 19's `calculate_from_csv` section, Task 66) — this
- * handler does not yet forward multi-batch OpenFIGI progress notifications,
- * so it deliberately takes no `extra` parameter of its own yet.
+ * `extra` (the MCP `_meta.progressToken`/`sendNotification` pair) is
+ * forwarded verbatim into the internal `classify_instruments` call (Task 66
+ * / TC-244), the same slice of `RequestHandlerExtra`
+ * `classify-instruments.ts` itself declares
+ * (`src/mcp/tools/classify-instruments.ts`) and `server.ts` passes a direct
+ * `classify_instruments` call. Without this explicit forwarding, multi-batch
+ * OpenFIGI progress notifications would never fire for `calculate_from_csv`
+ * regardless of transport/client support — a strictly worse failure than a
+ * client simply not displaying them. `extra` is fully optional (a direct
+ * unit-test invocation, or a client that never asked for progress, omits
+ * it) and this handler completes identically either way.
  *
  * Any error from a composed step (`ParseError`/`ClassificationError`/
  * `CalculationError`) is returned exactly as that step's own handler shaped
  * it, unchanged — no new error-handling logic here, so error shapes stay
- * identical to a direct `parse_transactions`/`classify_instruments`/
- * `calculate_gains` call.
+ * byte-for-byte identical to a direct `parse_transactions`/
+ * `classify_instruments`/`calculate_gains` call (Task 66 / TC-243).
  */
 export async function handleCalculateFromCsv(
   args: CalculateFromCsvInput,
+  extra?: ClassifyInstrumentsExtra,
   _httpPost?: HttpPost,
 ): Promise<ToolCallResult> {
   const parseResult = (await handleParseTransactions({
@@ -146,7 +136,7 @@ export async function handleCalculateFromCsv(
 
   const classifyResult = (await handleClassifyInstruments(
     { transactions, overrides: args.overrides, offline: args.offline },
-    undefined,
+    extra,
     _httpPost,
   )) as ToolCallResult;
   if (classifyResult.isError) return classifyResult;
