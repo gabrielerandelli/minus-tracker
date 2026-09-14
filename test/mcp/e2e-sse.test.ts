@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as net from "node:net";
+import * as http from "node:http";
 import { fileURLToPath } from "node:url";
 import { spawn, type ChildProcess } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -73,6 +74,42 @@ function canConnect(host: string, port: number): Promise<boolean> {
       resolve(false);
     });
     socket.once("error", () => resolve(false));
+  });
+}
+
+/**
+ * Sends a raw POST to `127.0.0.1:port` with an explicit `Host` header,
+ * bypassing whatever Host a normal HTTP client library would compute from
+ * the URL — this is exactly what a DNS-rebinding attack does: the TCP
+ * connection goes to the loopback-bound server, but the `Host` header
+ * still names the attacker's domain. Resolves with the HTTP status code.
+ */
+function postWithHost(
+  port: number,
+  hostHeader: string,
+  body: string,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/mcp",
+        method: "POST",
+        headers: {
+          Host: hostHeader,
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        res.resume();
+        res.once("end", () => resolve(res.statusCode ?? 0));
+      },
+    );
+    req.once("error", reject);
+    req.end(body);
   });
 }
 
@@ -269,4 +306,68 @@ describe("Task 67 — Streamable HTTP/SSE transport", () => {
     );
     expect(typeof sseReport.generatedAt).toBe("string");
   }, 30_000);
+
+  it("regression: rejects a DNS-rebound Host header even though the TCP connection reaches the loopback bind", async () => {
+    // Root-cause regression guard for the first Task 67 attempt: binding to
+    // 127.0.0.1 (TC-246) only stops *network-level* access from other
+    // machines. It does nothing against DNS rebinding, where a page served
+    // from an attacker-controlled domain that resolves to 127.0.0.1 gets
+    // the victim's own browser to open exactly this TCP connection while
+    // sending a `Host` header naming the attacker's domain, not
+    // "127.0.0.1"/"localhost". A bare loopback bind cannot tell that
+    // request apart from a legitimate local one; only Host-header
+    // allowlisting can.
+    const port = await findFreePort();
+    const { child, ready } = spawnSseServer([
+      "--transport",
+      "sse",
+      "--port",
+      String(port),
+    ]);
+
+    const initializeBody = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "dns-rebinding-probe", version: "0.0.0" },
+      },
+    });
+
+    try {
+      await ready;
+
+      // The TCP connection below always targets 127.0.0.1 — the point is
+      // that the loopback bind alone cannot distinguish this from the
+      // legitimate requests right after it, since both land on the exact
+      // same socket. Only the `Host` header differs.
+      const spoofedStatus = await postWithHost(
+        port,
+        "evil-attacker.example:1234",
+        initializeBody,
+      );
+      expect(spoofedStatus).toBe(403);
+
+      // A legitimate same-machine client naming the loopback bind by
+      // either of its two real names must still be let through — the fix
+      // must reject forged Hosts, not lock out real ones.
+      const legitimateIpStatus = await postWithHost(
+        port,
+        `127.0.0.1:${port}`,
+        initializeBody,
+      );
+      expect(legitimateIpStatus).toBe(200);
+
+      const legitimateLocalhostStatus = await postWithHost(
+        port,
+        `localhost:${port}`,
+        initializeBody,
+      );
+      expect(legitimateLocalhostStatus).toBe(200);
+    } finally {
+      await stopServer(child);
+    }
+  }, 20_000);
 });

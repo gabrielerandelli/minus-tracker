@@ -62,6 +62,26 @@ async function main(): Promise<void> {
 }
 
 /**
+ * The `Host` header values a legitimate direct client of this bind is
+ * allowed to send. Binding to loopback blocks *network-level* access from
+ * other machines, but a browser tab open on the same machine is not "other
+ * machines" — a page served from an attacker-controlled domain that
+ * resolves to 127.0.0.1 (DNS rebinding) has the browser send requests whose
+ * *destination* is our loopback port while its `Host` header still names
+ * the attacker's domain. `127.0.0.1` and `localhost` are the only two names
+ * a legitimate same-machine client addresses a loopback bind by, so both
+ * are allowed for the default host; any other configured `--host` is
+ * exact-matched only, since it was an explicit operator opt-in already
+ * accepting a wider bind, not an invitation to accept arbitrary `Host`
+ * values on top of that.
+ */
+function allowedHostsFor(host: string, port: number): string[] {
+  const hosts = [`${host}:${port}`];
+  if (host === "127.0.0.1") hosts.push(`localhost:${port}`);
+  return hosts;
+}
+
+/**
  * Starts the Streamable HTTP/SSE listener. The server stays stateless
  * regardless of transport (Part 19's Design Principle) — every tool call is
  * fully self-contained inline I/O — so each HTTP request gets its own
@@ -70,8 +90,9 @@ async function main(): Promise<void> {
  * transport at a time), rather than any connection- or session-scoped state.
  */
 function startSseServer(host: string, port: number): Promise<void> {
+  const allowedHosts = allowedHostsFor(host, port);
   const httpServer = http.createServer((req, res) => {
-    void handleSseRequest(req, res);
+    void handleSseRequest(req, res, allowedHosts);
   });
 
   return new Promise((resolve, reject) => {
@@ -88,10 +109,20 @@ function startSseServer(host: string, port: number): Promise<void> {
 async function handleSseRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  allowedHosts: string[],
 ): Promise<void> {
   const requestServer = createServer();
   const requestTransport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
+    // Root-cause fix (Task 67 re-attempt): the localhost-bind default alone
+    // does not stop DNS rebinding — see `allowedHostsFor` above. The SDK
+    // ships exactly this mitigation (Host-header allowlisting) but leaves
+    // it disabled unless explicitly opted into, which the first Task 67
+    // attempt never did, silently shipping an unauthenticated SSE server
+    // for real financial data that was reachable from any browser tab on
+    // the same machine regardless of the loopback bind.
+    enableDnsRebindingProtection: true,
+    allowedHosts,
   });
 
   res.on("close", () => {
