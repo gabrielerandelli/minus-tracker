@@ -62,15 +62,13 @@ const TOOLS: Tool[] = [
   {
     name: "calculate_from_csv",
     description:
-      "Composite tool: parse a DEGIRO transactions CSV, classify its " +
-      "ISINs, and calculate LIFO/FIFO capital gains in a single call.",
+      "Parse a DEGIRO transactions CSV, auto-classify every ISIN, and calculate LIFO/FIFO capital gains in one call — the composite tool for callers (e.g. LLM-orchestrated agents) that can only relay CSV text, not a parsed Transaction[] array.",
     inputSchema: calculateFromCsvInputSchema as unknown as Tool["inputSchema"],
   },
   {
     name: "check_rate_coverage",
     description:
-      "Read-only per-currency ECB FX rate coverage/gap scan against the " +
-      "active snapshot — no network access, ever.",
+      "Report per-currency ECB rate date coverage and gaps from the active (bundled + user) snapshot. Read-only — never touches the network or the filesystem.",
     inputSchema:
       checkRateCoverageInputSchema as unknown as Tool["inputSchema"],
   },

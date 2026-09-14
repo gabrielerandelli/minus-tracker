@@ -9,10 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `minus-tracker-mcp` gains a second, opt-in transport alongside the default stdio one:
-  `--transport stdio|sse` (default `stdio`, unchanged behavior for every existing caller —
-  including one passing flags this binary doesn't itself define, which are now tolerated rather
-  than causing a startup crash), `--port <n>`, and `--host <address>`. SSE mode binds to
+- **`calculate_from_csv` and `check_rate_coverage` MCP tools** (Part 19, Tasks 64-66): two new
+  tools registered on `minus-tracker-mcp`, closing the LLM data round-trip risk in Part 15's
+  original `parse_transactions` -> `classify_instruments` -> `calculate_gains` sequence, where an
+  LLM-orchestrated caller has to reproduce a parsed `Transaction[]` array verbatim as the next
+  tool call's argument.
+  - `calculate_from_csv` is a direct in-process composition of the three existing handlers — parse
+    a DEGIRO CSV, auto-classify every ISIN, then calculate gains — so a caller only ever relays the
+    original CSV text across tool-call boundaries. Supports `overrides`/`offline` (forwarded into
+    the classify step) and `carryForward` (forwarded into the calculate step, and required again on
+    any retry — this tool is fully stateless); `incomeRows` from the parse step is wired into the
+    calculate step automatically. Returns `{ report, warnings, unresolvedIsins }`; an unresolved
+    ISIN defaults to Bucket B (the same best-effort behavior `calculate_gains` already has) rather
+    than failing the call, with `unresolvedIsins` telling the caller which ISINs to retry with
+    `overrides`. Its `extra` (`progressToken`/`sendNotification`) is forwarded unchanged into the
+    inner classify step, so multi-batch OpenFIGI progress notifications fire exactly as they would
+    for a direct `classify_instruments` call. Error shapes (`ParseError`/`ClassificationError`/
+    `CalculationError`) are identical to the three composed tools by construction — this handler
+    reuses their exact error-mapping functions rather than any new mapping of its own.
+  - `check_rate_coverage` is a read-only equivalent of `rates --check`: per-currency ECB rate date
+    coverage (`{ from, to }`) plus the actual missing-date list within it, for the bundled +
+    user-merged snapshot, with an optional `currencies` filter. Never touches the network or the
+    filesystem (unlike `rates --update`, deliberately not exposed as a tool). Backed by a new
+    shared `getCurrencyCoverage()` in `src/rates/index.ts` — a superset of the private, per-
+    currency-gap-count-only `getCoverage()` the CLI's `rates --check` used to compute on its own;
+    that CLI command now consumes the same shared function instead of duplicating the scan.
+  - New: `src/mcp/tools/calculate-from-csv.ts`, `src/mcp/tools/check-rate-coverage.ts`,
+    `test/mcp/calculate-from-csv.test.ts`, `test/rates/coverage.test.ts` (TC-233–244). Extended:
+    `src/mcp/server.ts` (both tools registered, schema-validated like the existing 3),
+    `test/mcp/protocol.test.ts` (TC-115 updated for 5 registered tools; new TC-245). No changes to
+    the frozen public API (`DEGIROParser`/`Calculator`) or to any existing tool's behavior/schema.
+- `minus-tracker-mcp` gains a second, opt-in transport alongside the default stdio one (Part 19,
+  Task 67): `--transport stdio|sse` (default `stdio`, unchanged behavior for every existing
+  caller — including one passing flags this binary doesn't itself define, which are now tolerated
+  rather than causing a startup crash), `--port <n>`, and `--host <address>`. SSE mode binds to
   `127.0.0.1` by default — never `0.0.0.0` — and only binds elsewhere when `--host` explicitly
   says so, since SSE mode has no authentication and these tools operate on real financial
   transaction data. The listener enables the SDK's DNS-rebinding protection
@@ -23,6 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pair, per the SDK's documented stateless-mode pattern. New E2E coverage:
   `test/mcp/e2e-sse.test.ts` (TC-246, TC-247, TC-248, plus regression guards for the DNS-rebinding
   mitigation and for argv robustness in stdio mode).
+- **`agent/` — ADK Python agent scaffold** (Part 20, Tasks 68-69): a Python subproject, sibling to
+  `src/`, that is a pure `MCPToolset` client with zero bespoke tool-calling code — never imported
+  by or bundled into the npm build. A single `LlmAgent` wires an `McpToolset` whose stdio/sse
+  connection is fully environment-driven (`MINUS_TRACKER_MCP_TRANSPORT`, `MINUS_TRACKER_MCP_URL`,
+  `MINUS_TRACKER_MCP_COMMAND`/`MINUS_TRACKER_MCP_ARGS`), mirroring `src/errors.ts`'s discriminated-
+  code convention for its one misconfiguration error (`AgentConfigError`) instead of leaking a raw
+  pydantic `ValidationError`. Tools are auto-derived by `McpToolset` from the running server's own
+  `tools/list` response — this file has zero bespoke tool-calling code to keep in sync as the
+  server's tool surface evolves. New: `agent/pyproject.toml`, `agent/minus_tracker_agent/`,
+  `agent/tests/test_tool_discovery.py` (TC-249, TC-251), `agent/tests/test_smoke.py` (TC-250, an
+  end-to-end `calculate_from_csv` call against a locally-spawned `minus-tracker-mcp`, offline and
+  deterministic).
 
 ### Fixed
 

@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as https from "node:https";
 import {
   getActiveSnapshot,
-  getRateCoverage,
+  getCurrencyCoverage,
   type RatesSnapshot,
 } from "../../rates/index.js";
 import type { LocaleStrings } from "../../i18n/types.js";
@@ -32,53 +32,36 @@ export function getSnapshotPath(): string {
   return path.join(configDir, "minus-tracker", "ecb-rates.json");
 }
 
-/**
- * Aggregates the shared per-currency `getRateCoverage()` scan (Task 64) into
- * the single combined start/end + currency list + gap-count display this
- * command has always shown -- retiring the former private, unexported
- * `getCoverage()` duplicate that computed this aggregate shape from its own
- * independent scan. Per-currency gap dates now come from exactly one
- * implementation (this function's own `gaps[ccy].length` and the MCP tool's
- * raw `gaps[ccy]` array are two views of the same `getRateCoverage()` result,
- * so they cannot drift apart -- TC-235), but the CLI's single-line display
- * itself is unchanged from `getCoverage()`'s original shape: a per-currency
- * gap *count* (e.g. "USD: 37"), not the full missing-date list.
- *
- * Showing the full date list here instead of the count is NOT a harmless
- * superset of information -- against the real bundled snapshot (years of
- * coverage across 3 currencies) it turns one short, scannable line into a
- * multi-hundred-entry, thousand-plus-character dump, which is a real CLI UX
- * regression the test suite doesn't happen to assert against. The exhaustive
- * per-currency date list is exactly what `check_rate_coverage`'s raw JSON
- * output is for (Part 19) -- the CLI's aggregated line intentionally stays a
- * count, per Part 19's "aggregating its per-currency output into the
- * *existing* single-line display".
- */
-function summarizeCoverageForDisplay(snapshot: RatesSnapshot): {
+// Aggregates the shared per-currency `getCurrencyCoverage()` (src/rates/index.ts)
+// into the single-line combined shape this CLI display has always used — one
+// combined start/end across all currencies, and a per-currency gap *count*
+// (not the full missing-date list `check_rate_coverage`, the MCP equivalent,
+// returns). The per-currency scan itself is no longer duplicated here.
+function getCoverage(snapshot: RatesSnapshot): {
   start: string;
   end: string;
   currencies: string;
   gaps: string;
 } {
-  const { coverage, gaps } = getRateCoverage(snapshot);
-  const currencyKeys = Object.keys(coverage).sort();
-
+  const perCurrency = getCurrencyCoverage(snapshot);
   let start = "9999-12-31";
   let end = "0000-01-01";
-  for (const { from, to } of Object.values(coverage)) {
-    if (from < start) start = from;
-    if (to > end) end = to;
+  const currencies: string[] = [];
+  const gapEntries: string[] = [];
+
+  for (const [ccy, coverage] of Object.entries(perCurrency)) {
+    currencies.push(ccy);
+    if (coverage.from && coverage.from < start) start = coverage.from;
+    if (coverage.to && coverage.to > end) end = coverage.to;
+    if (coverage.missing.length > 0) {
+      gapEntries.push(`${ccy}: ${coverage.missing.length}`);
+    }
   }
-
-  const gapEntries = currencyKeys
-    .filter((ccy) => (gaps[ccy]?.length ?? 0) > 0)
-    .map((ccy) => `${ccy}: ${gaps[ccy].length}`);
-
   return {
     start,
     end,
-    currencies: currencyKeys.join(", "),
-    gaps: gapEntries.join(", "),
+    currencies: currencies.sort().join(", "),
+    gaps: gapEntries.sort().join(", "),
   };
 }
 
@@ -184,8 +167,7 @@ export async function runRates(
 ): Promise<number> {
   if (flags["check"]) {
     const snapshot = getActiveSnapshot();
-    const { start, end, currencies, gaps } =
-      summarizeCoverageForDisplay(snapshot);
+    const { start, end, currencies, gaps } = getCoverage(snapshot);
     stdout.write(
       renderSegments(
         [{ text: s.ratesCoverage(start, end, currencies), hex: NAVY }],

@@ -78,17 +78,12 @@ function subtractDays(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export interface CurrencyCoverage {
-  from: string;
-  to: string;
-}
-
-export interface RateCoverageResult {
-  coverage: Record<string, CurrencyCoverage>;
-  gaps: Record<string, string[]>;
-}
-
-function findMissingBusinessDays(
+/**
+ * Every calendar-day date strictly between (inclusive) `startDate` and
+ * `endDate` that falls on a weekday and has no entry in `dates` — the actual
+ * missing-date list, not just a count.
+ */
+function listMissingBusinessDays(
   startDate: string,
   endDate: string,
   dates: Record<string, number>,
@@ -105,50 +100,48 @@ function findMissingBusinessDays(
   return missing;
 }
 
+export interface CurrencyCoverage {
+  /** Earliest date present for this currency, "" if the currency has no data at all. */
+  from: string;
+  /** Latest date present for this currency, "" if the currency has no data at all. */
+  to: string;
+  /** Weekday dates within [from, to] with no rate entry. */
+  missing: string[];
+}
+
 /**
- * Per-currency ECB coverage scan: for each requested currency (default: every
- * currency present in `snapshot`), the `[from, to]` ISO-date span of stored
- * rates plus the actual missing business-day dates within that span (weekends
- * are never gaps -- the ECB publishes no rate on Saturday/Sunday).
+ * Per-currency coverage: the actual `{ from, to }` date range plus the real
+ * missing-date list within it, for each requested currency (default: every
+ * currency present in `snapshot`). Module-internal — not part of the frozen
+ * public API (`getActiveSnapshot`/`isSnapshotStale`/`lookupRate`).
  *
- * Module-internal (not part of the frozen public npm package API in
- * `src/index.ts`) -- the single shared implementation behind both
- * `rates --check` (`src/cli/commands/rates.ts`) and the `check_rate_coverage`
- * MCP tool (`src/mcp/tools/check-rate-coverage.ts`), so there is exactly one
- * coverage-scanning implementation and the two surfaces cannot drift apart
- * (Part 19 / TC-235). This supersedes the CLI's former private, unexported
- * `getCoverage()`, which only tracked one combined start/end across all
- * currencies and a per-currency gap *count* -- not the per-currency range and
- * actual missing-date list this function (and the new tool) need.
- *
- * A requested currency that is absent from `snapshot`, or present with zero
- * stored dates, is simply omitted from both `coverage` and `gaps` -- this
- * function never throws.
- *
- * @param snapshot   The active rates snapshot to scan (see `getActiveSnapshot`).
- * @param currencies Optional filter -- when omitted, every currency present in
- *                    `snapshot` is scanned. An empty array yields empty results.
+ * This is the single shared implementation behind both the CLI's
+ * `rates --check` (`src/cli/commands/rates.ts`) and the MCP
+ * `check_rate_coverage` tool (`src/mcp/tools/check-rate-coverage.ts`) — a
+ * superset of the combined-range/gap-count shape the CLI computed on its own
+ * before v0.13.0 (see docs/prd/19-mcp-server-extensions.md). Retiring that
+ * private duplicate in favor of this one function is required, not optional
+ * — otherwise the two call sites can silently drift apart on what counts as
+ * "covered".
  */
-export function getRateCoverage(
+export function getCurrencyCoverage(
   snapshot: RatesSnapshot,
   currencies?: string[],
-): RateCoverageResult {
-  const coverage: Record<string, CurrencyCoverage> = {};
-  const gaps: Record<string, string[]> = {};
+): Record<string, CurrencyCoverage> {
   const keys = currencies ?? Object.keys(snapshot);
-
+  const result: Record<string, CurrencyCoverage> = {};
   for (const ccy of keys) {
-    const dates = snapshot[ccy];
-    if (!dates) continue;
+    const dates = snapshot[ccy] ?? {};
     const sortedDates = Object.keys(dates).sort();
-    if (sortedDates.length === 0) continue;
+    if (sortedDates.length === 0) {
+      result[ccy] = { from: "", to: "", missing: [] };
+      continue;
+    }
     const from = sortedDates[0];
     const to = sortedDates[sortedDates.length - 1];
-    coverage[ccy] = { from, to };
-    gaps[ccy] = findMissingBusinessDays(from, to, dates);
+    result[ccy] = { from, to, missing: listMissingBusinessDays(from, to, dates) };
   }
-
-  return { coverage, gaps };
+  return result;
 }
 
 /**

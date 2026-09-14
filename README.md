@@ -363,17 +363,43 @@ Configurazione tipica per un client MCP (es. Claude Desktop, `claude_desktop_con
 }
 ```
 
-Il server espone 3 tool:
+Il server espone 5 tool:
 
-| Tool                   | Descrizione                                                                            |
-| ---------------------- | -------------------------------------------------------------------------------------- |
-| `parse_transactions`   | Esegue il parsing di un CSV DEGIRO, restituendo `transactions`/`warnings`/`incomeRows` |
-| `classify_instruments` | Classifica gli ISIN in Bucket A/B (modalità stateless — nessun sidecar)                |
-| `calculate_gains`      | Calcola plusvalenze/minusvalenze (LIFO/FIFO) e, se disponibile, Quadro RT/RM           |
+| Tool                    | Descrizione                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------- |
+| `parse_transactions`    | Esegue il parsing di un CSV DEGIRO, restituendo `transactions`/`warnings`/`incomeRows` |
+| `classify_instruments`  | Classifica gli ISIN in Bucket A/B (modalità stateless — nessun sidecar)                |
+| `calculate_gains`       | Calcola plusvalenze/minusvalenze (LIFO/FIFO) e, se disponibile, Quadro RT/RM           |
+| `calculate_from_csv`    | Tool composito: esegue il parsing del CSV, classifica e calcola in un'unica chiamata   |
+| `check_rate_coverage`   | Copertura/lacune dei tassi BCE per valuta (sola lettura, nessuna chiamata di rete)     |
 
 `classify_instruments` supporta `existingClassification`, `overrides` e `offline: true` per
 funzionare senza rete e senza accesso al filesystem — pensato per essere invocato ripetutamente
 da un agente in chiamate successive, mantenendo lo stato lato client.
+
+`calculate_from_csv` (v0.13.0) è pensato per gli agenti orchestrati da un LLM: invece di far
+ripetere al modello l'intero array `Transaction[]` come argomento tra una chiamata e l'altra (con
+il rischio di troncamenti o righe perse), basta rilanciare lo stesso testo CSV. Accetta
+`overrides`/`offline` (passati al passaggio di classificazione) e `carryForward` (passato al
+calcolo — va fornito di nuovo a ogni chiamata successiva, dato che il tool è completamente
+stateless); `incomeRows` prodotto dal parsing viene collegato automaticamente al calcolo. Un ISIN
+non risolto finisce comunque in Bucket B (stesso comportamento di `calculate_gains`) e viene
+elencato in `unresolvedIsins`, così un secondo tentativo può passare `overrides` per correggerlo.
+
+**Trasporti:** `minus-tracker-mcp` usa stdio per default (invariato). Passa `--transport sse --port
+<n>` per esporre invece un listener [Streamable HTTP/SSE](https://modelcontextprotocol.io) — utile
+per framework di agenti che parlano HTTP anziché avviare un sottoprocesso. Il listener si lega a
+`127.0.0.1` per default (mai `0.0.0.0`), dato che questa modalità non ha autenticazione e questi
+tool operano su dati finanziari reali; passa `--host <indirizzo>` per legarsi altrove come scelta
+esplicita. Il server resta stateless indipendentemente dal trasporto.
+
+```bash
+npx -p @gabrielerandelli/minus-tracker minus-tracker-mcp --transport sse --port 3000
+```
+
+**Agente di esempio:** `agent/` è un sottoprogetto Python autonomo (mai importato nella build npm)
+che dimostra un `LlmAgent` ADK collegato a `minus-tracker-mcp` tramite `MCPToolset` — vedi
+[`agent/README.md`](agent/README.md) per configurazione e utilizzo.
 
 ### Domande frequenti
 
@@ -775,17 +801,28 @@ Typical MCP client configuration (e.g. Claude Desktop, `claude_desktop_config.js
 }
 ```
 
-The server exposes 3 tools:
+The server exposes 5 tools:
 
-| Tool                   | Description                                                           |
-| ---------------------- | --------------------------------------------------------------------- |
-| `parse_transactions`   | Parses a DEGIRO CSV into `transactions`/`warnings`/`incomeRows`       |
-| `classify_instruments` | Classifies ISINs into Bucket A/B (stateless mode — no sidecar file)   |
-| `calculate_gains`      | Calculates gains/losses (LIFO/FIFO) and, when available, Quadro RT/RM |
+| Tool                   | Description                                                             |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `parse_transactions`   | Parses a DEGIRO CSV into `transactions`/`warnings`/`incomeRows`         |
+| `classify_instruments` | Classifies ISINs into Bucket A/B (stateless mode — no sidecar file)     |
+| `calculate_gains`      | Calculates gains/losses (LIFO/FIFO) and, when available, Quadro RT/RM   |
+| `calculate_from_csv`   | Composite tool: parses, classifies, and calculates in a single call     |
+| `check_rate_coverage`  | Per-currency ECB rate coverage/gaps (read-only, no network call)        |
 
 `classify_instruments` supports `existingClassification`, `overrides`, and `offline: true` to run
 without network access or filesystem access — designed to be called repeatedly by an agent across
 multiple calls, with state kept client-side.
+
+`calculate_from_csv` (v0.13.0) targets LLM-orchestrated callers: instead of the model having to
+reproduce the full `Transaction[]` array verbatim as the argument to the next tool call (with a
+real risk of truncation or a dropped row), it only ever has to relay the original CSV text again.
+It accepts `overrides`/`offline` (forwarded into the classify step) and `carryForward` (forwarded
+into the calculate step — this tool is fully stateless, so `carryForward` must be resent on every
+call or its effect is silently lost); the parse step's `incomeRows` is wired into the calculate
+step automatically. An unresolved ISIN still defaults to Bucket B (same as `calculate_gains`) and
+is listed in `unresolvedIsins`, so a follow-up call can pass `overrides` to correct it.
 
 **Transports:** `minus-tracker-mcp` defaults to stdio (unchanged). Pass `--transport sse --port
 <n>` to instead expose a [Streamable HTTP/SSE](https://modelcontextprotocol.io) listener — useful
@@ -797,6 +834,10 @@ explicit opt-in. The server remains stateless regardless of transport.
 ```bash
 npx -p @gabrielerandelli/minus-tracker minus-tracker-mcp --transport sse --port 3000
 ```
+
+**Example agent:** `agent/` is a standalone Python subproject (never imported into the npm build)
+demonstrating an ADK `LlmAgent` wired to `minus-tracker-mcp` via `MCPToolset` — see
+[`agent/README.md`](agent/README.md) for setup and configuration.
 
 ### FAQ / Troubleshooting
 
