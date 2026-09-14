@@ -8,21 +8,17 @@ import { handleCalculateFromCsv } from "../../src/mcp/tools/calculate-from-csv.j
 /**
  * Category 21 — MCP Server: `calculate_from_csv` composite tool (v0.13.0)
  *
- * Covers TC-236 through TC-244 from docs/test_plan.md (Part 19 + Task 66).
- * Unit-level: calls `handleCalculateFromCsv` directly, no MCP
- * transport/client. Every test injects a fake OpenFIGI `_httpPost` (or uses
- * `offline: true`) so these stay deterministic and network-free, per Part
+ * TC-236 through TC-242 (Task 65's core composition, below) call
+ * `handleCalculateFromCsv` directly with `(args, extra, _httpPost)` — every
+ * one passes `undefined` for `extra` since none of them need progress
+ * notifications, and every one injects a fake OpenFIGI `_httpPost` (or uses
+ * `offline: true`) so they stay deterministic and network-free, per Part
  * 19's Testing Approach.
  *
- * TC-236 through TC-242 cover Task 65's core composition
- * (parse_transactions -> classify_instruments -> calculate_gains). TC-243
- * and TC-244 cover the Task 66 surface added on top of it: error-shape
- * parity with the granular tools it composes, and `extra`
- * (progressToken/sendNotification) forwarding into the internal
- * `classify_instruments` call. `handleCalculateFromCsv`'s signature is
- * `(args, extra?, _httpPost?)` — every fake OpenFIGI `_httpPost` below is
- * therefore passed as the *third* argument, with `undefined` for `extra`
- * where a test doesn't care about progress notifications.
+ * TC-243/TC-244 (Task 66, at the bottom of this file) cover `extra`
+ * forwarding and error-shape parity with the granular tools this handler
+ * composes; TC-245 (protocol-level registration) lives in
+ * `test/mcp/protocol.test.ts`.
  */
 
 const HEADER =
@@ -60,7 +56,10 @@ function mockHttpAlwaysEtf() {
 function mockHttpAlwaysUnknown() {
   return vi.fn().mockImplementation(async (_url: string, body: string) => {
     const items = JSON.parse(body) as unknown[];
-    return jsonResult(200, items.map(() => ({ data: [{ securityType: "REIT" }] })));
+    return jsonResult(
+      200,
+      items.map(() => ({ data: [{ securityType: "REIT" }] })),
+    );
   });
 }
 
@@ -123,7 +122,8 @@ describe("TC-237: calculate_from_csv — unresolved ISINs → Bucket B default +
     expect(body.unresolvedIsins).toEqual([STOCK_ISIN]);
     expect(
       body.warnings.some(
-        (w: string) => w.includes(STOCK_ISIN) && w.includes("Please classify manually"),
+        (w: string) =>
+          w.includes(STOCK_ISIN) && w.includes("Please classify manually"),
       ),
     ).toBe(true);
 
@@ -144,11 +144,11 @@ describe("TC-237: calculate_from_csv — unresolved ISINs → Bucket B default +
 describe("TC-237b: calculate_from_csv — mixed portfolio, partial resolution", () => {
   it("only the truly-unresolved ISIN lands in unresolvedIsins; the resolved one still splits into bucketA", async () => {
     // Every TC-236/237 fixture above uses a single-ISIN CSV, which can't
-    // distinguish "scans the whole classification map" from "only looks at
-    // the first/last entry". This regression guard uses a two-ISIN CSV
-    // (one OpenFIGI-resolvable, one not) so collectUnresolvedIsins's
-    // Object.entries(classification) scan is actually exercised across more
-    // than one entry.
+    // distinguish "collectUnresolvedIsins scans the whole classification
+    // map" from "only looks at the first/last entry". This regression guard
+    // uses a two-ISIN CSV (one OpenFIGI-resolvable, one not) so
+    // Object.entries(classification) is actually exercised across more than
+    // one entry.
     const csv = [
       HEADER,
       buyRow(ETF_ISIN, "10-01-2024", 10, 100),
@@ -157,17 +157,19 @@ describe("TC-237b: calculate_from_csv — mixed portfolio, partial resolution", 
       sellRow(STOCK_ISIN, "10-06-2024", 10, 70),
     ].join("\n");
 
-    const mockHttp = vi.fn().mockImplementation(async (_url: string, body: string) => {
-      const items = JSON.parse(body) as { idValue: string }[];
-      return jsonResult(
-        200,
-        items.map((item) => ({
-          data: [
-            { securityType: item.idValue === ETF_ISIN ? "ETF" : "REIT" },
-          ],
-        })),
-      );
-    });
+    const mockHttp = vi
+      .fn()
+      .mockImplementation(async (_url: string, body: string) => {
+        const items = JSON.parse(body) as { idValue: string }[];
+        return jsonResult(
+          200,
+          items.map((item) => ({
+            data: [
+              { securityType: item.idValue === ETF_ISIN ? "ETF" : "REIT" },
+            ],
+          })),
+        );
+      });
 
     const result = await handleCalculateFromCsv(
       { csv, method: "LIFO" },
@@ -202,7 +204,10 @@ describe("TC-238: calculate_from_csv — overrides correction retry resolves ISI
     expect(firstBody.report.bucketA).toBeUndefined();
     expect(firstBody.report.bucketB.plusvalenze).toBe(396);
 
-    // Correction retry: force the previously-unresolved ISIN to ETF.
+    // Correction retry: force the previously-unresolved ISIN to ETF. A
+    // fresh mock proves the override itself resolves it, not a leftover
+    // OpenFIGI response from the first call — the tool is stateless, so
+    // every call re-runs the full pipeline from scratch.
     const mockHttpRetry = mockHttpAlwaysUnknown();
     const retry = await handleCalculateFromCsv(
       { csv, method: "LIFO", overrides: { [STOCK_ISIN]: "ETF" } },
@@ -320,7 +325,12 @@ describe("TC-241: calculate_from_csv — carryForward omitted on retry loses eff
     // re-supplying carryForward — this is documented, expected
     // statelessness, not a bug this handler should work around.
     const retry = await handleCalculateFromCsv(
-      { csv, method: "LIFO", offline: true, overrides: { [STOCK_ISIN]: "Stock" } },
+      {
+        csv,
+        method: "LIFO",
+        offline: true,
+        overrides: { [STOCK_ISIN]: "Stock" },
+      },
       undefined,
       vi.fn(),
     );
@@ -368,6 +378,14 @@ describe("TC-242: calculate_from_csv — incomeRows wired internally into calcul
   });
 });
 
+/**
+ * Task 66. Covers TC-243 and TC-244 from docs/test_plan.md. `extra`
+ * forwarding and error-shape parity are the only Task 66 surface added on
+ * top of Task 65's core composition above — everything else in this file
+ * is unchanged apart from `undefined` now needing to be threaded through as
+ * the new `extra` parameter.
+ */
+
 describe("TC-243: calculate_from_csv — error shapes match the granular tools it composes", () => {
   it("ParseError (INVALID_CSV): identical isError payload to a direct parse_transactions call", async () => {
     const garbage = "\x00\x00binary garbage\x00\x00";
@@ -380,9 +398,9 @@ describe("TC-243: calculate_from_csv — error shapes match the granular tools i
 
     expect(direct.isError).toBe(true);
     expect(composed.isError).toBe(true);
-    expect(composed.content[0]!.text).toEqual(direct.content[0]!.text);
+    expect(composed.content[0].text).toEqual(direct.content[0].text);
 
-    const body = JSON.parse(composed.content[0]!.text);
+    const body = JSON.parse(composed.content[0].text);
     expect(body.code).toBe("INVALID_CSV");
   });
 
@@ -398,17 +416,17 @@ describe("TC-243: calculate_from_csv — error shapes match the granular tools i
 
     expect(direct.isError).toBe(true);
     expect(composed.isError).toBe(true);
-    expect(composed.content[0]!.text).toEqual(direct.content[0]!.text);
+    expect(composed.content[0].text).toEqual(direct.content[0].text);
 
-    const body = JSON.parse(composed.content[0]!.text);
+    const body = JSON.parse(composed.content[0].text);
     expect(body.code).toBe("MISSING_COLUMN");
     expect(body.columnName).toBe("ISIN");
   });
 
   it("ClassificationError (NETWORK_ERROR): identical isError payload to a direct classify_instruments call", async () => {
-    const BUY_ROW =
+    const buyRowRaw =
       "14-01-2024,09:05,Apple Inc,US0378331005,XNAS,XNAS,10,150.00,-1500.00,EUR,-1500.00,EUR,1,-2.00,EUR,-1502.00,EUR,abc-123";
-    const csv = [HEADER, BUY_ROW].join("\n");
+    const csv = [HEADER, buyRowRaw].join("\n");
     const transactions = new DEGIROParser().parse(csv);
 
     const mockHttp503 = vi.fn().mockResolvedValue({ status: 503, data: "" });
@@ -426,16 +444,16 @@ describe("TC-243: calculate_from_csv — error shapes match the granular tools i
 
     expect(direct.isError).toBe(true);
     expect(composed.isError).toBe(true);
-    expect(composed.content[0]!.text).toEqual(direct.content[0]!.text);
+    expect(composed.content[0].text).toEqual(direct.content[0].text);
 
-    const body = JSON.parse(composed.content[0]!.text);
+    const body = JSON.parse(composed.content[0].text);
     expect(body.code).toBe("NETWORK_ERROR");
   });
 
   it("CalculationError (NO_OPEN_LOTS via CALCULATION_ERROR): identical isError payload to a direct calculate_gains call", async () => {
-    const SELL_ROW =
+    const sellRowRaw =
       "03-06-2024,14:20,Apple Inc,US0378331005,XNAS,XNAS,-10,180.00,1800.00,EUR,1800.00,EUR,1,-2.00,EUR,1798.00,EUR,abc-456";
-    const csv = [HEADER, SELL_ROW].join("\n");
+    const csv = [HEADER, sellRowRaw].join("\n");
     const transactions = new DEGIROParser().parse(csv);
 
     const mockHttp = vi
@@ -444,11 +462,12 @@ describe("TC-243: calculate_from_csv — error shapes match the granular tools i
         jsonResult(200, [{ data: [{ securityType: "Common Stock" }] }]),
       );
 
-    // No classification passed directly: the error is thrown during lot
-    // matching, before two-bucket routing ever consults the classification
-    // map, so a direct calculate_gains call with no classification produces
-    // the exact same CalculationError as the composed pipeline (which does
-    // classify first, via `offline: true` so this test stays network-free).
+    // The SELL-only fixture has no open BUY lot, so the CalculationError is
+    // thrown during lot matching itself — before two-bucket routing ever
+    // consults the classification map — so a direct calculate_gains call
+    // with no classification produces the exact same error as the composed
+    // pipeline (which does classify first, via `offline: true` so this test
+    // stays network-free regardless).
     const direct = await handleCalculateGains({ transactions, method: "LIFO" });
     const composed = await handleCalculateFromCsv(
       { csv, method: "LIFO", offline: true },
@@ -458,9 +477,9 @@ describe("TC-243: calculate_from_csv — error shapes match the granular tools i
 
     expect(direct.isError).toBe(true);
     expect(composed.isError).toBe(true);
-    expect(composed.content[0]!.text).toEqual(direct.content[0]!.text);
+    expect(composed.content[0].text).toEqual(direct.content[0].text);
 
-    const body = JSON.parse(composed.content[0]!.text);
+    const body = JSON.parse(composed.content[0].text);
     expect(body.code).toBe("CALCULATION_ERROR");
     expect(body.isin).toBe("US0378331005");
     expect(body.date).toBe("2024-06-03");
@@ -470,15 +489,15 @@ describe("TC-243: calculate_from_csv — error shapes match the granular tools i
 describe("TC-244: calculate_from_csv — extra forwarded; multi-batch progress fires", () => {
   // > Classifier's batch size of 10 (src/classifier/index.ts) to force a
   // multi-batch OpenFIGI run, mirroring TC-112's classify_instruments setup.
-  const ISINS = Array.from(
+  const manyIsins = Array.from(
     { length: 25 },
     (_, i) => `XX${String(i).padStart(10, "0")}`,
   );
-  const rows = ISINS.map(
+  const manyRows = manyIsins.map(
     (isin, i) =>
       `14-01-2024,09:05,Test Stock ${i},${isin},XNAS,XNAS,10,150.00,-1500.00,EUR,-1500.00,EUR,1,-2.00,EUR,-1502.00,EUR,abc-${i}`,
   );
-  const csv = [HEADER, ...rows].join("\n");
+  const manyIsinCsv = [HEADER, ...manyRows].join("\n");
 
   function makeMockHttp() {
     return vi.fn().mockImplementation(async (_url: string, body: string) => {
@@ -493,7 +512,7 @@ describe("TC-244: calculate_from_csv — extra forwarded; multi-batch progress f
   it("with a progressToken, sends the same notifications/progress sequence a direct classify_instruments call would", async () => {
     vi.useFakeTimers();
     try {
-      const transactions = new DEGIROParser().parse(csv);
+      const transactions = new DEGIROParser().parse(manyIsinCsv);
 
       const directHttp = makeMockHttp();
       const directSend = vi.fn().mockResolvedValue(undefined);
@@ -509,7 +528,7 @@ describe("TC-244: calculate_from_csv — extra forwarded; multi-batch progress f
       const composedHttp = makeMockHttp();
       const composedSend = vi.fn().mockResolvedValue(undefined);
       const composedPromise = handleCalculateFromCsv(
-        { csv, method: "LIFO" },
+        { csv: manyIsinCsv, method: "LIFO" },
         { _meta: { progressToken: "tok-1" }, sendNotification: composedSend },
         composedHttp,
       );
@@ -539,7 +558,7 @@ describe("TC-244: calculate_from_csv — extra forwarded; multi-batch progress f
       const composedHttp = makeMockHttp();
       const sendNotification = vi.fn().mockResolvedValue(undefined);
       const promise = handleCalculateFromCsv(
-        { csv, method: "LIFO" },
+        { csv: manyIsinCsv, method: "LIFO" },
         { sendNotification },
         composedHttp,
       );
@@ -559,7 +578,7 @@ describe("TC-244: calculate_from_csv — extra forwarded; multi-batch progress f
     try {
       const composedHttp = makeMockHttp();
       const promise = handleCalculateFromCsv(
-        { csv, method: "LIFO" },
+        { csv: manyIsinCsv, method: "LIFO" },
         undefined,
         composedHttp,
       );

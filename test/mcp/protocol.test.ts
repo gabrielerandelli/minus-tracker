@@ -24,7 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, "../..");
 
 /**
- * TC-115: Protocol-level — all 3 tools registered with valid JSON schemas.
+ * TC-115: Protocol-level — all 4 tools registered with valid JSON schemas.
  *
  * Connects an in-memory Client/Server transport pair, lists tools, and
  * compiles each returned inputSchema with a fresh ajv instance (independent
@@ -330,17 +330,17 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
       expect(
         Object.keys(calculateFromCsvInputSchema.properties).sort(),
       ).toEqual(
-        [
-          "csv",
-          "method",
-          "existingClassification",
-          "overrides",
-          "offline",
-          "carryForward",
-        ].sort(),
+        ["csv", "method", "overrides", "offline", "carryForward"].sort(),
       );
       expect(calculateFromCsvInputSchema.required.slice().sort()).toEqual(
         ["csv", "method"].sort(),
+      );
+      // Deliberately NOT present: unlike classify_instruments'
+      // ClassifyInstrumentsInput, calculate_from_csv takes no
+      // existingClassification — Part 19's PRD is explicit that a
+      // correction retry re-runs the full pipeline statelessly every time.
+      expect(Object.keys(calculateFromCsvInputSchema.properties)).not.toContain(
+        "existingClassification",
       );
     });
   });
@@ -392,17 +392,13 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
 });
 
 /**
- * TC-245: Task 66 — protocol-level registration of the v0.13.0 composite
- * tool(s), same in-memory-transport approach as TC-115 above.
+ * tool, same in-memory-transport approach as TC-115 above, run as its own
+ * connect/close pair so it stays independent of TC-115's assertions.
  *
  * Note: this repo currently implements only `calculate_from_csv` (Tasks
- * 65-66) — `check_rate_coverage` is Task 64, which Task 66's own Dependency
- * Order section names as a co-requisite ("Task 66 ... depends on Tasks 64
- * and 65 both existing") but which is out of this task's file list, so it
- * is not asserted here. This test still proves the real acceptance
- * criterion Task 66 owns: `calculate_from_csv` is discoverable via
- * `tools/list` over a real (in-memory) MCP transport, with a schema ajv
- * can compile standalone — not just importable as a TS handler function.
+ * 65-66) — `check_rate_coverage` is Task 64, out of this task's file list,
+ * so it is not asserted here; TC-115 above already covers the full 4-tool
+ * roster this repo actually registers.
  */
 describe("TC-245 — calculate_from_csv registered with a valid schema over the MCP protocol", () => {
   it("lists calculate_from_csv with a standalone-compilable inputSchema", async () => {
@@ -423,7 +419,7 @@ describe("TC-245 — calculate_from_csv registered with a valid schema over the 
     const ajv = new Ajv({ strict: false });
     expect(() => ajv.compile(tool!.inputSchema)).not.toThrow();
     expect(Object.keys(tool!.inputSchema.properties ?? {}).sort()).toEqual(
-      ["csv", "method", "existingClassification", "overrides", "offline", "carryForward"].sort(),
+      ["csv", "method", "overrides", "offline", "carryForward"].sort(),
     );
 
     await client.close();
