@@ -78,6 +78,79 @@ function subtractDays(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export interface CurrencyCoverage {
+  from: string;
+  to: string;
+}
+
+export interface RateCoverageResult {
+  coverage: Record<string, CurrencyCoverage>;
+  gaps: Record<string, string[]>;
+}
+
+function findMissingBusinessDays(
+  startDate: string,
+  endDate: string,
+  dates: Record<string, number>,
+): string[] {
+  const missing: string[] = [];
+  const cursor = new Date(startDate + "T00:00:00Z");
+  const end = new Date(endDate + "T00:00:00Z");
+  while (cursor <= end) {
+    const day = cursor.getUTCDay();
+    const iso = cursor.toISOString().slice(0, 10);
+    if (day !== 0 && day !== 6 && dates[iso] === undefined) missing.push(iso);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return missing;
+}
+
+/**
+ * Per-currency ECB coverage scan: for each requested currency (default: every
+ * currency present in `snapshot`), the `[from, to]` ISO-date span of stored
+ * rates plus the actual missing business-day dates within that span (weekends
+ * are never gaps -- the ECB publishes no rate on Saturday/Sunday).
+ *
+ * Module-internal (not part of the frozen public npm package API in
+ * `src/index.ts`) -- the single shared implementation behind both
+ * `rates --check` (`src/cli/commands/rates.ts`) and the `check_rate_coverage`
+ * MCP tool (`src/mcp/tools/check-rate-coverage.ts`), so there is exactly one
+ * coverage-scanning implementation and the two surfaces cannot drift apart
+ * (Part 19 / TC-235). This supersedes the CLI's former private, unexported
+ * `getCoverage()`, which only tracked one combined start/end across all
+ * currencies and a per-currency gap *count* -- not the per-currency range and
+ * actual missing-date list this function (and the new tool) need.
+ *
+ * A requested currency that is absent from `snapshot`, or present with zero
+ * stored dates, is simply omitted from both `coverage` and `gaps` -- this
+ * function never throws.
+ *
+ * @param snapshot   The active rates snapshot to scan (see `getActiveSnapshot`).
+ * @param currencies Optional filter -- when omitted, every currency present in
+ *                    `snapshot` is scanned. An empty array yields empty results.
+ */
+export function getRateCoverage(
+  snapshot: RatesSnapshot,
+  currencies?: string[],
+): RateCoverageResult {
+  const coverage: Record<string, CurrencyCoverage> = {};
+  const gaps: Record<string, string[]> = {};
+  const keys = currencies ?? Object.keys(snapshot);
+
+  for (const ccy of keys) {
+    const dates = snapshot[ccy];
+    if (!dates) continue;
+    const sortedDates = Object.keys(dates).sort();
+    if (sortedDates.length === 0) continue;
+    const from = sortedDates[0];
+    const to = sortedDates[sortedDates.length - 1];
+    coverage[ccy] = { from, to };
+    gaps[ccy] = findMissingBusinessDays(from, to, dates);
+  }
+
+  return { coverage, gaps };
+}
+
 /**
  * Look up ECB rate for a currency on a given date.
  * Returns 1.0 for EUR. Walks back up to 3 calendar days for weekend/holiday gaps.
