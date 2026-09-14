@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `minus-tracker-mcp` gains a second, opt-in transport alongside the default stdio one:
+  `--transport stdio|sse` (default `stdio`, unchanged behavior for every existing caller —
+  including one passing flags this binary doesn't itself define, which are now tolerated rather
+  than causing a startup crash), `--port <n>`, and `--host <address>`. SSE mode binds to
+  `127.0.0.1` by default — never `0.0.0.0` — and only binds elsewhere when `--host` explicitly
+  says so, since SSE mode has no authentication and these tools operate on real financial
+  transaction data. The listener enables the SDK's DNS-rebinding protection
+  (`enableDnsRebindingProtection`/`allowedHosts`), rejecting requests whose `Host` header doesn't
+  match the bound address (or `localhost`, for the default bind) with `403`, even when the
+  underlying TCP connection legitimately reaches the loopback bind. The server stays stateless
+  regardless of transport — each HTTP request gets its own `Server`/`StreamableHTTPServerTransport`
+  pair, per the SDK's documented stateless-mode pattern. New E2E coverage:
+  `test/mcp/e2e-sse.test.ts` (TC-246, TC-247, TC-248, plus regression guards for the DNS-rebinding
+  mitigation and for argv robustness in stdio mode).
+
 ### Fixed
 
 - `DEGIROParser` silently mis-priced a transaction's fee whenever the "Transaction costs
