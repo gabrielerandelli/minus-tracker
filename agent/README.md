@@ -49,7 +49,7 @@ pytest
 
 `tests/test_tool_discovery.py` builds the sibling TypeScript package (`npm run build`, if not
 already built) and asserts `MCPToolset` tool discovery matches the running `minus-tracker-mcp`'s
-own `tools/list` response exactly — never a hardcoded tool list — plus the `sse`-transport
-configuration-error behavior above.
+own `tools/list` response exactly — never a hardcoded tool list — plus the guaranteed-baseline-tool
+and `sse`-transport configuration-error checks described in that file's own module docstring.
 
 minus-tracker (and, by extension, this agent) is a calculation aid, not tax advice.

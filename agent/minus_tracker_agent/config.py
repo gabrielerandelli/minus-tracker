@@ -13,7 +13,7 @@ Reads the two environment variables Part 19/20 of the PRD define
 from __future__ import annotations
 
 import os
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Union
 
 from google.adk.tools.mcp_tool.mcp_session_manager import (
     SseConnectionParams,
@@ -41,7 +41,13 @@ DEFAULT_STDIO_COMMAND = "minus-tracker-mcp"
 COMMAND_ENV_VAR = "MINUS_TRACKER_MCP_COMMAND"
 COMMAND_ARGS_ENV_VAR = "MINUS_TRACKER_MCP_ARGS"
 
-ConnectionParams = "StdioConnectionParams | SseConnectionParams"
+# A real type alias (not a string) so `typing.get_type_hints()`/tooling that
+# resolves annotations sees an actual Union, not an opaque forward-reference
+# string that never gets evaluated — `from __future__ import annotations`
+# above already makes this module's own runtime behavior indifferent to the
+# distinction, but nothing else reading this module's annotations should pay
+# for that indifference too.
+ConnectionParams = Union[StdioConnectionParams, SseConnectionParams]
 
 
 def get_connection_params(
