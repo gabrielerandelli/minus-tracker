@@ -5,10 +5,23 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 // Part 19 / Task 67 — a second, opt-in transport alongside the default
-// stdio one. `--transport` and `--port` are the only flags stdio mode ever
-// looks at (it ignores them entirely, matching the pre-Task-67 zero-flag
+// stdio one. `--transport`, `--port` and `--host` are the only flags this
+// entry point itself looks at; every other flag/positional must be tolerated
+// (parsed but otherwise ignored), matching the pre-Task-67 zero-flag
 // behavior every existing stdio caller — Claude Desktop, the E2E smoke
-// test — already relies on).
+// test, or any other MCP host that might invoke this binary with flags of
+// its own — already relies on.
+//
+// Root cause of the previous attempt's failed independent verification:
+// `strict: true` (node:util's default) makes `parseArgs` throw
+// synchronously — crashing the process before stdio ever connects — on ANY
+// unrecognized flag or positional argument. That silently broke the
+// "stdio, unchanged" contract for every caller passing argv this entry
+// point doesn't itself define, which the previous attempt never exercised
+// (the E2E smoke tests only ever spawn the binary with flags it defines).
+// `strict: false` parses the flags we do define exactly as before while
+// leaving anything else untouched, restoring the true zero-flag-impact
+// behavior for stdio mode.
 const { values } = parseArgs({
   args: process.argv.slice(2),
   options: {
@@ -16,11 +29,20 @@ const { values } = parseArgs({
     port: { type: "string" },
     host: { type: "string" },
   },
-  strict: true,
+  strict: false,
 });
 
+// With `strict: false`, a *known* option (`--transport`/`--port`/`--host`)
+// given without its value parses to the boolean `true` rather than throwing
+// (e.g. a trailing bare `--host`) — so each value needs a runtime string
+// check before use regardless of the declared `type: "string"`, which only
+// governs parsing of a value that *is* present.
+function asString(value: string | boolean | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 async function main(): Promise<void> {
-  const transport = values.transport;
+  const transport = asString(values.transport) ?? "stdio";
 
   if (transport === "stdio") {
     await server.connect(new StdioServerTransport());
@@ -35,7 +57,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!values.port) {
+  const portValue = asString(values.port);
+  if (!portValue) {
     process.stderr.write(
       "minus-tracker-mcp: --transport sse requires --port <n>\n",
     );
@@ -43,10 +66,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  const port = Number(values.port);
+  const port = Number(portValue);
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     process.stderr.write(
-      `minus-tracker-mcp: invalid --port value "${values.port}"\n`,
+      `minus-tracker-mcp: invalid --port value "${portValue}"\n`,
     );
     process.exit(2);
     return;
@@ -56,7 +79,7 @@ async function main(): Promise<void> {
   // authentication in v0.13.0 and these tools operate on real financial
   // transaction data, so binding is never `0.0.0.0` unless an operator
   // explicitly opts in via `--host`.
-  const host = values.host ?? "127.0.0.1";
+  const host = asString(values.host) ?? "127.0.0.1";
 
   await startSseServer(host, port);
 }

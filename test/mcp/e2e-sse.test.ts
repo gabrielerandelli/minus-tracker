@@ -370,4 +370,36 @@ describe("Task 67 — Streamable HTTP/SSE transport", () => {
       await stopServer(child);
     }
   }, 20_000);
+
+  it("regression: stdio mode (the default, unchanged transport) tolerates unrecognized flags and positional arguments instead of crashing", async () => {
+    // Root-cause regression guard for the second Task 67 attempt: the entry
+    // point's `parseArgs` call used `strict: true` (node:util's default),
+    // which throws synchronously on ANY argv it doesn't itself define —
+    // an unknown flag or a bare positional argument — crashing the process
+    // before stdio ever connects. That broke the "stdio, default, unchanged"
+    // contract for any real caller (an MCP host, a wrapper script, a future
+    // flag this binary doesn't know about yet) that spawns this binary with
+    // argv of its own, which neither the first attempt's tests nor this
+    // suite's other stdio-mode tests (TC-120, TC-248's stdio leg) ever pass
+    // any argv to, so none of them could have caught this. `strict: false`
+    // is the actual fix under test here — this test fails against a
+    // `strict: true` parseArgs call, confirming the regression is real.
+    const stdioTransport = new StdioClientTransport({
+      command: process.execPath,
+      args: [distMcpEntry, "--some-unrecognized-flag", "a-positional-arg"],
+      cwd: repoRoot,
+    });
+    const client = new Client({
+      name: "e2e-sse-test-stdio-unrecognized-argv",
+      version: "0.0.0",
+    });
+
+    await client.connect(stdioTransport);
+    try {
+      const tools = await client.listTools();
+      expect(tools.tools.map((t) => t.name)).toContain("parse_transactions");
+    } finally {
+      await client.close();
+    }
+  }, 20_000);
 });

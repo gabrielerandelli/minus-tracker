@@ -787,6 +787,17 @@ The server exposes 3 tools:
 without network access or filesystem access — designed to be called repeatedly by an agent across
 multiple calls, with state kept client-side.
 
+**Transports:** `minus-tracker-mcp` defaults to stdio (unchanged). Pass `--transport sse --port
+<n>` to instead expose a [Streamable HTTP/SSE](https://modelcontextprotocol.io) listener — useful
+for agent frameworks that talk HTTP rather than spawning a subprocess. The listener binds to
+`127.0.0.1` by default (never `0.0.0.0`), since this mode ships with no authentication and these
+tools operate on real financial transaction data; pass `--host <address>` to bind elsewhere as an
+explicit opt-in. The server remains stateless regardless of transport.
+
+```bash
+npx -p @gabrielerandelli/minus-tracker minus-tracker-mcp --transport sse --port 3000
+```
+
 ### FAQ / Troubleshooting
 
 **My CSV is rejected with "missing column" or "invalid CSV"**
