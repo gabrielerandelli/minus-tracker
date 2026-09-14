@@ -39,6 +39,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `src/mcp/server.ts` (both tools registered, schema-validated like the existing 3),
     `test/mcp/protocol.test.ts` (TC-115 updated for 5 registered tools; new TC-245). No changes to
     the frozen public API (`DEGIROParser`/`Calculator`) or to any existing tool's behavior/schema.
+- `minus-tracker-mcp` gains a second, opt-in transport alongside the default stdio one (Part 19,
+  Task 67): `--transport stdio|sse` (default `stdio`, unchanged behavior for every existing
+  caller — including one passing flags this binary doesn't itself define, which are now tolerated
+  rather than causing a startup crash), `--port <n>`, and `--host <address>`. SSE mode binds to
+  `127.0.0.1` by default — never `0.0.0.0` — and only binds elsewhere when `--host` explicitly
+  says so, since SSE mode has no authentication and these tools operate on real financial
+  transaction data. The listener enables the SDK's DNS-rebinding protection
+  (`enableDnsRebindingProtection`/`allowedHosts`), rejecting requests whose `Host` header doesn't
+  match the bound address (or `localhost`, for the default bind) with `403`, even when the
+  underlying TCP connection legitimately reaches the loopback bind. The server stays stateless
+  regardless of transport — each HTTP request gets its own `Server`/`StreamableHTTPServerTransport`
+  pair, per the SDK's documented stateless-mode pattern. New E2E coverage:
+  `test/mcp/e2e-sse.test.ts` (TC-246, TC-247, TC-248, plus regression guards for the DNS-rebinding
+  mitigation and for argv robustness in stdio mode).
+- **`agent/` — ADK Python agent scaffold** (Part 20, Tasks 68-69): a Python subproject, sibling to
+  `src/`, that is a pure `MCPToolset` client with zero bespoke tool-calling code — never imported
+  by or bundled into the npm build. A single `LlmAgent` wires an `McpToolset` whose stdio/sse
+  connection is fully environment-driven (`MINUS_TRACKER_MCP_TRANSPORT`, `MINUS_TRACKER_MCP_URL`,
+  `MINUS_TRACKER_MCP_COMMAND`/`MINUS_TRACKER_MCP_ARGS`), mirroring `src/errors.ts`'s discriminated-
+  code convention for its one misconfiguration error (`AgentConfigError`) instead of leaking a raw
+  pydantic `ValidationError`. Tools are auto-derived by `McpToolset` from the running server's own
+  `tools/list` response — this file has zero bespoke tool-calling code to keep in sync as the
+  server's tool surface evolves. New: `agent/pyproject.toml`, `agent/minus_tracker_agent/`,
+  `agent/tests/test_tool_discovery.py` (TC-249, TC-251), `agent/tests/test_smoke.py` (TC-250, an
+  end-to-end `calculate_from_csv` call against a locally-spawned `minus-tracker-mcp`, offline and
+  deterministic).
 
 ### Fixed
 

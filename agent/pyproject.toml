@@ -1,0 +1,44 @@
+[project]
+name = "minus-tracker-agent"
+version = "0.1.0"
+description = "Conversational ADK front-end for minus-tracker — a pure MCPToolset client over minus-tracker-mcp (Part 20 of the PRD). Not published to PyPI in v0.13.0; local checkout only."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Gabriele Randelli" }]
+
+# Deliberate mixed-language footprint: minus-tracker's "zero runtime
+# dependencies" rule (AGENTS.md) applies to the published npm package only.
+# This subproject is never imported by, or bundled into, the npm build — it
+# ships its own, independent dependency set.
+dependencies = [
+    "google-adk>=1.0.0,<3.0.0",
+    "mcp>=1.0.0,<3.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["minus_tracker_agent"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Registered so `pytest -m tc249` / `-m tc251` (used by the sibling vitest
+# bridge, test/mcp/adk-agent.test.ts, per docs/test_plan.md's TC-249/TC-251
+# mapping) can select exactly one TC's tests without depending on function
+# names, which are free to change; --strict-markers below then makes a typo'd
+# marker fail loudly rather than silently matching nothing, matching this
+# repo's own no-silent-default convention (the very thing TC-251 itself
+# tests for on the agent side).
+markers = [
+    "tc249: TC-249 — MCPToolset tool discovery matches the server's tools/list response (docs/prd/20-adk-agent.md)",
+    "tc251: TC-251 — MINUS_TRACKER_MCP_TRANSPORT=sse without MINUS_TRACKER_MCP_URL fails clearly (docs/prd/20-adk-agent.md)",
+    "tc250: TC-250 — agent-driven calculate_from_csv call (offline) matches the calculate_gains fixture (docs/prd/20-adk-agent.md)",
+]
+addopts = "--strict-markers"

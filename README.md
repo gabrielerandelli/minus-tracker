@@ -386,6 +386,21 @@ stateless); `incomeRows` prodotto dal parsing viene collegato automaticamente al
 non risolto finisce comunque in Bucket B (stesso comportamento di `calculate_gains`) e viene
 elencato in `unresolvedIsins`, così un secondo tentativo può passare `overrides` per correggerlo.
 
+**Trasporti:** `minus-tracker-mcp` usa stdio per default (invariato). Passa `--transport sse --port
+<n>` per esporre invece un listener [Streamable HTTP/SSE](https://modelcontextprotocol.io) — utile
+per framework di agenti che parlano HTTP anziché avviare un sottoprocesso. Il listener si lega a
+`127.0.0.1` per default (mai `0.0.0.0`), dato che questa modalità non ha autenticazione e questi
+tool operano su dati finanziari reali; passa `--host <indirizzo>` per legarsi altrove come scelta
+esplicita. Il server resta stateless indipendentemente dal trasporto.
+
+```bash
+npx -p @gabrielerandelli/minus-tracker minus-tracker-mcp --transport sse --port 3000
+```
+
+**Agente di esempio:** `agent/` è un sottoprogetto Python autonomo (mai importato nella build npm)
+che dimostra un `LlmAgent` ADK collegato a `minus-tracker-mcp` tramite `MCPToolset` — vedi
+[`agent/README.md`](agent/README.md) per configurazione e utilizzo.
+
 ### Domande frequenti
 
 **Il CSV viene rifiutato con "colonna mancante" o "CSV non valido"**
@@ -808,6 +823,21 @@ into the calculate step — this tool is fully stateless, so `carryForward` must
 call or its effect is silently lost); the parse step's `incomeRows` is wired into the calculate
 step automatically. An unresolved ISIN still defaults to Bucket B (same as `calculate_gains`) and
 is listed in `unresolvedIsins`, so a follow-up call can pass `overrides` to correct it.
+
+**Transports:** `minus-tracker-mcp` defaults to stdio (unchanged). Pass `--transport sse --port
+<n>` to instead expose a [Streamable HTTP/SSE](https://modelcontextprotocol.io) listener — useful
+for agent frameworks that talk HTTP rather than spawning a subprocess. The listener binds to
+`127.0.0.1` by default (never `0.0.0.0`), since this mode ships with no authentication and these
+tools operate on real financial transaction data; pass `--host <address>` to bind elsewhere as an
+explicit opt-in. The server remains stateless regardless of transport.
+
+```bash
+npx -p @gabrielerandelli/minus-tracker minus-tracker-mcp --transport sse --port 3000
+```
+
+**Example agent:** `agent/` is a standalone Python subproject (never imported into the npm build)
+demonstrating an ADK `LlmAgent` wired to `minus-tracker-mcp` via `MCPToolset` — see
+[`agent/README.md`](agent/README.md) for setup and configuration.
 
 ### FAQ / Troubleshooting
 

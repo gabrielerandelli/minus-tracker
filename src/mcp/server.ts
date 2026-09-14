@@ -90,72 +90,31 @@ const VALIDATORS: Record<string, ValidateFunction> = {
   check_rate_coverage: ajv.compile(checkRateCoverageInputSchema),
 };
 
-export const server = new Server(
-  { name: "minus-tracker-mcp", version: getPackageVersion() },
-  { capabilities: { tools: {} } },
-);
+/**
+ * Builds a fresh, fully-wired `Server` instance. The MCP SDK's `Protocol`
+ * base class allows a single instance to be connected to exactly one
+ * transport at a time (`Already connected to a transport...`), so a
+ * transport that serves multiple independent connections concurrently (the
+ * Streamable HTTP/SSE transport, Task 67 — one connection per HTTP request,
+ * per the SDK's documented stateless-mode pattern) needs a new `Server` per
+ * connection rather than sharing the module-level singleton below. stdio and
+ * the in-memory protocol-level tests (`test/mcp/protocol.test.ts`) only ever
+ * have one connection at a time, so they keep using the singleton.
+ */
+export function createServer(): Server {
+  const server = new Server(
+    { name: "minus-tracker-mcp", version: getPackageVersion() },
+    { capabilities: { tools: {} } },
+  );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: TOOLS,
-}));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: TOOLS,
+  }));
 
-server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
-  const { name, arguments: args } = request.params;
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    const { name, arguments: args } = request.params;
 
-  if (!TOOL_NAMES.has(name)) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            code: "UNKNOWN_TOOL",
-            message: `Unknown tool: ${name}`,
-          }),
-        },
-      ],
-    };
-  }
-
-  const validate = VALIDATORS[name];
-  if (validate && !validate(args)) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            code: "VALIDATION_ERROR",
-            errors: validate.errors,
-          }),
-        },
-      ],
-    };
-  }
-
-  switch (name) {
-    case "parse_transactions":
-      return handleParseTransactions(args as unknown as ParseTransactionsInput);
-    case "classify_instruments":
-      return handleClassifyInstruments(
-        args as unknown as ClassifyInstrumentsInput,
-        {
-          _meta: request.params._meta,
-          sendNotification: extra.sendNotification,
-        },
-      );
-    case "calculate_gains":
-      return handleCalculateGains(args as unknown as CalculateGainsInput);
-    case "calculate_from_csv":
-      return handleCalculateFromCsv(args as unknown as CalculateFromCsvInput, {
-        _meta: request.params._meta,
-        sendNotification: extra.sendNotification,
-      });
-    case "check_rate_coverage":
-      return handleCheckRateCoverage(
-        args as unknown as CheckRateCoverageInput,
-      );
-    default:
+    if (!TOOL_NAMES.has(name)) {
       return {
         isError: true,
         content: [
@@ -168,5 +127,68 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
           },
         ],
       };
-  }
-});
+    }
+
+    const validate = VALIDATORS[name];
+    if (validate && !validate(args)) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              code: "VALIDATION_ERROR",
+              errors: validate.errors,
+            }),
+          },
+        ],
+      };
+    }
+
+    switch (name) {
+      case "parse_transactions":
+        return handleParseTransactions(
+          args as unknown as ParseTransactionsInput,
+        );
+      case "classify_instruments":
+        return handleClassifyInstruments(
+          args as unknown as ClassifyInstrumentsInput,
+          {
+            _meta: request.params._meta,
+            sendNotification: extra.sendNotification,
+          },
+        );
+      case "calculate_gains":
+        return handleCalculateGains(args as unknown as CalculateGainsInput);
+      case "calculate_from_csv":
+        return handleCalculateFromCsv(
+          args as unknown as CalculateFromCsvInput,
+          {
+            _meta: request.params._meta,
+            sendNotification: extra.sendNotification,
+          },
+        );
+      case "check_rate_coverage":
+        return handleCheckRateCoverage(
+          args as unknown as CheckRateCoverageInput,
+        );
+      default:
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                code: "UNKNOWN_TOOL",
+                message: `Unknown tool: ${name}`,
+              }),
+            },
+          ],
+        };
+    }
+  });
+
+  return server;
+}
+
+export const server = createServer();
