@@ -67,6 +67,7 @@ import json
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
+import pytest
 from google.adk.models import BaseLlm, LlmResponse
 from google.adk.runners import InMemoryRunner
 from google.genai import types
@@ -74,6 +75,21 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from minus_tracker_agent.agent import build_agent
+
+# This repo's build/verify tooling (`do-impl-plan.js`'s independent per-task
+# verify step) has no way to observe a Python-only pytest result directly —
+# it shells out via `test/mcp/adk-agent.test.ts`'s vitest bridge, which runs
+# `pytest -m tc250` (not a bare `pytest`) specifically so it can select this
+# TC's tests without depending on function names. Without this marker,
+# `pytest -m tc250` deselects every test in this module and pytest exits 5
+# ("no tests ran") — a failure that is invisible to a bare `pytest`/`pytest
+# -q` run (which is why the prior attempt's own manual verification of this
+# file reported everything passing) but is exactly what independent
+# verification actually runs, so it failed there. Same failure class as the
+# `MockModel`/`pytest.mark.skipif` issue this file's docstring above
+# describes — a way for TC-250 to go silently unexecuted — just one layer
+# up, in test *selection* rather than test *collection*.
+pytestmark = pytest.mark.tc250
 
 
 class _ScriptedModel(BaseLlm):
