@@ -97,7 +97,9 @@ describe("TC-236: calculate_from_csv — every ISIN resolves → full report, no
       totalImposta: 102.96,
     });
     expect(
-      body.warnings.some((w: string) => w.includes("Please classify manually")),
+      body.warnings.some((w: string) =>
+        w.includes("Please classify manually"),
+      ),
     ).toBe(false);
   });
 });

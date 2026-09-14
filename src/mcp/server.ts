@@ -13,16 +13,19 @@ import {
   classifyInstrumentsInputSchema,
   calculateGainsInputSchema,
   calculateFromCsvInputSchema,
+  checkRateCoverageInputSchema,
 } from "./schemas.generated.js";
 import { handleParseTransactions } from "./tools/parse-transactions.js";
 import { handleClassifyInstruments } from "./tools/classify-instruments.js";
 import { handleCalculateGains } from "./tools/calculate-gains.js";
 import { handleCalculateFromCsv } from "./tools/calculate-from-csv.js";
+import { handleCheckRateCoverage } from "./tools/check-rate-coverage.js";
 import type {
   ParseTransactionsInput,
   ClassifyInstrumentsInput,
   CalculateGainsInput,
   CalculateFromCsvInput,
+  CheckRateCoverageInput,
 } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -63,6 +66,14 @@ const TOOLS: Tool[] = [
       "ISINs, and calculate LIFO/FIFO capital gains in a single call.",
     inputSchema: calculateFromCsvInputSchema as unknown as Tool["inputSchema"],
   },
+  {
+    name: "check_rate_coverage",
+    description:
+      "Read-only per-currency ECB FX rate coverage/gap scan against the " +
+      "active snapshot — no network access, ever.",
+    inputSchema:
+      checkRateCoverageInputSchema as unknown as Tool["inputSchema"],
+  },
 ];
 
 const TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
@@ -78,6 +89,7 @@ const VALIDATORS: Record<string, ValidateFunction> = {
   classify_instruments: ajv.compile(classifyInstrumentsInputSchema),
   calculate_gains: ajv.compile(calculateGainsInputSchema),
   calculate_from_csv: ajv.compile(calculateFromCsvInputSchema),
+  check_rate_coverage: ajv.compile(checkRateCoverageInputSchema),
 };
 
 /**
@@ -157,6 +169,10 @@ export function createServer(): Server {
             _meta: request.params._meta,
             sendNotification: extra.sendNotification,
           },
+        );
+      case "check_rate_coverage":
+        return handleCheckRateCoverage(
+          args as unknown as CheckRateCoverageInput,
         );
       default:
         return {

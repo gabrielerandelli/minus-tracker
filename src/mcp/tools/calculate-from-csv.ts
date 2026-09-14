@@ -101,13 +101,13 @@ function collectUnresolvedIsins(classification: ClassificationMap): string[] {
  * forwarded verbatim into the internal `classify_instruments` call (Task 66
  * / TC-244), the same slice of `RequestHandlerExtra`
  * `classify-instruments.ts` itself declares
- * (`src/mcp/tools/classify-instruments.ts:33-40`) and `server.ts` passes it
- * a direct `classify_instruments` call. Without this explicit forwarding,
- * multi-batch OpenFIGI progress notifications would never fire for
- * `calculate_from_csv` regardless of transport/client support — a strictly
- * worse failure than a client simply not displaying them. `extra` is fully
- * optional (a direct unit-test invocation, or a client that never asked for
- * progress, omits it) and this handler completes identically either way.
+ * (`src/mcp/tools/classify-instruments.ts`) and `server.ts` passes a direct
+ * `classify_instruments` call. Without this explicit forwarding, multi-batch
+ * OpenFIGI progress notifications would never fire for `calculate_from_csv`
+ * regardless of transport/client support — a strictly worse failure than a
+ * client simply not displaying them. `extra` is fully optional (a direct
+ * unit-test invocation, or a client that never asked for progress, omits
+ * it) and this handler completes identically either way.
  *
  * Any error from a composed step (`ParseError`/`ClassificationError`/
  * `CalculationError`) is returned exactly as that step's own handler shaped
