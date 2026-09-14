@@ -12,14 +12,17 @@ import {
   parseTransactionsInputSchema,
   classifyInstrumentsInputSchema,
   calculateGainsInputSchema,
+  calculateFromCsvInputSchema,
 } from "./schemas.generated.js";
 import { handleParseTransactions } from "./tools/parse-transactions.js";
 import { handleClassifyInstruments } from "./tools/classify-instruments.js";
 import { handleCalculateGains } from "./tools/calculate-gains.js";
+import { handleCalculateFromCsv } from "./tools/calculate-from-csv.js";
 import type {
   ParseTransactionsInput,
   ClassifyInstrumentsInput,
   CalculateGainsInput,
+  CalculateFromCsvInput,
 } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +56,13 @@ const TOOLS: Tool[] = [
     description: "Calculate LIFO/FIFO capital gains from transactions.",
     inputSchema: calculateGainsInputSchema as unknown as Tool["inputSchema"],
   },
+  {
+    name: "calculate_from_csv",
+    description:
+      "Composite tool: parse a DEGIRO transactions CSV, classify its " +
+      "ISINs, and calculate LIFO/FIFO capital gains in a single call.",
+    inputSchema: calculateFromCsvInputSchema as unknown as Tool["inputSchema"],
+  },
 ];
 
 const TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
@@ -67,6 +77,7 @@ const VALIDATORS: Record<string, ValidateFunction> = {
   parse_transactions: ajv.compile(parseTransactionsInputSchema),
   classify_instruments: ajv.compile(classifyInstrumentsInputSchema),
   calculate_gains: ajv.compile(calculateGainsInputSchema),
+  calculate_from_csv: ajv.compile(calculateFromCsvInputSchema),
 };
 
 export const server = new Server(
@@ -125,6 +136,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       );
     case "calculate_gains":
       return handleCalculateGains(args as unknown as CalculateGainsInput);
+    case "calculate_from_csv":
+      return handleCalculateFromCsv(args as unknown as CalculateFromCsvInput, {
+        _meta: request.params._meta,
+        sendNotification: extra.sendNotification,
+      });
     default:
       return {
         isError: true,
