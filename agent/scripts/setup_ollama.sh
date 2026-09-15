@@ -40,6 +40,9 @@ ollama pull "$MODEL"
 cat <<EOF
 
 Done. Make sure Ollama is running (\`ollama serve\`, or the app/service), then:
+EOF
+[ -x .venv/bin/python ] && echo "  source .venv/bin/activate   # if you haven't this session"
+cat <<EOF
   export MINUS_TRACKER_AGENT_MODEL=ollama_chat/$MODEL
   adk run minus_tracker_agent
 EOF

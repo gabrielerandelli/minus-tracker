@@ -13,8 +13,20 @@ separate package. It is **local-install only** in this release: not published to
 
 ```bash
 cd minus-tracker/agent
-pip install -e .          # or: uv sync
+uv sync
+source .venv/bin/activate # do this once per shell session
 ```
+
+`uv sync` installs `adk` into a **project-local virtualenv** (`agent/.venv`) — it does not touch
+your shell's `PATH` on its own. Activating it (last line above) puts `adk` on `PATH` for the rest
+of that shell session, so every command below works as written with no per-command prefix. Forget
+to activate and you'll hit `command not found: adk` right after a successful `uv sync` — that's
+this PATH gap, not a broken install; either run `source .venv/bin/activate` (once; re-run it in
+each new terminal tab/session) or prefix one-off commands with `uv run` instead.
+
+Prefer `pip`? `pip install -e .` works too, but it installs into whatever Python environment is
+already active rather than creating `.venv` for you — create and activate your own first
+(`python3 -m venv .venv && source .venv/bin/activate`) if you want the same setup as above.
 
 ## Run
 
@@ -22,6 +34,8 @@ pip install -e .          # or: uv sync
 adk run minus_tracker_agent    # terminal chat
 adk web                        # local browser dev UI
 ```
+
+(Not activated? Same commands work via `uv run adk run minus_tracker_agent` / `uv run adk web`.)
 
 By default the agent spawns `minus-tracker-mcp` locally over stdio — build/install the parent
 `minus-tracker` npm package first so that binary is on `PATH` (`npm install -g` from the repo
