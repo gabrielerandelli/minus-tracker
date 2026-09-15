@@ -59,9 +59,12 @@ from mcp.client.stdio import stdio_client
 
 from minus_tracker_agent.agent import build_agent, build_toolset
 from minus_tracker_agent.config import (
+    DEFAULT_MODEL,
+    MODEL_ENV_VAR,
     TRANSPORT_ENV_VAR,
     URL_ENV_VAR,
     get_connection_params,
+    get_model,
 )
 from minus_tracker_agent.errors import AgentConfigError
 from google.adk.tools.mcp_tool.mcp_session_manager import (
@@ -236,3 +239,47 @@ def test_unknown_transport_fails_clearly() -> None:
         get_connection_params(env=env)
 
     assert excinfo.value.code == "UNKNOWN_MCP_TRANSPORT"
+
+
+# --- Model configuration (not TC-mapped; added alongside the config tests
+# above when the agent's default model switched from ADK's Gemini default to
+# Anthropic Claude, docs/prd/20-adk-agent.md's Agent Design section) --------
+
+
+def test_model_defaults_to_claude_sonnet_when_env_unset() -> None:
+    assert get_model(env={}) == DEFAULT_MODEL == "claude-sonnet-5"
+
+
+def test_model_env_override_is_respected() -> None:
+    assert get_model(env={MODEL_ENV_VAR: "claude-opus-5"}) == "claude-opus-5"
+
+
+def test_model_falls_back_to_default_when_env_is_empty_or_blank() -> None:
+    """An explicitly-set but empty/whitespace value must not silently pass
+    through as model="" (deferred to a confusing runtime ValueError from
+    ADK's registry) — it should fall back to DEFAULT_MODEL exactly like an
+    unset variable does."""
+    assert get_model(env={MODEL_ENV_VAR: ""}) == DEFAULT_MODEL
+    assert get_model(env={MODEL_ENV_VAR: "   "}) == DEFAULT_MODEL
+
+
+def test_build_agent_attaches_configured_model_without_requiring_api_key() -> None:
+    """Model resolution is fully lazy (ADK's `canonical_model` property), so
+    construction must succeed with a real Claude model id attached and no
+    `ANTHROPIC_API_KEY` set anywhere in this process — mirrors
+    `test_agent_construction_succeeds_against_a_running_server`'s no-live-
+    server-needed style, but for credentials instead of the MCP connection.
+    """
+    agent = build_agent(model="claude-opus-5")
+    assert agent.model == "claude-opus-5"
+
+
+def test_build_agent_attaches_configured_ollama_model_without_requiring_litellm() -> None:
+    """Model resolution is lazy even for an `ollama_chat/*` string —
+    construction must succeed with no `litellm` installed, no Ollama server
+    running, and no `OLLAMA_API_BASE` set. This is what lets the optional
+    local-Ollama model option (agent/scripts/setup_ollama.sh) stay fully
+    optional without the base `dev` test suite needing the `ollama` extra.
+    """
+    agent = build_agent(model="ollama_chat/gemma4:e2b")
+    assert agent.model == "ollama_chat/gemma4:e2b"

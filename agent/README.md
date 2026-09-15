@@ -29,16 +29,50 @@ root, or `npm link`).
 
 ## Configuration
 
-| Variable                        | Default | Notes                                                              |
-| -------------------------------- | ------- | ------------------------------------------------------------------- |
-| `MINUS_TRACKER_MCP_TRANSPORT`    | `stdio` | `stdio` or `sse`                                                     |
-| `MINUS_TRACKER_MCP_URL`          | _(none)_ | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value |
+| Variable                      | Default           | Notes                                                                                                            |
+| ----------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`           | `stdio` or `sse`                                                                                                 |
+| `MINUS_TRACKER_MCP_URL`       | _(none)_          | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value |
+| `MINUS_TRACKER_AGENT_MODEL`   | `claude-sonnet-5` | Any ADK-recognized model id — a `claude-*` id routes to Anthropic directly                                       |
 
 ```bash
 export MINUS_TRACKER_MCP_TRANSPORT=sse
 export MINUS_TRACKER_MCP_URL=http://127.0.0.1:8080/mcp
 adk run minus_tracker_agent
 ```
+
+Uses Anthropic Claude by default — set `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) in the
+environment before running `adk run`/`adk web`; unlike the MCP connection, this credential isn't
+validated until the first real model call.
+
+## Optional: Local Model via Ollama
+
+By default this agent uses Anthropic Claude (see Configuration above). You can instead point it at
+a model running locally via [Ollama](https://ollama.com) — fully optional, adds one extra
+dependency (`litellm`) only if you opt in; the default Claude path never needs it.
+
+Quick setup (installs the extra, checks/guides installing Ollama, pulls the model):
+
+```bash
+cd minus-tracker/agent
+./scripts/setup_ollama.sh          # defaults to gemma4:e2b
+```
+
+Then:
+
+```bash
+export MINUS_TRACKER_AGENT_MODEL=ollama_chat/gemma4:e2b
+adk run minus_tracker_agent
+```
+
+Manual equivalent, if you'd rather not run the script: `pip install -e ".[ollama]"`, install and
+start Ollama yourself, `ollama pull gemma4:e2b`, then set the env var above.
+
+`OLLAMA_API_BASE` (LiteLLM's own env var, default `http://localhost:11434`) points at a
+non-default Ollama address if needed.
+
+If you see an `ImportError` mentioning LiteLLM, you're using an `ollama_chat/*`/`ollama/*` model
+without the extra installed — run the setup script or `pip install -e ".[ollama]"`.
 
 ## Tests
 
