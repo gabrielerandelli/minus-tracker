@@ -9,6 +9,33 @@ dev repo) for the full design.
 This is a Python subproject, sibling to `../src/` (TypeScript) inside the same repo — not a
 separate package. It is **local-install only** in this release: not published to PyPI.
 
+## Quick start
+
+```bash
+cd minus-tracker/agent
+export ANTHROPIC_API_KEY=sk-ant-...          # skip if you're going --ollama instead
+./scripts/setup_and_run.sh                   # or: ./scripts/setup_and_run.sh --ollama
+```
+
+Builds/links `minus-tracker-mcp`, installs the agent, and launches `adk web` in one step —
+everything below is what that script automates, spelled out manually for when you want more
+control or are troubleshooting a step.
+
+## Prerequisite: the MCP server
+
+This agent is a pure MCP client — before anything else, `minus-tracker-mcp` needs to be
+resolvable. By default the agent spawns it locally over stdio, so build/install the parent
+`minus-tracker` npm package first so that binary is on `PATH`:
+
+```bash
+cd minus-tracker              # repo root, sibling to agent/
+npm ci && npm run build
+npm link                      # or: npm install -g .
+```
+
+Talking to an already-running server instead (e.g. over the network)? You can skip this step —
+see "MCP connection" under Configuration below.
+
 ## Choose your model: Anthropic Claude or local Ollama
 
 Before installing, decide which one you want — this agent supports two ways to run:
@@ -34,7 +61,8 @@ export ANTHROPIC_API_KEY=sk-ant-...  # or ANTHROPIC_AUTH_TOKEN
 
 `claude-sonnet-5` is `MINUS_TRACKER_AGENT_MODEL`'s built-in fallback when the variable is unset —
 nothing else to configure for this option. This credential isn't validated until the first real
-model call.
+model call. Reusing a shell where you'd previously set `MINUS_TRACKER_AGENT_MODEL` (e.g. from
+Option B)? `unset MINUS_TRACKER_AGENT_MODEL` first, or it'll silently override this default.
 
 ## Option B: Local via Ollama
 
@@ -76,24 +104,37 @@ adk web                        # local browser dev UI
 ```
 
 (Not activated? Same commands work via `uv run adk run minus_tracker_agent` / `uv run adk web`.)
-
-By default the agent spawns `minus-tracker-mcp` locally over stdio — build/install the parent
-`minus-tracker` npm package first so that binary is on `PATH` (`npm install -g` from the repo
-root, or `npm link`).
+Needs `minus-tracker-mcp` on PATH — see "Prerequisite" above, or "MCP connection" below for the
+sse alternative.
 
 ## Configuration
 
-| Variable                      | Default           | Notes                                                                                                                     |
-| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`           | `stdio` or `sse`                                                                                                          |
-| `MINUS_TRACKER_MCP_URL`       | _(none)_          | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value          |
-| `MINUS_TRACKER_AGENT_MODEL`   | `claude-sonnet-5` | A `claude-*` id routes to Anthropic directly (Option A); `ollama_chat/<model>` routes to a local Ollama server (Option B) |
+### MCP connection
+
+| Variable                      | Default  | Notes                                                                                                            |
+| ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`  | `stdio` (spawns `minus-tracker-mcp` locally, see Prerequisite above) or `sse`                                    |
+| `MINUS_TRACKER_MCP_URL`       | _(none)_ | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value |
 
 ```bash
 export MINUS_TRACKER_MCP_TRANSPORT=sse
 export MINUS_TRACKER_MCP_URL=http://127.0.0.1:8080/mcp
-adk run minus_tracker_agent
 ```
+
+Set these before running either `adk run` or `adk web` from "Run" above. With `sse`, the agent
+connects to an already-running `minus-tracker-mcp` instead of spawning one — you don't need the
+"Prerequisite" `npm link` step in that case.
+
+### Model
+
+| Variable                    | Default           | Notes                                                                                                                     |
+| --------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `MINUS_TRACKER_AGENT_MODEL` | `claude-sonnet-5` | A `claude-*` id routes to Anthropic directly (Option A); `ollama_chat/<model>` routes to a local Ollama server (Option B) |
+
+Left at its default by Option A (nothing to export). For Option B: exported automatically if you
+used the Quick start script; if you followed Option B's manual steps instead, it's whatever you
+yourself `export`ed there — this row is just the quick reference, not a guarantee either path set
+it for you.
 
 ## Tests
 
