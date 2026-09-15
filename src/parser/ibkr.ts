@@ -110,7 +110,8 @@ export class IBKRParser implements Parser {
    *         `Data` rows with no `Header` ever seen for it).
    *
    * Rows with missing ISIN, zero quantity, unsupported currency, or no ECB
-   * rate within 3 trading days are skipped silently. Inspect `parser.warnings`
+   * rate within 5 calendar days (see lookupRate's MAX_LOOKBACK_DAYS in
+   * src/rates/index.ts) are skipped silently. Inspect `parser.warnings`
    * for details.
    */
   parse(csv: string): Transaction[] {

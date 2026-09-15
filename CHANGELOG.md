@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `lookupRate()`'s weekend/holiday walkback was hard-coded to 3 calendar days, but the bundled
+  ECB snapshot (`src/data/ecb-rates.json`) has real calendar gaps of up to 5 days around
+  recurring TARGET2 (eurozone) holiday closures — notably Easter (Good Friday + Easter Monday,
+  both TARGET2 holidays, bracketing a weekend) and the Christmas/New Year cluster. Confirmed
+  gap: the bundled USD rate has no entry from 2024-03-28 (Thu) through 2024-04-01 (Mon, Easter
+  Monday) inclusive. Easter Monday is *not* a US market holiday (NYSE is open), so an ordinary
+  USD-denominated trade of a US stock placed on 2024-04-01 is real, valid, and taxable — but the
+  old 3-day window couldn't bridge the 4-calendar-day distance back to 2024-03-28's rate,
+  `lookupRate()` returned `null`, and `DEGIROParser`/`IBKRParser` silently dropped the row (a
+  `NO_ECB_RATE` warning, not an error) — potentially discarding a same-ISIN SELL that would
+  otherwise have matched an open lot, and with it a real plusvalenza/minusvalenza, from the tax
+  report entirely. The walkback window is now `MAX_LOOKBACK_DAYS = 5` calendar days, wide enough
+  to bridge the worst real gap observed in the bundled snapshot (5 days, so at most 4 days of
+  backward search from any date inside it) with one full day of safety margin, while remaining
+  far short of a "no rate anywhere nearby" case, which still correctly resolves to `null`. New
+  regression test: `test/regression-degiro-easter-gap-fx.test.ts`.
+
 ## [0.13.0] - 2026-09-14
 
 ### Added
