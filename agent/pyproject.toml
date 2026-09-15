@@ -22,11 +22,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0"]
-# Optional: local model support (e.g. MINUS_TRACKER_AGENT_MODEL=ollama_chat/gemma4:e2b)
-# via a locally-running Ollama server. Not needed for the default Claude path —
-# see README.md's "Optional: Local Model via Ollama" section and
-# scripts/setup_ollama.sh for one-command setup. Pin matches google-adk's own
-# extensions/all/test extras (Requires-Dist: litellm>=1.84).
+# Local model support (e.g. MINUS_TRACKER_AGENT_MODEL=ollama_chat/gemma4:e2b) via a
+# locally-running Ollama server. Not needed for the Anthropic Claude path — see
+# README.md's "Option B: Local via Ollama" section and scripts/setup_ollama.sh for
+# one-command setup. Pin matches google-adk's own extensions/all/test extras
+# (Requires-Dist: litellm>=1.84).
 ollama = ["litellm>=1.84,<2.0.0"]
 
 [build-system]

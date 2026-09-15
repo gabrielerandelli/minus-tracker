@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Optional: sets up everything needed for the local-Ollama model option
-# (MINUS_TRACKER_AGENT_MODEL=ollama_chat/<model>). minus-tracker-agent works
-# fully without this — see README.md's "Optional: Local Model via Ollama".
+# Sets up Option B (MINUS_TRACKER_AGENT_MODEL=ollama_chat/<model>) — see
+# README.md's "Option B: Local via Ollama" section. Not needed if you're
+# using Option A (Anthropic Claude) instead.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

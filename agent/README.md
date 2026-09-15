@@ -9,24 +9,64 @@ dev repo) for the full design.
 This is a Python subproject, sibling to `../src/` (TypeScript) inside the same repo — not a
 separate package. It is **local-install only** in this release: not published to PyPI.
 
-## Install
+## Choose your model: Anthropic Claude or local Ollama
+
+Before installing, decide which one you want — this agent supports two ways to run:
+
+|               | **Option A: Anthropic Claude (cloud)** | **Option B: Local via Ollama**                    |
+| ------------- | -------------------------------------- | ------------------------------------------------- |
+| Requires      | an `ANTHROPIC_API_KEY`                 | Ollama installed + a model pulled — no API key    |
+| Your data     | prompts go to Anthropic's API          | nothing leaves your machine                       |
+| Quality/speed | best available, hosted                 | depends on the model you pull + your own hardware |
+
+Follow the matching section below for install and configuration, then use the shared "Run" section
+further down to actually start the agent — both options end up running the exact same `adk`
+commands, they just differ in how the model itself is configured.
+
+## Option A: Anthropic Claude (cloud)
 
 ```bash
 cd minus-tracker/agent
 uv sync
-source .venv/bin/activate # do this once per shell session
+source .venv/bin/activate     # do this once per shell session
+export ANTHROPIC_API_KEY=sk-ant-...  # or ANTHROPIC_AUTH_TOKEN
 ```
 
+`claude-sonnet-5` is `MINUS_TRACKER_AGENT_MODEL`'s built-in fallback when the variable is unset —
+nothing else to configure for this option. This credential isn't validated until the first real
+model call.
+
+## Option B: Local via Ollama
+
+```bash
+cd minus-tracker/agent
+uv sync
+source .venv/bin/activate     # do this once per shell session
+./scripts/setup_ollama.sh     # installs the ollama extra, checks/installs Ollama, pulls a model — defaults to gemma4:e2b
+export MINUS_TRACKER_AGENT_MODEL=ollama_chat/gemma4:e2b
+```
+
+Make sure Ollama is running (`ollama serve`, or the app/service) before you run the agent below.
+Manual equivalent, if you'd rather not run the script: `uv sync --extra ollama` (or
+`pip install -e ".[ollama]"`), install and start Ollama yourself, `ollama pull gemma4:e2b`, then
+set the env var above — don't run the script _and_ one of these by hand, they install the same
+thing. `OLLAMA_API_BASE` (LiteLLM's own env var, default `http://localhost:11434`) points at a
+non-default Ollama address if needed. An `ImportError` mentioning LiteLLM means the `ollama` extra
+isn't installed — use one of the two install paths above.
+
+## Install notes
+
 `uv sync` installs `adk` into a **project-local virtualenv** (`agent/.venv`) — it does not touch
-your shell's `PATH` on its own. Activating it (last line above) puts `adk` on `PATH` for the rest
+your shell's `PATH` on its own. Activating it (as shown above) puts `adk` on `PATH` for the rest
 of that shell session, so every command below works as written with no per-command prefix. Forget
 to activate and you'll hit `command not found: adk` right after a successful `uv sync` — that's
 this PATH gap, not a broken install; either run `source .venv/bin/activate` (once; re-run it in
 each new terminal tab/session) or prefix one-off commands with `uv run` instead.
 
-Prefer `pip`? `pip install -e .` works too, but it installs into whatever Python environment is
-already active rather than creating `.venv` for you — create and activate your own first
-(`python3 -m venv .venv && source .venv/bin/activate`) if you want the same setup as above.
+Prefer `pip`? `pip install -e .` (Option A) or `pip install -e ".[ollama]"` (Option B) work too,
+but install into whatever Python environment is already active rather than creating `.venv` for
+you — create and activate your own first (`python3 -m venv .venv && source .venv/bin/activate`)
+if you want the same setup as above.
 
 ## Run
 
@@ -43,50 +83,17 @@ root, or `npm link`).
 
 ## Configuration
 
-| Variable                      | Default           | Notes                                                                                                            |
-| ----------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`           | `stdio` or `sse`                                                                                                 |
-| `MINUS_TRACKER_MCP_URL`       | _(none)_          | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value |
-| `MINUS_TRACKER_AGENT_MODEL`   | `claude-sonnet-5` | Any ADK-recognized model id — a `claude-*` id routes to Anthropic directly                                       |
+| Variable                      | Default           | Notes                                                                                                                     |
+| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`           | `stdio` or `sse`                                                                                                          |
+| `MINUS_TRACKER_MCP_URL`       | _(none)_          | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value          |
+| `MINUS_TRACKER_AGENT_MODEL`   | `claude-sonnet-5` | A `claude-*` id routes to Anthropic directly (Option A); `ollama_chat/<model>` routes to a local Ollama server (Option B) |
 
 ```bash
 export MINUS_TRACKER_MCP_TRANSPORT=sse
 export MINUS_TRACKER_MCP_URL=http://127.0.0.1:8080/mcp
 adk run minus_tracker_agent
 ```
-
-Uses Anthropic Claude by default — set `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) in the
-environment before running `adk run`/`adk web`; unlike the MCP connection, this credential isn't
-validated until the first real model call.
-
-## Optional: Local Model via Ollama
-
-By default this agent uses Anthropic Claude (see Configuration above). You can instead point it at
-a model running locally via [Ollama](https://ollama.com) — fully optional, adds one extra
-dependency (`litellm`) only if you opt in; the default Claude path never needs it.
-
-Quick setup (installs the extra, checks/guides installing Ollama, pulls the model):
-
-```bash
-cd minus-tracker/agent
-./scripts/setup_ollama.sh          # defaults to gemma4:e2b
-```
-
-Then:
-
-```bash
-export MINUS_TRACKER_AGENT_MODEL=ollama_chat/gemma4:e2b
-adk run minus_tracker_agent
-```
-
-Manual equivalent, if you'd rather not run the script: `pip install -e ".[ollama]"`, install and
-start Ollama yourself, `ollama pull gemma4:e2b`, then set the env var above.
-
-`OLLAMA_API_BASE` (LiteLLM's own env var, default `http://localhost:11434`) points at a
-non-default Ollama address if needed.
-
-If you see an `ImportError` mentioning LiteLLM, you're using an `ollama_chat/*`/`ollama/*` model
-without the extra installed — run the setup script or `pip install -e ".[ollama]"`.
 
 ## Tests
 

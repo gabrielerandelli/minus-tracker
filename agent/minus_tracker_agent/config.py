@@ -10,9 +10,10 @@ Reads the environment variables Part 19/20 of the PRD define
   never invents one.
 - ``MINUS_TRACKER_AGENT_MODEL`` — the LLM model id (default:
   ``"claude-sonnet-5"``, Anthropic). Also accepts ``"ollama_chat/<model>"``
-  to use a local model via a running Ollama server (optional — requires
-  ``pip install -e ".[ollama]"``; see README.md's "Optional: Local Model
-  via Ollama" and ``scripts/setup_ollama.sh`` for one-command setup).
+  to use a local model via a running Ollama server, requiring the
+  ``ollama`` extra (``uv sync --extra ollama`` or
+  ``pip install -e ".[ollama]"``); see README.md's "Option B: Local via
+  Ollama" and ``scripts/setup_ollama.sh`` for one-command setup.
   ``OLLAMA_API_BASE`` (LiteLLM's own env var, default
   ``http://localhost:11434``) points at a non-default Ollama address.
 """
