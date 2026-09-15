@@ -59,11 +59,15 @@ from mcp.client.stdio import stdio_client
 
 from minus_tracker_agent.agent import build_agent, build_toolset
 from minus_tracker_agent.config import (
+    DEFAULT_MODEL,
+    MODEL_ENV_VAR,
     TRANSPORT_ENV_VAR,
     URL_ENV_VAR,
     get_connection_params,
+    get_model,
 )
 from minus_tracker_agent.errors import AgentConfigError
+from google.adk.models.anthropic_llm import AnthropicLlm
 from google.adk.tools.mcp_tool.mcp_session_manager import (
     SseConnectionParams,
     StdioConnectionParams,
@@ -236,3 +240,68 @@ def test_unknown_transport_fails_clearly() -> None:
         get_connection_params(env=env)
 
     assert excinfo.value.code == "UNKNOWN_MCP_TRANSPORT"
+
+
+# --- TC-252, TC-253 — Model configuration (docs/test_plan/25-mcp-extensions-
+# adk-agent.md; added alongside the config tests above when the agent's
+# default model switched from ADK's Gemini default to Anthropic Claude,
+# docs/prd/20-adk-agent.md's Agent Design section) --------------------------
+
+
+@pytest.mark.tc252
+def test_model_defaults_to_claude_sonnet_when_env_unset() -> None:
+    assert get_model(env={}) == DEFAULT_MODEL == "claude-sonnet-5"
+
+
+@pytest.mark.tc252
+def test_model_env_override_is_respected() -> None:
+    assert get_model(env={MODEL_ENV_VAR: "claude-opus-5"}) == "claude-opus-5"
+
+
+@pytest.mark.tc252
+def test_model_falls_back_to_default_when_env_is_empty_or_blank() -> None:
+    """An explicitly-set but empty/whitespace value must not silently pass
+    through as model="" (deferred to a confusing runtime ValueError from
+    ADK's registry) — it should fall back to DEFAULT_MODEL exactly like an
+    unset variable does."""
+    assert get_model(env={MODEL_ENV_VAR: ""}) == DEFAULT_MODEL
+    assert get_model(env={MODEL_ENV_VAR: "   "}) == DEFAULT_MODEL
+
+
+@pytest.mark.tc253
+def test_build_agent_attaches_configured_model_without_requiring_api_key() -> None:
+    """Model resolution is fully lazy, so construction must succeed with a
+    real Claude model id attached and no `ANTHROPIC_API_KEY` set anywhere in
+    this process. A bare `claude-*` string must come back wrapped in
+    `AnthropicLlm` — not left as a plain string — since ADK's model registry
+    would otherwise route a bare string to `anthropic_llm.Claude` (Vertex-AI
+    only, needs GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION) instead of the
+    direct-API base class that reads `ANTHROPIC_API_KEY` (see
+    `agent.build_agent`'s own docstring). `connection_params` is passed
+    explicitly (a placeholder, never actually dialed — MCPToolset connects
+    lazily) so this test isn't sensitive to whatever MCP transport env vars
+    happen to be set in the ambient shell.
+    """
+    connection_params = StdioConnectionParams(
+        server_params=StdioServerParameters(command="true", args=[])
+    )
+    agent = build_agent(connection_params=connection_params, model="claude-opus-5")
+    assert isinstance(agent.model, AnthropicLlm)
+    assert agent.model.model == "claude-opus-5"
+
+
+@pytest.mark.tc253
+def test_build_agent_attaches_configured_ollama_model_without_requiring_litellm() -> None:
+    """Model resolution is lazy even for an `ollama_chat/*` string —
+    construction must succeed with no `litellm` installed, no Ollama server
+    running, and no `OLLAMA_API_BASE` set. This is what lets the optional
+    local-Ollama model option (agent/scripts/setup_ollama.sh) stay fully
+    optional without the base `dev` test suite needing the `ollama` extra.
+    `connection_params` is passed explicitly for the same ambient-env
+    isolation reason as the Claude test above.
+    """
+    connection_params = StdioConnectionParams(
+        server_params=StdioServerParameters(command="true", args=[])
+    )
+    agent = build_agent(connection_params=connection_params, model="ollama_chat/gemma4:e2b")
+    assert agent.model == "ollama_chat/gemma4:e2b"

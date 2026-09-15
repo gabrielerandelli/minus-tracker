@@ -14,10 +14,20 @@ authors = [{ name = "Gabriele Randelli" }]
 dependencies = [
     "google-adk>=1.0.0,<3.0.0",
     "mcp>=1.0.0,<3.0.0",
+    # Powers the default model (Anthropic Claude, see config.get_model) via
+    # ADK's native `AnthropicLlm`. Pin matches google-adk's own
+    # extensions/all/test extras (Requires-Dist: anthropic>=0.78).
+    "anthropic>=0.78,<1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0"]
+# Optional: local model support (e.g. MINUS_TRACKER_AGENT_MODEL=ollama_chat/gemma4:e2b)
+# via a locally-running Ollama server. Not needed for the default Claude path —
+# see README.md's "Optional: Local Model via Ollama" section and
+# scripts/setup_ollama.sh for one-command setup. Pin matches google-adk's own
+# extensions/all/test extras (Requires-Dist: litellm>=1.84).
+ollama = ["litellm>=1.84,<2.0.0"]
 
 [build-system]
 requires = ["hatchling"]
@@ -40,5 +50,7 @@ markers = [
     "tc249: TC-249 — MCPToolset tool discovery matches the server's tools/list response (docs/prd/20-adk-agent.md)",
     "tc251: TC-251 — MINUS_TRACKER_MCP_TRANSPORT=sse without MINUS_TRACKER_MCP_URL fails clearly (docs/prd/20-adk-agent.md)",
     "tc250: TC-250 — agent-driven calculate_from_csv call (offline) matches the calculate_gains fixture (docs/prd/20-adk-agent.md)",
+    "tc252: TC-252 — MINUS_TRACKER_AGENT_MODEL resolution: Claude default, env override, empty/blank fallback (docs/prd/20-adk-agent.md)",
+    "tc253: TC-253 — build_agent() model attachment is lazy for both Claude and Ollama model ids (docs/prd/20-adk-agent.md)",
 ]
 addopts = "--strict-markers"

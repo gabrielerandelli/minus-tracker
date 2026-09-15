@@ -1,6 +1,6 @@
-"""MCP connection configuration for the minus-tracker ADK agent.
+"""MCP connection and model configuration for the minus-tracker ADK agent.
 
-Reads the two environment variables Part 19/20 of the PRD define
+Reads the environment variables Part 19/20 of the PRD define
 (docs/prd/19-mcp-server-extensions.md, docs/prd/20-adk-agent.md):
 
 - ``MINUS_TRACKER_MCP_TRANSPORT`` — ``"stdio"`` (default) or ``"sse"``.
@@ -8,6 +8,13 @@ Reads the two environment variables Part 19/20 of the PRD define
   no default value. Part 19's ``--port <n>`` has no fixed port, so a
   guessed URL would be actively wrong, not just permissive — this module
   never invents one.
+- ``MINUS_TRACKER_AGENT_MODEL`` — the LLM model id (default:
+  ``"claude-sonnet-5"``, Anthropic). Also accepts ``"ollama_chat/<model>"``
+  to use a local model via a running Ollama server (optional — requires
+  ``pip install -e ".[ollama]"``; see README.md's "Optional: Local Model
+  via Ollama" and ``scripts/setup_ollama.sh`` for one-command setup).
+  ``OLLAMA_API_BASE`` (LiteLLM's own env var, default
+  ``http://localhost:11434``) points at a non-default Ollama address.
 """
 
 from __future__ import annotations
@@ -87,3 +94,34 @@ def get_connection_params(
         f"Unknown {TRANSPORT_ENV_VAR}={transport!r} — expected "
         f"{TRANSPORT_STDIO!r} or {TRANSPORT_SSE!r}.",
     )
+
+
+MODEL_ENV_VAR = "MINUS_TRACKER_AGENT_MODEL"
+DEFAULT_MODEL = "claude-sonnet-5"
+
+
+def get_model(env: Optional[Mapping[str, str]] = None) -> str:
+    """Resolve the LLM model id from the environment.
+
+    Returns a plain model-id string. Note this is deliberately NOT what
+    ADK's own model registry would resolve a bare ``claude-*`` string to
+    (that maps to ``anthropic_llm.Claude``, a Vertex-AI-only subclass) — see
+    ``agent.build_agent``, which wraps a ``claude-*`` string in the
+    direct-API ``AnthropicLlm`` base class explicitly before it ever reaches
+    `Agent`, rather than relying on the registry's default routing. No
+    validation beyond that here: an invalid/unsupported model id is ADK's
+    own registry's or the Anthropic SDK's error to raise (lazily, on the
+    first real LLM call), not a case this module invents error-handling for
+    — unlike ``MINUS_TRACKER_MCP_TRANSPORT``, nothing downstream already
+    validates an unknown transport string, which is why that one *does*
+    raise ``AgentConfigError`` and this one deliberately doesn't.
+
+    An explicitly-set but empty/whitespace-only value falls back to
+    ``DEFAULT_MODEL`` too, the same as leaving the variable unset — matching
+    ``get_connection_params``'s own transport lookup, where an empty string
+    can never silently pass through as a distinct "value" (it falls into
+    that function's "unknown transport" error branch instead of bypassing
+    the default).
+    """
+    env = os.environ if env is None else env
+    return env.get(MODEL_ENV_VAR, "").strip() or DEFAULT_MODEL
