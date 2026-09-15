@@ -144,9 +144,28 @@ export function getCurrencyCoverage(
   return result;
 }
 
+// Widest real calendar gap observed in the bundled ECB snapshot
+// (src/data/ecb-rates.json) between one published rate and the next, across
+// USD/GBP/CHF, 2019-2026: 5 calendar days, from the TARGET2 (eurozone)
+// Easter closure (Good Friday + Easter Monday bracketing a weekend, e.g.
+// 2024-03-28 -> 2024-04-02) and the Christmas/New Year cluster (e.g.
+// 2023-12-22 -> 2023-12-27). A trade date that falls inside such a gap needs
+// at most (gap - 1) = 4 calendar days of walkback to reach the last real
+// rate published before it (the date right after the gap already has its
+// own entry, found at i=0). 5 adds one full day of safety margin beyond
+// that worst case actually observed in the data, while still being far
+// short of TC-011's "no rate anywhere near" stub scenario (nearest rate
+// over a month away), so that case still correctly falls through to null.
+const MAX_LOOKBACK_DAYS = 5;
+
 /**
  * Look up ECB rate for a currency on a given date.
- * Returns 1.0 for EUR. Walks back up to 3 calendar days for weekend/holiday gaps.
+ * Returns 1.0 for EUR. Walks back up to MAX_LOOKBACK_DAYS (5) calendar days
+ * to bridge weekend/holiday gaps -- including real multi-day TARGET2
+ * (eurozone) holiday closures such as the Easter and Christmas/New Year
+ * clusters, which can leave the bundled ECB snapshot with no entry for up
+ * to 5 consecutive calendar days even though the traded market (e.g. a US
+ * exchange on Easter Monday) was open and the trade is real.
  * Returns null if not found within the window.
  *
  * @param currency ISO 4217 currency code
@@ -164,7 +183,7 @@ export function lookupRate(
   const currencyRates = s[currency];
   if (!currencyRates) return null; // unsupported currency
 
-  for (let i = 0; i <= 3; i++) {
+  for (let i = 0; i <= MAX_LOOKBACK_DAYS; i++) {
     const d = i === 0 ? date : subtractDays(date, i);
     if (currencyRates[d] !== undefined) {
       return currencyRates[d];

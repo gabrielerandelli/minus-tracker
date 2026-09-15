@@ -616,7 +616,7 @@ Supported currencies: **EUR** (no conversion), **USD**, **GBP**, **CHF** (bundle
 
 Dates in the DEGIRO export are in `DD-MM-YYYY` format; the parser converts them to ISO automatically.
 
-Rows with a missing ISIN, unsupported currency, or no ECB rate within 3 trading days of the trade date are skipped with a warning (not an error) — run `validate` to inspect them before calculating.
+Rows with a missing ISIN, unsupported currency, or no ECB rate within 5 calendar days of the trade date are skipped with a warning (not an error) — run `validate` to inspect them before calculating.
 
 Numeric columns (`Quantity`, `Price`, `Local value`, `Transaction costs`) may use a thousands-separator comma (e.g. `2,500`), which some spreadsheet software adds when re-saving a CSV — the parser normalizes these correctly rather than misreading them.
 
@@ -868,7 +868,7 @@ Confirm you exported from Activity → **Transactions**, not the Account Stateme
 Auto-detection relies on the file's header content (the `Local value currency` column for DEGIRO, the `Trades` section for IBKR). If your file matches neither format, pass `--broker degiro` or `--broker ibkr` explicitly.
 
 **Some rows are skipped with a warning**
-Rows are skipped (without aborting the calculation) when: the ISIN is empty, the currency is not EUR/USD/GBP/CHF, or no ECB rate exists within 3 trading days of the trade date. Run `validate` for details.
+Rows are skipped (without aborting the calculation) when: the ISIN is empty, the currency is not EUR/USD/GBP/CHF, or no ECB rate exists within 5 calendar days of the trade date. Run `validate` for details.
 
 **Error "no open lots for ISIN X on date Y"**
 The CSV contains a SELL for a position that has no prior BUY in the same file. The BUY may be in a prior year's export that was not included. Use `validate` to inspect the parsed transactions.

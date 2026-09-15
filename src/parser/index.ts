@@ -80,7 +80,8 @@ export class DEGIROParser implements Parser {
    * @throws {ParseError} code `"MISSING_COLUMN"` (+ `columnName`) — required column absent.
    *
    * Rows with missing ISIN, unsupported currency, zero quantity, or no ECB rate within
-   * 3 trading days are skipped silently. Inspect `parser.warnings` for details.
+   * 5 calendar days (see lookupRate's MAX_LOOKBACK_DAYS in src/rates/index.ts) are
+   * skipped silently. Inspect `parser.warnings` for details.
    */
   parse(csv: string): Transaction[] {
     this._warningEntries = [];
