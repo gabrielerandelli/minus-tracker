@@ -25,6 +25,7 @@ from typing import Optional, Union
 from google.adk.tools.mcp_tool.mcp_toolset import McpToolset as MCPToolset
 from google.adk.agents.llm_agent import Agent
 from google.adk.models.base_llm import BaseLlm
+from google.adk.models.anthropic_llm import AnthropicLlm
 
 from .config import ConnectionParams, get_connection_params, get_model
 
@@ -77,12 +78,24 @@ def build_agent(
     `minus_tracker_agent.config.get_model`) rather than ADK's own Gemini
     default. Pass `model` to override with a specific model id or a
     `BaseLlm` instance (see `tests/test_smoke.py`'s scripted `_ScriptedLlm`).
+
+    A bare ``claude-*`` string is wrapped in `AnthropicLlm` explicitly rather
+    than handed to `Agent` as-is: ADK's model registry maps that pattern to
+    `anthropic_llm.Claude`, a Vertex-AI-only subclass requiring
+    `GOOGLE_CLOUD_PROJECT`/`GOOGLE_CLOUD_LOCATION` — not the direct-API
+    `AnthropicLlm` base class that reads `ANTHROPIC_API_KEY`, which is what
+    this agent's README documents and what `config.get_model`'s default is
+    meant to use. Constructing `AnthropicLlm` directly bypasses that registry
+    routing and gets the intended direct-API behavior.
     """
+    resolved_model = model if model is not None else get_model()
+    if isinstance(resolved_model, str) and resolved_model.startswith("claude-"):
+        resolved_model = AnthropicLlm(model=resolved_model)
     return Agent(
         name=AGENT_NAME,
         description=AGENT_DESCRIPTION,
         instruction=AGENT_INSTRUCTION,
-        model=model or get_model(),
+        model=resolved_model,
         tools=[build_toolset(connection_params)],
     )
 

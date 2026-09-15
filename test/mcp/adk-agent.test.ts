@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 /**
- * TC-249, TC-251, TC-250 (docs/prd/20-adk-agent.md, Tasks 68-69) — vitest bridge.
+ * TC-249, TC-251, TC-250, TC-252, TC-253 (docs/prd/20-adk-agent.md, Tasks
+ * 68-69) — vitest bridge.
  *
  * The ADK agent in `minus-tracker/agent/` is a deliberately separate Python
  * subproject (its own `pyproject.toml`, its own `pytest` suite in
@@ -50,6 +51,11 @@ import { execFileSync } from "node:child_process";
  * changes here beyond this docstring and a third `describe` block, which is
  * exactly the point of having built this bridge generically in Task 68
  * rather than hardcoding it to TC-249/TC-251's two markers.
+ *
+ * TC-252/TC-253 (agent's Claude-default/optional-Ollama model configuration,
+ * `agent/tests/test_tool_discovery.py`) reuse the same machinery again via
+ * their own `tc252`/`tc253` markers — two more `describe` blocks, no bridge
+ * changes needed.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -118,11 +124,15 @@ function ensurePythonEnv(): { ok: boolean; reason?: string } {
 
 function runPytestMarker(marker: string): { code: number; output: string } {
   try {
-    const output = execFileSync(venvPython, ["-m", "pytest", "-q", "-m", marker], {
-      cwd: agentDir,
-      encoding: "utf-8",
-      timeout: PYTEST_TIMEOUT_MS,
-    });
+    const output = execFileSync(
+      venvPython,
+      ["-m", "pytest", "-q", "-m", marker],
+      {
+        cwd: agentDir,
+        encoding: "utf-8",
+        timeout: PYTEST_TIMEOUT_MS,
+      },
+    );
     return { code: 0, output };
   } catch (err) {
     const e = err as {
@@ -190,6 +200,36 @@ describe("TC-250 — ADK agent smoke test: end-to-end calculate_from_csv call (o
       }
       const { code, output } = runPytestMarker("tc250");
       expect(code, `pytest -m tc250 in agent/ failed:\n${output}`).toBe(0);
+    },
+    PYTEST_TIMEOUT_MS,
+  );
+});
+
+describe("TC-252 — MINUS_TRACKER_AGENT_MODEL resolution: Claude default, override, empty/blank fallback", () => {
+  it(
+    "pytest -m tc252 passes (agent/tests/test_tool_discovery.py)",
+    (ctx) => {
+      if (!pythonEnv.ok) {
+        ctx.skip();
+        return;
+      }
+      const { code, output } = runPytestMarker("tc252");
+      expect(code, `pytest -m tc252 in agent/ failed:\n${output}`).toBe(0);
+    },
+    PYTEST_TIMEOUT_MS,
+  );
+});
+
+describe("TC-253 — build_agent() model attachment is lazy for both Claude and Ollama model ids", () => {
+  it(
+    "pytest -m tc253 passes (agent/tests/test_tool_discovery.py)",
+    (ctx) => {
+      if (!pythonEnv.ok) {
+        ctx.skip();
+        return;
+      }
+      const { code, output } = runPytestMarker("tc253");
+      expect(code, `pytest -m tc253 in agent/ failed:\n${output}`).toBe(0);
     },
     PYTEST_TIMEOUT_MS,
   );

@@ -103,13 +103,16 @@ DEFAULT_MODEL = "claude-sonnet-5"
 def get_model(env: Optional[Mapping[str, str]] = None) -> str:
     """Resolve the LLM model id from the environment.
 
-    Returns a plain model-id string — ADK's model registry
-    (``google.adk.models.registry``) auto-routes any ``claude-*``-prefixed
-    string to ``AnthropicLlm`` with no explicit import needed here. No
-    validation beyond that: an invalid/unsupported model id is ADK's own
-    registry's or the Anthropic SDK's error to raise (lazily, on the first
-    real LLM call), not a case this module invents error-handling for —
-    unlike ``MINUS_TRACKER_MCP_TRANSPORT``, nothing downstream already
+    Returns a plain model-id string. Note this is deliberately NOT what
+    ADK's own model registry would resolve a bare ``claude-*`` string to
+    (that maps to ``anthropic_llm.Claude``, a Vertex-AI-only subclass) — see
+    ``agent.build_agent``, which wraps a ``claude-*`` string in the
+    direct-API ``AnthropicLlm`` base class explicitly before it ever reaches
+    `Agent`, rather than relying on the registry's default routing. No
+    validation beyond that here: an invalid/unsupported model id is ADK's
+    own registry's or the Anthropic SDK's error to raise (lazily, on the
+    first real LLM call), not a case this module invents error-handling for
+    — unlike ``MINUS_TRACKER_MCP_TRANSPORT``, nothing downstream already
     validates an unknown transport string, which is why that one *does*
     raise ``AgentConfigError`` and this one deliberately doesn't.
 
