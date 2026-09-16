@@ -3,29 +3,58 @@
 A conversational front-end for [minus-tracker](../README.md), built with Google's
 [Agent Development Kit (ADK)](https://google.github.io/adk-docs/). It is a pure MCP client: every
 capability it exposes maps 1:1 to a `minus-tracker-mcp` tool call — no tax logic is reimplemented,
-no CLI subprocess is shelled out to. See the parent package's `docs/prd/20-adk-agent.md` (private
-dev repo) for the full design.
+no CLI subprocess is shelled out to.
 
 This is a Python subproject, sibling to `../src/` (TypeScript) inside the same repo — not a
 separate package. It is **local-install only** in this release: not published to PyPI.
 
 ## Quick start
 
+`setup_and_run.sh` sets up and launches the agent in one command. It has two independent choices —
+which model, and how it reaches `minus-tracker-mcp` — pick either, both, or neither flag:
+
+| Choice         | Flag                 | If you omit the flag                   |
+| -------------- | -------------------- | -------------------------------------- |
+| Model          | `--ollama [model]`   | Anthropic Claude (cloud)               |
+| MCP connection | `--mcp-remote <url>` | Builds/links a local MCP server itself |
+
 ```bash
 cd minus-tracker/agent
-export ANTHROPIC_API_KEY=sk-ant-...          # skip if you're going --ollama instead
-./scripts/setup_and_run.sh                   # or: ./scripts/setup_and_run.sh --ollama
+
+# Anthropic Claude + a local MCP server (the default — no flags needed)
+export ANTHROPIC_API_KEY=sk-ant-...
+./scripts/setup_and_run.sh
+
+# Local Ollama + a local MCP server — no cloud dependency at all
+./scripts/setup_and_run.sh --ollama
+
+# Anthropic Claude + an MCP server already running elsewhere
+export ANTHROPIC_API_KEY=sk-ant-...
+./scripts/setup_and_run.sh --mcp-remote http://127.0.0.1:8080/mcp
+
+# Local Ollama + an MCP server already running elsewhere
+./scripts/setup_and_run.sh --ollama --mcp-remote http://127.0.0.1:8080/mcp
 ```
 
-Builds/links `minus-tracker-mcp`, installs the agent, and launches `adk web` in one step —
-everything below is what that script automates, spelled out manually for when you want more
-control or are troubleshooting a step.
+`--mcp-remote <url>` sets `MINUS_TRACKER_MCP_TRANSPORT`/`MINUS_TRACKER_MCP_URL` for you — no need
+to export them yourself. Everything below is what the script automates, spelled out manually for
+when you want more control or are troubleshooting a step.
 
-## Prerequisite: the MCP server
+## Choose your MCP connection: local server or remote
 
-This agent is a pure MCP client — before anything else, `minus-tracker-mcp` needs to be
-resolvable. By default the agent spawns it locally over stdio, so build/install the parent
-`minus-tracker` npm package first so that binary is on `PATH`:
+`minus-tracker-mcp` is what actually does the tax-calculation work — the agent is just a client of
+it. Two ways to reach it:
+
+|          | **Local (default)**                         | **Remote**                                            |
+| -------- | ------------------------------------------- | ----------------------------------------------------- |
+| What     | The agent builds/links and spawns it itself | You point the agent at one already running elsewhere  |
+| Setup    | `npm ci && npm run build && npm link` once  | Set `MINUS_TRACKER_MCP_TRANSPORT=sse` + `..._MCP_URL` |
+| Good for | The common case, one machine                | A shared/long-running server, or a different host     |
+
+Pick one, then follow the matching subsection below — or just use Quick start's `--mcp-remote
+<url>` flag above to skip straight to Remote.
+
+### Local
 
 ```bash
 cd minus-tracker              # repo root, sibling to agent/
@@ -33,8 +62,17 @@ npm ci && npm run build
 npm link                      # or: npm install -g .
 ```
 
-Talking to an already-running server instead (e.g. over the network)? You can skip this step —
-see "MCP connection" under Configuration below.
+`./scripts/setup_and_run.sh` (no `--mcp-remote` flag) does this for you automatically if
+`minus-tracker-mcp` isn't already on `PATH`.
+
+### Remote
+
+```bash
+export MINUS_TRACKER_MCP_TRANSPORT=sse
+export MINUS_TRACKER_MCP_URL=http://127.0.0.1:8080/mcp
+```
+
+No local build needed — skip the "Local" steps above entirely.
 
 ## Choose your model: Anthropic Claude or local Ollama
 
@@ -104,8 +142,7 @@ adk web                        # local browser dev UI
 ```
 
 (Not activated? Same commands work via `uv run adk run minus_tracker_agent` / `uv run adk web`.)
-Needs `minus-tracker-mcp` on PATH — see "Prerequisite" above, or "MCP connection" below for the
-sse alternative.
+Needs `minus-tracker-mcp` reachable — see "Choose your MCP connection" above.
 
 ## Configuration
 
@@ -113,7 +150,7 @@ sse alternative.
 
 | Variable                      | Default  | Notes                                                                                                            |
 | ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`  | `stdio` (spawns `minus-tracker-mcp` locally, see Prerequisite above) or `sse`                                    |
+| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`  | `stdio` (local, see "Choose your MCP connection" above) or `sse` (remote)                                        |
 | `MINUS_TRACKER_MCP_URL`       | _(none)_ | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value |
 
 ```bash
@@ -121,9 +158,8 @@ export MINUS_TRACKER_MCP_TRANSPORT=sse
 export MINUS_TRACKER_MCP_URL=http://127.0.0.1:8080/mcp
 ```
 
-Set these before running either `adk run` or `adk web` from "Run" above. With `sse`, the agent
-connects to an already-running `minus-tracker-mcp` instead of spawning one — you don't need the
-"Prerequisite" `npm link` step in that case.
+Set these before running either `adk run` or `adk web` from "Run" above (or use Quick start's
+`--mcp-remote <url>`, which sets them for you).
 
 ### Model
 
