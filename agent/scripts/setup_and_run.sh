@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# One-command setup + launch: builds/links minus-tracker-mcp (unless told to
-# use a remote one instead), installs the agent's dependencies, configures
-# the model, and launches `adk web`. See README.md's "Quick start" section.
+# One-command setup + launch: builds minus-tracker-mcp (unless told to use a
+# remote one instead), installs the agent's dependencies, configures the
+# model, and launches `adk web`. See README.md's "Quick start" section.
+#
+# The local build never needs `npm link`/a global install — it points the
+# agent straight at the built dist/mcp/index.js instead, so it can't hit the
+# common `npm error EACCES ... /usr/local/lib/node_modules` permission trap.
 #
 # Two independent choices — combine them freely:
 #
 #   Model          --ollama [model]    Anthropic Claude (cloud) if omitted
-#   MCP connection --mcp-remote <url>  builds/links a local server if omitted
+#   MCP connection --mcp-remote <url>  builds a local server if omitted
 #
 # Usage:
 #   ./scripts/setup_and_run.sh                                      # Claude + local MCP (the default)
@@ -91,20 +95,50 @@ fi
 
 echo "==> Checking minus-tracker-mcp..."
 if [ "$TRANSPORT" = "sse" ]; then
-  echo "    Remote MCP server: $MINUS_TRACKER_MCP_URL — skipping local build/link."
+  echo "    Remote MCP server: $MINUS_TRACKER_MCP_URL — skipping local build."
+elif [ -n "${MINUS_TRACKER_MCP_COMMAND:-}" ]; then
+  # Respect an override the user already set themselves — never clobber it,
+  # same principle as the MINUS_TRACKER_AGENT_MODEL handling below.
+  echo "    using your own MINUS_TRACKER_MCP_COMMAND: $MINUS_TRACKER_MCP_COMMAND"
 elif command -v minus-tracker-mcp >/dev/null 2>&1; then
   # PATH check only, not a freshness check — if you've since pulled new
-  # minus-tracker source, re-run `npm run build && npm link` from the repo
-  # root yourself to pick up the changes.
-  echo "    found: $(command -v minus-tracker-mcp)"
+  # minus-tracker source, rebuild (`npm run build` from the repo root)
+  # yourself to pick up the changes.
+  echo "    found on PATH: $(command -v minus-tracker-mcp)"
 else
-  echo "    not found — building and linking the parent minus-tracker package..."
-  (cd .. && npm ci && npm run build && npm link)
-  if ! command -v minus-tracker-mcp >/dev/null 2>&1; then
-    echo "ERROR: npm link succeeded but minus-tracker-mcp still isn't on PATH." >&2
-    echo "Check that npm's global bin directory is itself on PATH (\`npm config get prefix\`), then retry." >&2
-    exit 1
+  # Deliberately NOT `npm link`/`npm install -g` here: that needs write
+  # access to npm's global directory, which isn't guaranteed (a common
+  # `npm error EACCES ... symlink ... /usr/local/lib/node_modules` on
+  # non-nvm Node installs). Instead this points the agent straight at the
+  # freshly-built dist/mcp/index.js's own path via MINUS_TRACKER_MCP_COMMAND
+  # alone — no MINUS_TRACKER_MCP_ARGS, since config.py's get_connection_params()
+  # splits that on whitespace, which would break on any repo checkout path
+  # containing a space (a real, common case: "John Smith", iCloud Drive,
+  # "OneDrive - Company", etc.). The built file is executable with its own
+  # `#!/usr/bin/env node` shebang, so invoking it directly needs no args at
+  # all — the OS's own exec mechanism handles the shebang, never a shell
+  # word-split, so a space in the path can't break it.
+  DIST_MCP_ENTRY="$(cd .. && pwd)/dist/mcp/index.js"
+  if [ -f "$DIST_MCP_ENTRY" ]; then
+    # Already built from a previous run — reuse it rather than paying for a
+    # fresh `npm ci` (which wipes and reinstalls node_modules) every single
+    # invocation. Existence check only, same as agent/tests/conftest.py's
+    # mcp_server_command fixture — not a freshness check: if you've since
+    # pulled new minus-tracker source, rebuild (`npm run build` from the
+    # repo root) yourself to pick up the changes.
+    [ -x "$DIST_MCP_ENTRY" ] || chmod +x "$DIST_MCP_ENTRY"   # restore the bit `npm run build` normally sets, if it's ever missing
+    echo "    not on PATH, but already built: $DIST_MCP_ENTRY"
+  else
+    echo "    not on PATH and not yet built — building the parent minus-tracker package (no npm link needed)..."
+    (cd .. && npm ci && npm run build)
+    if [ ! -f "$DIST_MCP_ENTRY" ]; then
+      echo "ERROR: build succeeded but $DIST_MCP_ENTRY is still missing — check the build output above." >&2
+      exit 1
+    fi
+    [ -x "$DIST_MCP_ENTRY" ] || chmod +x "$DIST_MCP_ENTRY"
+    echo "    built: $DIST_MCP_ENTRY"
   fi
+  export MINUS_TRACKER_MCP_COMMAND="$DIST_MCP_ENTRY"
 fi
 
 echo "==> Installing agent dependencies (uv sync)..."

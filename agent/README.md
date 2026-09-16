@@ -13,10 +13,10 @@ separate package. It is **local-install only** in this release: not published to
 `setup_and_run.sh` sets up and launches the agent in one command. It has two independent choices —
 which model, and how it reaches `minus-tracker-mcp` — pick either, both, or neither flag:
 
-| Choice         | Flag                 | If you omit the flag                   |
-| -------------- | -------------------- | -------------------------------------- |
-| Model          | `--ollama [model]`   | Anthropic Claude (cloud)               |
-| MCP connection | `--mcp-remote <url>` | Builds/links a local MCP server itself |
+| Choice         | Flag                 | If you omit the flag             |
+| -------------- | -------------------- | -------------------------------- |
+| Model          | `--ollama [model]`   | Anthropic Claude (cloud)         |
+| MCP connection | `--mcp-remote <url>` | Builds a local MCP server itself |
 
 ```bash
 cd minus-tracker/agent
@@ -45,11 +45,11 @@ when you want more control or are troubleshooting a step.
 `minus-tracker-mcp` is what actually does the tax-calculation work — the agent is just a client of
 it. Two ways to reach it:
 
-|          | **Local (default)**                         | **Remote**                                            |
-| -------- | ------------------------------------------- | ----------------------------------------------------- |
-| What     | The agent builds/links and spawns it itself | You point the agent at one already running elsewhere  |
-| Setup    | `npm ci && npm run build && npm link` once  | Set `MINUS_TRACKER_MCP_TRANSPORT=sse` + `..._MCP_URL` |
-| Good for | The common case, one machine                | A shared/long-running server, or a different host     |
+|          | **Local (default)**                   | **Remote**                                            |
+| -------- | ------------------------------------- | ----------------------------------------------------- |
+| What     | The agent builds and spawns it itself | You point the agent at one already running elsewhere  |
+| Setup    | `npm ci && npm run build` once        | Set `MINUS_TRACKER_MCP_TRANSPORT=sse` + `..._MCP_URL` |
+| Good for | The common case, one machine          | A shared/long-running server, or a different host     |
 
 Pick one, then follow the matching subsection below — or just use Quick start's `--mcp-remote
 <url>` flag above to skip straight to Remote.
@@ -59,11 +59,23 @@ Pick one, then follow the matching subsection below — or just use Quick start'
 ```bash
 cd minus-tracker              # repo root, sibling to agent/
 npm ci && npm run build
-npm link                      # or: npm install -g .
+export MINUS_TRACKER_MCP_COMMAND="$(pwd)/dist/mcp/index.js"
 ```
 
 `./scripts/setup_and_run.sh` (no `--mcp-remote` flag) does this for you automatically if
-`minus-tracker-mcp` isn't already on `PATH`.
+`minus-tracker-mcp` isn't already on `PATH` (and you haven't already set
+`MINUS_TRACKER_MCP_COMMAND` yourself — your own value is always respected, never overwritten).
+This deliberately skips `npm link`/`npm install -g`: they need write access to npm's global
+directory, which isn't guaranteed — a common `npm error EACCES ... symlink ...
+/usr/local/lib/node_modules` on Node installs outside a version manager like nvm. Pointing the
+agent straight at the built file's own path instead needs no such permission — the file is
+executable with its own shebang, so no separate `MINUS_TRACKER_MCP_ARGS` is needed either.
+
+Want a real, PATH-resolvable `minus-tracker-mcp` binary anyway (e.g. to also use it with Claude
+Desktop's MCP config)? `npm link` (or `npm install -g .`) does that — hitting the `EACCES` error
+above means fixing npm's global prefix once (`npm config set prefix ~/.npm-global`, then add
+`~/.npm-global/bin` to `PATH`), or just sticking with the `MINUS_TRACKER_MCP_COMMAND` approach
+above, which sidesteps the whole issue.
 
 ### Remote
 
@@ -148,10 +160,12 @@ Needs `minus-tracker-mcp` reachable — see "Choose your MCP connection" above.
 
 ### MCP connection
 
-| Variable                      | Default  | Notes                                                                                                            |
-| ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`  | `stdio` (local, see "Choose your MCP connection" above) or `sse` (remote)                                        |
-| `MINUS_TRACKER_MCP_URL`       | _(none)_ | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value |
+| Variable                      | Default             | Notes                                                                                                                                                                                               |
+| ----------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MINUS_TRACKER_MCP_TRANSPORT` | `stdio`             | `stdio` (local, see "Choose your MCP connection" above) or `sse` (remote)                                                                                                                           |
+| `MINUS_TRACKER_MCP_URL`       | _(none)_            | **Required** when the transport is `sse` — no default is guessed, since the server's `--port` has no fixed value                                                                                    |
+| `MINUS_TRACKER_MCP_COMMAND`   | `minus-tracker-mcp` | Overrides the stdio spawn command — Quick start sets this to the built `dist/mcp/index.js` path automatically when the binary isn't on `PATH`; your own value, if already set, is never overwritten |
+| `MINUS_TRACKER_MCP_ARGS`      | _(none)_            | Space-separated args for the command above, if you need them — not used by anything documented in this README, since a space in the value would be split apart                                      |
 
 ```bash
 export MINUS_TRACKER_MCP_TRANSPORT=sse
