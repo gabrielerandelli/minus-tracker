@@ -7,14 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-09-16
+
+### Added
+
+- **Optional local model via Ollama for the ADK agent**: the agent's default model moves from
+  ADK's own Gemini default to Anthropic Claude (`claude-sonnet-5`, via `MINUS_TRACKER_AGENT_MODEL`),
+  with a second, strictly optional path to a local model through a running Ollama server (e.g.
+  `ollama_chat/gemma4:e2b`) via ADK's `LiteLlm`. `litellm` is an opt-in extra
+  (`pip install -e ".[ollama]"` / `uv sync --extra ollama`), never a base dependency, so the
+  default Claude path needs zero Ollama/LiteLLM footprint. New: `agent/scripts/setup_ollama.sh`
+  automates the opt-in path end to end (installs the extra, checks/guides installing the `ollama`
+  CLI, pulls the model).
+- **`agent/scripts/setup_and_run.sh`**: one-command setup + launch for the ADK agent — builds
+  `minus-tracker-mcp`, installs the agent's Python dependencies, configures the model, and runs
+  `adk web`, in one call. Two independent, freely combinable flags: `--ollama [model]` (default:
+  Anthropic Claude) and `--mcp-remote <url>` (default: build/spawn a local MCP server). Fails
+  fast on missing/invalid config (a bad `MINUS_TRACKER_MCP_TRANSPORT`, a missing
+  `ANTHROPIC_API_KEY`, a missing `--mcp-remote` URL, one that looks like another flag, or one
+  that's whitespace-only) before doing any real work. New: `agent/scripts/_defaults.sh`, the
+  single source of truth for the default Ollama model (`gemma4:e2b`), sourced by both this script
+  and `agent/scripts/setup_ollama.sh` so they can't silently disagree on it.
+
+### Changed
+
+- **README restructured into a docs/ wiki**: the root `README.md` had grown to 935 lines with
+  near-duplicate Italian/English sections and inline version-history blurbs overlapping
+  `CHANGELOG.md`. Detailed content split into focused English pages under `docs/` (quick-start,
+  csv-formats, cli-usage, library-usage, mcp-server, faq); the root README is now a short
+  bilingual intro, feature list, and links.
+- **`agent/README.md` restructured**: Anthropic Claude vs. local Ollama, and local vs. remote MCP
+  connection, are now both presented as explicit, symmetric up-front choices (comparison tables +
+  labeled subsections) instead of one being the unstated default and the other an afterthought.
+  Removed a reference to this private dev repo's `docs/prd/20-adk-agent.md` that was meaningless
+  to an external reader of the now-public file.
+
 ### Fixed
 
+- **Critical: the ADK agent routed a bare `claude-*` model id to the wrong SDK class.** ADK's own
+  model registry maps a bare `claude-*` string to `anthropic_llm.Claude`, a Vertex-AI-only
+  subclass requiring `GOOGLE_CLOUD_PROJECT`/`GOOGLE_CLOUD_LOCATION` — not the direct-API
+  `AnthropicLlm` base class that reads `ANTHROPIC_API_KEY`, which is what the README documents
+  and what was actually intended. As shipped, a user following the README verbatim hit a
+  Vertex-AI credential error on the first real conversational turn instead of a working Claude
+  conversation — model resolution is fully lazy, so the existing tests only asserted the attached
+  string and never exercised `canonical_model`/the real client, missing this entirely.
+  `build_agent()` now wraps a bare `claude-*` string in `AnthropicLlm` explicitly before it
+  reaches `Agent`, bypassing the registry's default (wrong) routing — verified directly
+  (`root_agent.model` is now an `AnthropicLlm` instance, isinstance-checked). Also fixes a
+  `model or get_model()` truthiness bug (now `is None`).
+- `agent/README.md`'s Option B (Ollama) install sequence would have double-installed the `ollama`
+  extra — once via `uv sync --extra ollama`, again via `scripts/setup_ollama.sh` — surfaced while
+  restructuring the model-choice docs. The script alone now owns that step;
+  `uv sync --extra ollama` is documented only as its manual no-script alternative.
+- `uv sync` installs the `adk` console script into `agent/.venv`, a project-local virtualenv it
+  never adds to `PATH`. The agent README told users to type bare `adk run`/`adk web` right after
+  `uv sync`, which failed with `command not found: adk` even though install succeeded. Now leads
+  with activating the venv once per shell session, documents `uv run adk ...` as a no-activation
+  fallback, and adds an explicit troubleshooting callout for the exact symptom.
 - `lookupRate()`'s weekend/holiday walkback was hard-coded to 3 calendar days, but the bundled
   ECB snapshot (`src/data/ecb-rates.json`) has real calendar gaps of up to 5 days around
   recurring TARGET2 (eurozone) holiday closures — notably Easter (Good Friday + Easter Monday,
   both TARGET2 holidays, bracketing a weekend) and the Christmas/New Year cluster. Confirmed
   gap: the bundled USD rate has no entry from 2024-03-28 (Thu) through 2024-04-01 (Mon, Easter
-  Monday) inclusive. Easter Monday is *not* a US market holiday (NYSE is open), so an ordinary
+  Monday) inclusive. Easter Monday is _not_ a US market holiday (NYSE is open), so an ordinary
   USD-denominated trade of a US stock placed on 2024-04-01 is real, valid, and taxable — but the
   old 3-day window couldn't bridge the 4-calendar-day distance back to 2024-03-28's rate,
   `lookupRate()` returned `null`, and `DEGIROParser`/`IBKRParser` silently dropped the row (a
@@ -25,6 +81,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backward search from any date inside it) with one full day of safety margin, while remaining
   far short of a "no rate anywhere nearby" case, which still correctly resolves to `null`. New
   regression test: `test/regression-degiro-easter-gap-fx.test.ts`.
+- `agent/scripts/setup_and_run.sh`'s local MCP setup previously called `npm link`/
+  `npm install -g` to put `minus-tracker-mcp` on `PATH`, which needs write access to npm's global
+  directory — a real, reported failure (`npm error EACCES ... symlink ...
+/usr/local/lib/node_modules`) on Node installs outside a version manager like nvm. It no longer
+  calls either:
+  instead it builds (`npm ci && npm run build`) and points `MINUS_TRACKER_MCP_COMMAND` directly
+  at the built `dist/mcp/index.js`'s own path — the same escape hatch `agent/tests/conftest.py`'s
+  `mcp_server_command` fixture already used for the identical reason. `MINUS_TRACKER_MCP_ARGS` is
+  deliberately not used alongside it: `config.py`'s `get_connection_params()` splits that value on
+  whitespace, which would silently break on any checkout path containing a space (a real, common
+  case — a "John Smith"-style home folder, an iCloud Drive/OneDrive sync path), confirmed via a
+  live repro; the built file's own shebang makes a separate args list unnecessary. A user-set
+  `MINUS_TRACKER_MCP_COMMAND` is now always respected and never overwritten, and an existing build
+  is detected by the built file's presence (not requiring it to already be on `PATH`) so a repeat
+  run doesn't pay for a fresh `npm ci` every time.
 
 ## [0.13.0] - 2026-09-14
 
