@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Calculator.calculateGains()` threw a spurious `NO_OPEN_LOTS` error when closing a
+  fractional-share position with a round-number SELL.** Real brokers (DEGIRO, IBKR) export
+  fractional quantities already rounded to 8 decimal places; building a position out of several
+  such BUYs and then closing it in one SELL entered as a round number (e.g. three
+  `0.33333333`-share BUYs, summing to `0.99999999`, closed by a `1.00000000`-share SELL — exactly
+  what a broker's own UI shows for "close full position") could leave a `~1e-8` residual once
+  every open lot had been legitimately consumed. That residual was an order of magnitude coarser
+  than the existing `QUANTITY_EPSILON` (tuned only for `~1e-17` IEEE-754 subtraction noise), so it
+  survived and threw `NO_OPEN_LOTS` on a position that was, for all real-world purposes, fully and
+  correctly closed. Added a separate, narrowly-scoped `SELL_CLOSE_TOLERANCE` (`5e-8`) checked only
+  at the point where open lots are exhausted and a residual remains — several orders of magnitude
+  below any genuine oversell (e.g. selling `0.01` shares more than were ever bought), which still
+  throws exactly as before. New regression test:
+  `test/regression-fractional-lot-fp-epsilon.test.ts`.
+
 ## [0.13.1] - 2026-09-16
 
 ### Added

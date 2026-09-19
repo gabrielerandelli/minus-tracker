@@ -161,6 +161,68 @@ describe("regression: MatchedLot.quantity is a clean decimal, not raw FP noise (
   });
 });
 
+/**
+ * Regression: a position built from several independently-8dp-rounded fractional BUYs, then
+ * closed with a single round-number SELL, must not throw CalculationError even though the BUYs'
+ * quantities don't re-sum to the SELL's quantity to the last decimal place.
+ *
+ * BUY  0.33333333 shares (x3, three different dates) -- DEGIRO's own real fractional-share
+ *      export precision (8 decimal places) -- summing to 0.99999999, one hundred-millionth of a
+ *      share short of 1.0 purely because 0.33333333 rounded to 8dp three times over never
+ *      re-sums to exactly 1.
+ * SELL 1.00000000 shares -- exactly what a broker's own UI would show for "close full position",
+ *      and what any user tracking "I own 1 share" would naturally enter.
+ *
+ * This residual (1e-8) sits exactly at the QUANTITY_DECIMALS precision floor -- one order of
+ * magnitude coarser than QUANTITY_EPSILON (1e-9), which is tuned for pure IEEE-754 arithmetic
+ * noise (~1e-17), not broker-rounding residue. Before the fix, this SELL correctly consumed all
+ * three open lots but was left with remainingSellQty == 1e-8 and no lots left, and threw
+ * NO_OPEN_LOTS even though the position was, for all real-world purposes, fully and correctly
+ * closed.
+ */
+const HEADER5 =
+  "Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID";
+const FRAC_BUY_1 =
+  "20-03-2024,09:00,Fractional Corp,US0000000006,XNAS,XNAS,0.33333333,150.00,-50.00,USD,-50.00,USD,1.0,0.10,USD,-50.10,USD,order-1";
+const FRAC_BUY_2 =
+  "21-03-2024,09:00,Fractional Corp,US0000000006,XNAS,XNAS,0.33333333,151.00,-50.33,USD,-50.33,USD,1.0,0.10,USD,-50.43,USD,order-2";
+const FRAC_BUY_3 =
+  "22-03-2024,09:00,Fractional Corp,US0000000006,XNAS,XNAS,0.33333333,152.00,-50.67,USD,-50.67,USD,1.0,0.10,USD,-50.77,USD,order-3";
+const FRAC_SELL_FULL =
+  "25-03-2024,09:00,Fractional Corp,US0000000006,XNAS,XNAS,-1.00000000,155.00,155.00,USD,155.00,USD,1.0,0.10,USD,154.90,USD,order-4";
+
+const fracCsv = [HEADER5, FRAC_BUY_1, FRAC_BUY_2, FRAC_BUY_3, FRAC_SELL_FULL].join("\n");
+
+function runFracFor(method: LotMethod) {
+  const transactions = new DEGIROParser().parse(fracCsv);
+  return new Calculator(transactions).calculateGains(method);
+}
+
+describe("regression: three 8dp-rounded fractional BUYs closed by a round-number SELL (broker-rounding residual, not FP noise)", () => {
+  for (const method of ["LIFO", "FIFO"] as const) {
+    describe(`${method}`, () => {
+      it("does not throw CalculationError", () => {
+        expect(() => runFracFor(method)).not.toThrow();
+      });
+
+      it("produces exactly three matched lots covering the full bought quantity", () => {
+        const report = runFracFor(method);
+        expect(report.lots).toHaveLength(3);
+        // The three matched lots' quantities sum to what was actually bought (0.99999999 — the
+        // three 8dp-rounded BUYs), not the SELL's own 1.00000000: the leftover 1e-8
+        // broker-rounding residual has no cost basis to attribute, so it's absorbed as a clean
+        // close (the loop simply exits once lots are exhausted) rather than fabricated into an
+        // extra or oversized matched-lot quantity.
+        const totalMatched = report.lots.reduce((sum, l) => sum + l.quantity, 0);
+        expect(totalMatched).toBeCloseTo(0.99999999, 8);
+        for (const lot of report.lots) {
+          expect(lot.quantity).toBeCloseTo(0.33333333, 8);
+        }
+      });
+    });
+  }
+});
+
 describe("regression: genuine insufficient-open-lots still throws (not masked by epsilon fix)", () => {
   const HEADER2 =
     "Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID";

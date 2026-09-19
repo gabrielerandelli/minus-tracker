@@ -50,6 +50,19 @@ function roundQty(x: number): number {
   return Math.round(x * QUANTITY_SCALE) / QUANTITY_SCALE;
 }
 
+// Absorbs genuine broker-rounding residue once open lots are exhausted, distinct from
+// QUANTITY_EPSILON's pure-FP-noise role above. Real brokers (DEGIRO, IBKR) export fractional
+// quantities already rounded to QUANTITY_DECIMALS (8dp); building a position out of several such
+// BUYs and then closing it with a single round-number SELL (e.g. three 0.33333333 BUYs, summing
+// to 0.99999999, closed by a "-1.00000000" SELL) can leave a residual of up to a few times
+// 10^-8 — one order of magnitude coarser than QUANTITY_EPSILON, which is too fine to catch it.
+// This tolerance is applied ONLY at the point where lots are exhausted and remainingSellQty is
+// still positive (never inside the per-lot matchedQty math above), so it can never mask a
+// mismatch against an open lot — only a residual left after every open lot has already been
+// fully consumed. 5e-8 comfortably covers that broker-rounding residual while remaining ~5-6
+// orders of magnitude below any genuine oversell (e.g. 0.01 shares), which must still throw.
+const SELL_CLOSE_TOLERANCE = 5 * 10 ** -QUANTITY_DECIMALS;
+
 // Most-frequent-year fallback, used only when there are no SELL transactions
 // at all to infer from (see inferTaxYear below, and TC-176 scenario (b)).
 // Pre-v0.11.2 inference logic, unchanged.
@@ -182,6 +195,11 @@ export class Calculator {
 
         while (remainingSellQty > 0) {
           if (!lots || lots.length === 0) {
+            // Open lots are fully exhausted. A residual this small is a broker-rounding
+            // artifact (see SELL_CLOSE_TOLERANCE above), not a real oversell — treat the
+            // position as cleanly closed. Anything larger is a genuine mismatch and still
+            // throws.
+            if (remainingSellQty <= SELL_CLOSE_TOLERANCE) break;
             throw new CalculationError(tx.isin, tx.date);
           }
 
