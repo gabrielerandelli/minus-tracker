@@ -257,31 +257,48 @@ export class DEGIROParser implements Parser {
 
       if (isNaN(rawFees) || rawFees === 0) {
         feesEUR = 0;
-      } else if (feesCurrencyRaw === "EUR") {
-        feesEUR = Math.abs(rawFees);
       } else {
-        const feeRate = lookupRate(feesCurrencyRaw, isoDate, snapshot);
-        if (feeRate === null) {
-          if (snapshot[feesCurrencyRaw] === undefined) {
-            this._warningEntries.push({
-              code: "UNSUPPORTED_CURRENCY",
-              row: rowIndex,
-              currency: feesCurrencyRaw,
-            });
-          } else {
-            this._warningEntries.push({
-              code: "NO_ECB_RATE",
-              row: rowIndex,
-              currency: feesCurrencyRaw,
-              date: isoDate,
-            });
-          }
-          continue;
+        // A blank fee-currency cell is a data-quality gap in a secondary
+        // field, not the same thing as a populated-but-unrecognized
+        // currency code — don't discard an otherwise-valid trade over it.
+        // Assume the fee is in the trade's own (already-resolved) currency
+        // and flag the assumption instead of dropping the row.
+        let effectiveFeesCurrency = feesCurrencyRaw;
+        if (feesCurrencyRaw === "") {
+          effectiveFeesCurrency = currency;
+          this._warningEntries.push({
+            code: "FEE_CURRENCY_ASSUMED",
+            row: rowIndex,
+            currency,
+          });
         }
-        feesEUR = Math.abs(rawFees) / feeRate;
-        if (feesCurrencyRaw !== currency) {
-          feesFxRate = feeRate;
-          feesCurrency = feesCurrencyRaw;
+
+        if (effectiveFeesCurrency === "EUR") {
+          feesEUR = Math.abs(rawFees);
+        } else {
+          const feeRate = lookupRate(effectiveFeesCurrency, isoDate, snapshot);
+          if (feeRate === null) {
+            if (snapshot[effectiveFeesCurrency] === undefined) {
+              this._warningEntries.push({
+                code: "UNSUPPORTED_CURRENCY",
+                row: rowIndex,
+                currency: effectiveFeesCurrency,
+              });
+            } else {
+              this._warningEntries.push({
+                code: "NO_ECB_RATE",
+                row: rowIndex,
+                currency: effectiveFeesCurrency,
+                date: isoDate,
+              });
+            }
+            continue;
+          }
+          feesEUR = Math.abs(rawFees) / feeRate;
+          if (effectiveFeesCurrency !== currency) {
+            feesFxRate = feeRate;
+            feesCurrency = effectiveFeesCurrency;
+          }
         }
       }
 

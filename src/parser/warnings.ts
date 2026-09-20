@@ -24,6 +24,18 @@ export type WarningEntry =
       value: string;
       section?: IBKRSection;
     }
+  | {
+      // A trade's fee/commission is non-zero but its currency cell was left
+      // blank (as opposed to naming an unrecognized currency). Rather than
+      // dropping the whole transaction, the parser assumes the fee is in the
+      // trade's own (already-resolved) currency and keeps the row — this
+      // warning flags that assumption so the user can double check their
+      // broker export.
+      code: "FEE_CURRENCY_ASSUMED";
+      row: number;
+      currency: string;
+      section?: IBKRSection;
+    }
   | { code: "MISSING_ISIN_INCOME"; row: number }
   | { code: "ORPHAN_WITHHOLDING"; isin: string; date: string }
   | { code: "UNMATCHED_WITHHOLDING"; row: number; section: IBKRSection };
@@ -50,6 +62,10 @@ export function warningToEnglish(w: WarningEntry): string {
       return w.section
         ? `${w.section} row ${w.row}: invalid Buy/Sell value "${w.value}" (expected "BUY" or "SELL") — skipped`
         : `Row ${w.row}: invalid Buy/Sell value "${w.value}" (expected "BUY" or "SELL") — skipped`;
+    case "FEE_CURRENCY_ASSUMED":
+      return w.section
+        ? `${w.section} row ${w.row}: fee currency blank — assumed ${w.currency} (the trade's own currency)`
+        : `Row ${w.row}: fee currency blank — assumed ${w.currency} (the trade's own currency)`;
     case "MISSING_ISIN_INCOME":
       return `Row ${w.row}: blank ISIN on income row — skipped`;
     case "ORPHAN_WITHHOLDING":

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`DEGIROParser` and `IBKRParser` silently dropped an entire trade row — not just its fee — when
+  the fee-currency cell was blank on a row with a non-zero fee.** `Transaction costs currency`
+  (DEGIRO) and `IBCommissionCurrency` (IBKR) are read independently from the trade's own currency
+  column, and a blank cell was fed straight into the same ECB-rate lookup used for a genuinely
+  unrecognized currency code — which always fails for an empty string — causing the row-skip
+  branch to discard the whole transaction, principal included, not just the unresolved fee. A BUY
+  dropped this way silently orphaned its matching SELL, which then threw `NO_OPEN_LOTS` on an
+  otherwise perfectly valid round-trip trade; a dropped SELL instead silently understated
+  `plusvalenze`/`minusvalenze` with no error at all. Both parsers now treat a **blank** fee-currency
+  cell as a data-quality gap in a secondary field rather than an unresolvable currency: the fee is
+  assumed to be denominated in the trade's own already-resolved currency (reusing the ECB rate that
+  already succeeded for the trade's principal amount) and the row is kept, with a new
+  `FEE_CURRENCY_ASSUMED` warning added so the assumption can be double-checked against the source
+  broker export. A genuinely unsupported **non-blank** fee-currency code (e.g. `"XYZ"`) is
+  unaffected and still drops the row with the pre-existing `UNSUPPORTED_CURRENCY`/`NO_ECB_RATE`
+  warnings. New regression tests: `test/regression-degiro-blank-fee-currency.test.ts`,
+  `test/regression-ibkr-blank-commission-currency.test.ts`.
 - **`Calculator.calculateGains()` threw a spurious `NO_OPEN_LOTS` error when closing a
   fractional-share position with a round-number SELL.** Real brokers (DEGIRO, IBKR) export
   fractional quantities already rounded to 8 decimal places; building a position out of several

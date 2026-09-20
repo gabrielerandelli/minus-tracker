@@ -431,24 +431,46 @@ export class IBKRParser implements Parser {
 
     if (commissionRaw === "" || isNaN(commissionNum) || commissionNum === 0) {
       feesEUR = 0;
-    } else if (commissionCurrency === "EUR") {
-      feesEUR = Math.abs(commissionNum);
     } else {
-      const commissionRate = lookupRate(commissionCurrency, isoDate, snapshot);
-      if (commissionRate === null) {
+      // A blank IBCommissionCurrency cell is a data-quality gap in a
+      // secondary field, not the same thing as a populated-but-unrecognized
+      // currency code — don't discard an otherwise-valid trade over it.
+      // Assume the commission is in the trade's own (already-resolved)
+      // currency and flag the assumption instead of dropping the row.
+      let effectiveCommissionCurrency = commissionCurrency;
+      if (commissionCurrency === "") {
+        effectiveCommissionCurrency = currency;
         this._warningEntries.push({
-          code: "NO_ECB_RATE",
+          code: "FEE_CURRENCY_ASSUMED",
           row: rowCounter,
-          currency: commissionCurrency,
-          date: isoDate,
+          currency,
           section: "Trades",
         });
-        return undefined;
       }
-      feesEUR = Math.abs(commissionNum) / commissionRate;
-      if (commissionCurrency !== currency) {
-        feesFxRate = commissionRate;
-        feesCurrency = commissionCurrency;
+
+      if (effectiveCommissionCurrency === "EUR") {
+        feesEUR = Math.abs(commissionNum);
+      } else {
+        const commissionRate = lookupRate(
+          effectiveCommissionCurrency,
+          isoDate,
+          snapshot,
+        );
+        if (commissionRate === null) {
+          this._warningEntries.push({
+            code: "NO_ECB_RATE",
+            row: rowCounter,
+            currency: effectiveCommissionCurrency,
+            date: isoDate,
+            section: "Trades",
+          });
+          return undefined;
+        }
+        feesEUR = Math.abs(commissionNum) / commissionRate;
+        if (effectiveCommissionCurrency !== currency) {
+          feesFxRate = commissionRate;
+          feesCurrency = effectiveCommissionCurrency;
+        }
       }
     }
 
