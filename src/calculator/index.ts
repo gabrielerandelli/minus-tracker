@@ -357,9 +357,19 @@ export class Calculator {
         }
       }
       carryForwardApplied = roundHalfUp(carryForwardApplied);
-      const bNetResult = roundHalfUp(
-        bPlusvalenze - bMinusvalenze - carryForwardApplied,
-      );
+      // Round once, from the raw (unrounded) `remaining` accumulator — not by
+      // rounding carryForwardApplied to cents first and then subtracting that
+      // already-rounded total from bPlusvalenze - bMinusvalenze. Those two are
+      // NOT equivalent when a supplied carryForward entry has more than 2
+      // decimal places: rounding-then-subtracting can land the final 2dp
+      // rounding on a different cent than subtracting raw amounts and
+      // rounding only the total (e.g. entries 10.005 + 10 = 20.005, which
+      // rounds up to 20.01 in isolation but not when part of a larger raw
+      // subtraction). This mirrors buildQuadroRT's own "subtract raw amounts,
+      // round only the final total" approach (src/dichiarazione/engine.ts)
+      // so bucketB.netResult and dichiarazione.quadroRT.imponibileNetto never
+      // diverge for the same underlying result.
+      const bNetResult = roundHalfUp(remaining);
       const carryForwardRemaining = roundHalfUp(Math.max(0, -bNetResult));
 
       const bucketBReport: BucketBReport = {
