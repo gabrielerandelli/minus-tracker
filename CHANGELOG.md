@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Bucket B `netResult` could disagree by one cent with the Quadro RT export's
+  `imponibileNetto` for the exact same tax year.** When a supplied `carryForward` entry's
+  `amount` had more than 2 decimal places (nothing in the `CarryForward` type or docs requires
+  cent precision — e.g. a figure carried over from an external FX-adjusted computation),
+  `Calculator.calculateGains()` derived `report.bucketB.netResult` by rounding the total
+  carry-forward consumed to cents *first* and only then subtracting that already-rounded total
+  from the Bucket B gain/loss difference, while `report.dichiarazione.quadroRT.imponibileNetto`
+  (computed by `buildQuadroRT()`) subtracted each entry's raw, unrounded consumed amount and
+  rounded only once at the end — the correct approach for a chained monetary calculation, and the
+  one `buildQuadroRT()` already used for its own carry-forward bookkeeping. The two roundings are
+  not equivalent when the raw total needs a carry (e.g. carry-forward entries `10.005` and `10`
+  sum to `20.005`, which IEEE-754 represents as `20.005000000000003` and rounds up to `20.01` in
+  isolation, but not when subtracted raw as part of a larger total), so the same `GainsReport`
+  could show two different taxable-base figures for the identical result — one of which a filer
+  would submit via `dichiarazione.exportTo()`. `Calculator` now derives `bucketB.netResult` from
+  the same raw, unrounded carry-forward accumulator it already maintained internally, matching
+  `buildQuadroRT()`'s rounding discipline exactly. New regression test:
+  `test/dichiarazione.test.ts`'s `REG-004`.
+
 - **`Calculator.calculateGains()` threw a spurious `NO_OPEN_LOTS` error when closing a
   fractional-share position with a round-number SELL.** Real brokers (DEGIRO, IBKR) export
   fractional quantities already rounded to 8 decimal places; building a position out of several
