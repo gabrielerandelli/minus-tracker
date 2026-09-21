@@ -484,6 +484,53 @@ describe("REG-003: multiple CF entries whose independently-rounded consumption w
   });
 });
 
+describe("REG-004: a carryForward entry with more than 2 decimal places must not make bucketB.netResult and quadroRT.imponibileNetto disagree", () => {
+  it("agrees on the same post-carryforward Bucket B result for identical inputs", () => {
+    const buy = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2026-01-10",
+      type: "BUY",
+      quantity: 100,
+      pricePerUnit: 10,
+      totalLocal: -1000,
+      totalEUR: 1000,
+    });
+    const sell = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2026-06-10",
+      type: "SELL",
+      quantity: 100,
+      pricePerUnit: 20,
+      totalLocal: 2000,
+      totalEUR: 2000,
+    });
+
+    // 10.005 + 10 = 20.005, which IEEE-754 represents as
+    // 20.005000000000003 — rounding that intermediate sum up to 20.01 (as
+    // Calculator used to do, by rounding carryForwardApplied to cents before
+    // subtracting it) lands the final 2dp rounding on a different cent than
+    // subtracting the raw 20.005 and rounding only the final total once (as
+    // buildQuadroRT already did). Both fields describe the exact same
+    // underlying post-carryforward Bucket B result and must never diverge.
+    const carryForward: CarryForward[] = [
+      { year: 2024, amount: 10.005 },
+      { year: 2025, amount: 10 },
+    ];
+
+    const report = new Calculator([buy, sell], [], {
+      classification: CLASSIFICATION,
+      carryForward,
+    }).calculateGains("LIFO");
+
+    expect(report.bucketB!.netResult).toBe(
+      report.dichiarazione!.quadroRT.imponibileNetto,
+    );
+    expect(report.bucketB!.netResult).toBe(980);
+    expect(report.dichiarazione!.quadroRT.imponibileNetto).toBe(980);
+    expect(report.dichiarazione!.quadroRT.imposta).toBe(254.8);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Category 13 — Income-row tax-year filtering (Calculator integration)
 // ---------------------------------------------------------------------------
