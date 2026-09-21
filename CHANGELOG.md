@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`DEGIROParser` and `IBKRParser` silently dropped an entire trade row — not just its fee — when
+  the fee-currency cell was blank on a row with a non-zero fee.** `Transaction costs currency`
+  (DEGIRO) and `IBCommissionCurrency` (IBKR) are read independently from the trade's own currency
+  column, and a blank cell was fed straight into the same ECB-rate lookup used for a genuinely
+  unrecognized currency code — which always fails for an empty string — causing the row-skip
+  branch to discard the whole transaction, principal included, not just the unresolved fee. A BUY
+  dropped this way silently orphaned its matching SELL, which then threw `NO_OPEN_LOTS` on an
+  otherwise perfectly valid round-trip trade; a dropped SELL instead silently understated
+  `plusvalenze`/`minusvalenze` with no error at all. Both parsers now treat a **blank** fee-currency
+  cell as a data-quality gap in a secondary field rather than an unresolvable currency: the fee is
+  assumed to be denominated in the trade's own already-resolved currency (reusing the ECB rate that
+  already succeeded for the trade's principal amount) and the row is kept, with a new
+  `FEE_CURRENCY_ASSUMED` warning added so the assumption can be double-checked against the source
+  broker export. A genuinely unsupported **non-blank** fee-currency code (e.g. `"XYZ"`) is
+  unaffected and still drops the row with the pre-existing `UNSUPPORTED_CURRENCY`/`NO_ECB_RATE`
+  warnings. New regression tests: `test/regression-degiro-blank-fee-currency.test.ts`,
+  `test/regression-ibkr-blank-commission-currency.test.ts`.
 - **Bucket B `netResult` could disagree by one cent with the Quadro RT export's
   `imponibileNetto` for the exact same tax year.** When a supplied `carryForward` entry's
   `amount` had more than 2 decimal places (nothing in the `CarryForward` type or docs requires
