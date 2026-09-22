@@ -531,6 +531,99 @@ describe("REG-004: a carryForward entry with more than 2 decimal places must not
   });
 });
 
+describe("REG-005: dividendiEsteri/cedole amounts must be rounded to 2 decimal places", () => {
+  it("rounds lordo/rittenutaEstera on dividendiEsteri and importo/rittenutaEstera on cedole", () => {
+    // 100/3 and 15/7 are classic non-terminating binary fractions
+    // (33.333333333333336 and 2.1428571428571432 respectively) — exactly the
+    // kind of unrounded EUR figure IncomeRow.grossAmount/withholdingTax carry
+    // internally (e.g. after FX conversion). Before the fix, buildQuadroRM
+    // passed these straight through to the report; after the fix, they must
+    // come out rounded half-up to 2dp, just like every QuadroRT figure.
+    const incomeRows: IncomeRow[] = [
+      {
+        isin: STOCK_ISIN,
+        product: "Apple Inc",
+        date: "2024-03-01",
+        incomeType: "dividend",
+        grossAmount: 100 / 3, // 33.333333333333336
+        withholdingTax: 15 / 7, // 2.1428571428571432
+        currency: "USD",
+        fxRate: 1.08,
+      },
+      {
+        isin: BTP_ISIN,
+        product: "BTP 2.5% 2030",
+        date: "2024-04-01",
+        incomeType: "coupon",
+        grossAmount: 50 / 3, // 16.666666666666668
+        withholdingTax: 7 / 3, // 2.3333333333333335
+        currency: "EUR",
+      },
+    ];
+
+    // Sanity check the inputs actually are unrounded before we assert the
+    // output is rounded — otherwise this test wouldn't be exercising the bug.
+    expect(incomeRows[0].grossAmount).not.toBe(33.33);
+    expect(incomeRows[0].withholdingTax).not.toBe(2.14);
+    expect(incomeRows[1].grossAmount).not.toBe(16.67);
+    expect(incomeRows[1].withholdingTax).not.toBe(2.33);
+
+    const result = buildQuadroRM(undefined, incomeRows, 2024);
+
+    expect(result.dividendiEsteri).toHaveLength(1);
+    expect(result.dividendiEsteri[0].lordo).toBe(33.33);
+    expect(result.dividendiEsteri[0].rittenutaEstera).toBe(2.14);
+
+    expect(result.cedole).toHaveLength(1);
+    expect(result.cedole[0].importo).toBe(16.67);
+    expect(result.cedole[0].rittenutaEstera).toBe(2.33);
+  });
+
+  it("also rounds end-to-end through the public Calculator API", () => {
+    const buy = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-01-10",
+      type: "BUY",
+      quantity: 10,
+      totalLocal: -1000,
+      totalEUR: 1000,
+    });
+    const sell = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-06-10",
+      type: "SELL",
+      quantity: 10,
+      totalLocal: 1400,
+      totalEUR: 1400,
+    });
+
+    const incomeRows: IncomeRow[] = [
+      {
+        isin: STOCK_ISIN,
+        product: "Apple Inc",
+        date: "2024-03-01",
+        incomeType: "dividend",
+        grossAmount: 100 / 3,
+        withholdingTax: 15 / 7,
+        currency: "USD",
+        fxRate: 1.08,
+      },
+    ];
+
+    const report = new Calculator([buy, sell], [], {
+      classification: CLASSIFICATION,
+      incomeRows,
+    }).calculateGains("LIFO");
+
+    expect(report.dichiarazione!.quadroRM.dividendiEsteri[0].lordo).toBe(
+      33.33,
+    );
+    expect(
+      report.dichiarazione!.quadroRM.dividendiEsteri[0].rittenutaEstera,
+    ).toBe(2.14);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Category 13 — Income-row tax-year filtering (Calculator integration)
 // ---------------------------------------------------------------------------

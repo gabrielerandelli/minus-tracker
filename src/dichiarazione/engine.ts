@@ -123,8 +123,8 @@ export function buildQuadroRM(
     .map((r) => ({
       isin: r.isin,
       prodotto: r.product,
-      lordo: r.grossAmount,
-      rittenutaEstera: r.withholdingTax,
+      lordo: roundHalfUp(r.grossAmount),
+      rittenutaEstera: roundHalfUp(r.withholdingTax),
     }));
 
   const cedole = incomeRows
@@ -132,8 +132,8 @@ export function buildQuadroRM(
     .map((r) => ({
       isin: r.isin,
       prodotto: r.product,
-      importo: r.grossAmount,
-      rittenutaEstera: r.withholdingTax,
+      importo: roundHalfUp(r.grossAmount),
+      rittenutaEstera: roundHalfUp(r.withholdingTax),
     }));
 
   return {

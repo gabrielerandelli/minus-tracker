@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Calculator.calculateGains()`'s Quadro RM export (`dichiarazione.quadroRM.dividendiEsteri` /
+  `.cedole`) contained unrounded, many-decimal-place EUR amounts instead of figures rounded to
+  the cent.** `buildQuadroRM()` copied `IncomeRow.grossAmount`/`withholdingTax` straight through
+  to `DividendEntry.lordo`/`rittenutaEstera` and `CedolaEntry.importo`/`rittenutaEstera` with no
+  rounding, even though every other monetary figure the Dichiarazione engine produces —
+  `QuadroRTReport`'s `differenza`/`imponibileNetto`/`imposta`/carry-forward `importo`, and Quadro
+  RM's own `capitaleAliquota26`/`capitaleAliquota125` — is already rounded to 2 decimal places
+  before being placed on the report. Any non-EUR dividend or bond coupon (the ordinary case for a
+  US-listed stock or bond held via DEGIRO/IBKR) produces a `grossAmount`/`withholdingTax` with
+  many trailing decimals once converted through an ECB rate (e.g. `92.4812725423102`), and that
+  raw floating-point value flowed unchanged into `report.dichiarazione.quadroRM` and into the JSON
+  file written by `dichiarazione.exportTo()` — the library's actual Modello Redditi PF filing aid,
+  where amounts must be expressed to the cent. `buildQuadroRM()` now rounds `lordo`/`importo` and
+  `rittenutaEstera` with the same `roundHalfUp()` helper already used everywhere else in
+  `src/dichiarazione/engine.ts`, matching the PRD's documented rule ("Values rounded to 2 decimal
+  places in output only", `docs/prd/14-dichiarazione-engine.md`). `IncomeRow.grossAmount`/
+  `withholdingTax` themselves are untouched and remain unrounded internal EUR figures, consistent
+  with `Transaction.totalEUR`. New regression tests: `test/dichiarazione.test.ts`'s `REG-005`.
+
 - **`DEGIROParser` and `IBKRParser` silently dropped an entire trade row — not just its fee — when
   the fee-currency cell was blank on a row with a non-zero fee.** `Transaction costs currency`
   (DEGIRO) and `IBCommissionCurrency` (IBKR) are read independently from the trade's own currency
