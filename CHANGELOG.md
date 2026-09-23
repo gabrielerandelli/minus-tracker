@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `carryForward` entry dated the same year as, or a future year relative to, the report's
+  `taxYear` was silently applied instead of being rejected, incorrectly wiping out real Bucket B
+  capital gains.** Both `Calculator.calculateGains()` (`src/calculator/index.ts`) and the
+  Dichiarazione engine's `buildQuadroRT()` (`src/dichiarazione/engine.ts`) only guarded against a
+  carry-forward loss being *too old* (`taxYear - entry.year > 4`, per the documented 4-year
+  expiry rule) but never checked the other side of that window: an entry with
+  `entry.year >= taxYear` — a "loss" dated in the current tax year, or worse, in a future year
+  relative to the report being computed — was consumed against `plusvalenze` exactly like a
+  legitimate prior-year loss. Per Art. 68 co. 5 TUIR, a loss can only offset gains realized 1 to 4
+  tax years *after* it, never gains from the same year or an earlier one, so this let a single
+  malformed or mistyped entry (e.g. a transposed digit in a `--carry-forward YYYY:amount` CLI
+  flag, or a `~/.config/minus-tracker/carryforward.json` left with a newer entry while generating
+  a report for an earlier `--year`) silently understate a real, already-realized taxable gain
+  with no warning. Both call sites now share a single internal eligibility rule,
+  `isCarryForwardEligible(taxYear, entryYear)` (new `src/carry-forward.ts`, not part of the
+  public API), requiring `1 <= taxYear - entryYear <= 4`; an entry outside that window — too old
+  *or* not yet eligible — is dropped from consumption exactly like an already-expired entry
+  always was: it contributes nothing to `carryForwardApplied` and does not reappear in
+  `carryForwardEntriesRemaining` / `carryForwardRiportato`. No public API changed
+  (`Calculator`, `CalculatorOptions`, `CarryForward`, `CarryForwardEntry`, `DEGIROParser`,
+  `IBKRParser`, `Classifier` are all unchanged). New regression tests:
+  `test/regression-future-dated-carryforward.test.ts` and two new cases in
+  `test/dichiarazione.test.ts`.
+
 - **`Calculator.calculateGains()`'s Quadro RM export (`dichiarazione.quadroRM.dividendiEsteri` /
   `.cedole`) contained unrounded, many-decimal-place EUR amounts instead of figures rounded to
   the cent.** `buildQuadroRM()` copied `IncomeRow.grossAmount`/`withholdingTax` straight through
