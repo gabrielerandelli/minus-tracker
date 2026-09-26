@@ -27,6 +27,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   magnitude below any genuine oversell, e.g. selling `0.01` shares more than were ever bought — which
   still throws exactly as before, regardless of lot count). New regression test:
   `test/regression-fractional-lot-fp-epsilon.test.ts`.
+- **`Calculator.calculateGains()` silently inflated the Bucket B taxable base (`bucketB.netResult`)
+  above its true value when a supplied `CarryForward` entry had a negative `amount`.** Neither the
+  `CarryForward` type (`{ year: number; amount: number }`) nor the library/MCP API surface
+  (`CalculatorOptions.carryForward`, `calculate_from_csv`/`calculate_gains`'s `carryForward` input)
+  validates that `amount` is non-negative — only the CLI's own `--carry-forward <YYYY>:<amount>`
+  flag parser rejects a non-positive value. A negative amount is an easy, realistic mistake by
+  analogy with `gainLossEUR`, which IS negative for losses elsewhere in this codebase (e.g. an
+  agent driving the MCP server could plausibly pass last year's loss as `-500` instead of `500`).
+  When Bucket B had a net gain for the tax year (`remaining > 0`), `Math.min(entry.amount,
+  remaining)` evaluated to that negative amount, and the carry-forward loop then unconditionally
+  ran `remaining -= consumed` — subtracting a negative number, which *increases* `remaining`
+  instead of leaving it untouched — silently inflating `bucketB.netResult` above the true taxable
+  base and reporting a nonsensical negative `bucketB.carryForwardApplied`. Worse, the same input
+  made `bucketB.netResult` disagree with `dichiarazione.quadroRT.imponibileNetto` for the identical
+  underlying result: `buildQuadroRT()` in `src/dichiarazione/engine.ts` already guards its
+  structurally identical update behind `if (consumed > 0)`, so it was unaffected — but
+  `Calculator`'s own loop lacked that guard, reintroducing the exact class of same-report
+  divergence the `REG-004` fix (above) already closed for a different trigger. `Calculator` now
+  wraps `carryForwardApplied += consumed; remaining -= consumed;` in the identical `if (consumed >
+  0)` guard `buildQuadroRT` already uses, so a non-positive `consumed` (from a zero or negative
+  carry-forward amount) is a pure no-op, restoring agreement between `bucketB.netResult` and
+  `dichiarazione.quadroRT.imponibileNetto` for this input shape too. New regression test:
+  `test/dichiarazione.test.ts`'s `REG-006`.
+- **A `carryForward` entry dated the same year as, or a future year relative to, the report's
+  `taxYear` was silently applied instead of being rejected, incorrectly wiping out real Bucket B
+  capital gains.** Both `Calculator.calculateGains()` (`src/calculator/index.ts`) and the
+  Dichiarazione engine's `buildQuadroRT()` (`src/dichiarazione/engine.ts`) only guarded against a
+  carry-forward loss being *too old* (`taxYear - entry.year > 4`, per the documented 4-year
+  expiry rule) but never checked the other side of that window: an entry with
+  `entry.year >= taxYear` — a "loss" dated in the current tax year, or worse, in a future year
+  relative to the report being computed — was consumed against `plusvalenze` exactly like a
+  legitimate prior-year loss. Per Art. 68 co. 5 TUIR, a loss can only offset gains realized 1 to 4
+  tax years *after* it, never gains from the same year or an earlier one, so this let a single
+  malformed or mistyped entry (e.g. a transposed digit in a `--carry-forward YYYY:amount` CLI
+  flag, or a `~/.config/minus-tracker/carryforward.json` left with a newer entry while generating
+  a report for an earlier `--year`) silently understate a real, already-realized taxable gain
+  with no warning. Both call sites now share a single internal eligibility rule,
+  `isCarryForwardEligible(taxYear, entryYear)` (new `src/carry-forward.ts`, not part of the
+  public API), requiring `1 <= taxYear - entryYear <= 4`; an entry outside that window — too old
+  *or* not yet eligible — is dropped from consumption exactly like an already-expired entry
+  always was: it contributes nothing to `carryForwardApplied` and does not reappear in
+  `carryForwardEntriesRemaining` / `carryForwardRiportato`. No public API changed
+  (`Calculator`, `CalculatorOptions`, `CarryForward`, `CarryForwardEntry`, `DEGIROParser`,
+  `IBKRParser`, `Classifier` are all unchanged). New regression tests:
+  `test/regression-future-dated-carryforward.test.ts` and two new cases in
+  `test/dichiarazione.test.ts`.
 
 - **`Calculator.calculateGains()`'s Quadro RM export (`dichiarazione.quadroRM.dividendiEsteri` /
   `.cedole`) contained unrounded, many-decimal-place EUR amounts instead of figures rounded to

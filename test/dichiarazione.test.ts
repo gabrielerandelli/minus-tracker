@@ -97,6 +97,28 @@ describe("TC-085 (TC-D5): expired CF (gap > 4 years)", () => {
   });
 });
 
+describe("Regression: future-dated / same-year CF entry is not applied", () => {
+  it("ignores a future-dated entry (year >= taxYear) and taxes the full gain", () => {
+    const cf: CarryForward[] = [{ year: 2026, amount: 500 }];
+    const result = buildQuadroRT(makeBucketB(1000, 0), cf, 2023);
+    expect(result.carryForwardApplied).toEqual([]);
+    expect(result.imponibileNetto).toBe(1000);
+    expect(result.imposta).toBe(260);
+    // Not yet eligible (2023 - 2026 = -3, outside 1..4): must not reappear
+    // as "remaining" either — same treatment as an expired entry.
+    expect(result.carryForwardRiportato).toEqual([]);
+  });
+
+  it("ignores a same-year entry (year === taxYear) and taxes the full gain", () => {
+    const cf: CarryForward[] = [{ year: 2023, amount: 500 }];
+    const result = buildQuadroRT(makeBucketB(1000, 0), cf, 2023);
+    expect(result.carryForwardApplied).toEqual([]);
+    expect(result.imponibileNetto).toBe(1000);
+    expect(result.imposta).toBe(260);
+    expect(result.carryForwardRiportato).toEqual([]);
+  });
+});
+
 describe("TC-086 (TC-D15): unsorted CF input — must apply oldest-first", () => {
   // Input deliberately in wrong order: 2023, 2021, 2022
   const cf: CarryForward[] = [
@@ -621,6 +643,60 @@ describe("REG-005: dividendiEsteri/cedole amounts must be rounded to 2 decimal p
     expect(
       report.dichiarazione!.quadroRM.dividendiEsteri[0].rittenutaEstera,
     ).toBe(2.14);
+  });
+});
+
+describe("REG-006: a negative-amount carryForward entry must not inflate bucketB.netResult", () => {
+  it("treats a negative CF entry as a no-op instead of increasing remaining, agreeing with quadroRT.imponibileNetto", () => {
+    const buy = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-01-10",
+      type: "BUY",
+      quantity: 10,
+      pricePerUnit: 100,
+      totalLocal: -1000,
+      totalEUR: 1000,
+    });
+    const sell = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-06-10",
+      type: "SELL",
+      quantity: 10,
+      pricePerUnit: 200,
+      totalLocal: 2000,
+      totalEUR: 2000,
+    });
+
+    // A caller (e.g. an MCP tool argument or a hand-built CarryForward[])
+    // supplies a prior-year loss with the wrong sign — a plausible mistake by
+    // analogy with gainLossEUR, which IS negative for losses elsewhere in
+    // this codebase. Nothing in the CarryForward type or the library API
+    // forbids this (only the CLI's own flag parser rejects it).
+    //
+    // Before the fix: remaining = 1000 (bPlusvalenze - bMinusvalenze), and
+    // Math.min(-500, 1000) === -500, so `remaining -= consumed` becomes
+    // `remaining -= (-500)`, i.e. remaining INCREASES to 1500 — a negative
+    // carryForward entry silently inflates the taxable base above what it
+    // would be with no carryForward supplied at all, and
+    // carryForwardApplied comes out negative (-500) too.
+    const report = new Calculator([buy, sell], [], {
+      classification: CLASSIFICATION,
+      carryForward: [{ year: 2023, amount: -500 }],
+    }).calculateGains("LIFO");
+
+    // Bucket B gain this year is exactly 1000 (2000 sell - 1000 buy); a
+    // negative CF entry must never move it, in either direction.
+    expect(report.bucketB!.netResult).toBe(1000);
+    expect(report.bucketB!.carryForwardApplied).toBe(0);
+
+    // The REG-004 invariant: bucketB.netResult and
+    // dichiarazione.quadroRT.imponibileNetto must always agree for the same
+    // underlying result — buildQuadroRT already guards this input shape
+    // correctly, so this pins Calculator's own loop to the same behavior.
+    expect(report.bucketB!.netResult).toBe(
+      report.dichiarazione!.quadroRT.imponibileNetto,
+    );
+    expect(report.dichiarazione!.quadroRT.imponibileNetto).toBe(1000);
   });
 });
 
