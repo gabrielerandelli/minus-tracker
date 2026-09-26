@@ -97,6 +97,28 @@ describe("TC-085 (TC-D5): expired CF (gap > 4 years)", () => {
   });
 });
 
+describe("Regression: future-dated / same-year CF entry is not applied", () => {
+  it("ignores a future-dated entry (year >= taxYear) and taxes the full gain", () => {
+    const cf: CarryForward[] = [{ year: 2026, amount: 500 }];
+    const result = buildQuadroRT(makeBucketB(1000, 0), cf, 2023);
+    expect(result.carryForwardApplied).toEqual([]);
+    expect(result.imponibileNetto).toBe(1000);
+    expect(result.imposta).toBe(260);
+    // Not yet eligible (2023 - 2026 = -3, outside 1..4): must not reappear
+    // as "remaining" either — same treatment as an expired entry.
+    expect(result.carryForwardRiportato).toEqual([]);
+  });
+
+  it("ignores a same-year entry (year === taxYear) and taxes the full gain", () => {
+    const cf: CarryForward[] = [{ year: 2023, amount: 500 }];
+    const result = buildQuadroRT(makeBucketB(1000, 0), cf, 2023);
+    expect(result.carryForwardApplied).toEqual([]);
+    expect(result.imponibileNetto).toBe(1000);
+    expect(result.imposta).toBe(260);
+    expect(result.carryForwardRiportato).toEqual([]);
+  });
+});
+
 describe("TC-086 (TC-D15): unsorted CF input — must apply oldest-first", () => {
   // Input deliberately in wrong order: 2023, 2021, 2022
   const cf: CarryForward[] = [

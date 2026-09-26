@@ -10,6 +10,7 @@ import type {
   CarryForwardEntry,
 } from "../types.js";
 import { CalculationError } from "../errors.js";
+import { isCarryForwardEligible } from "../carry-forward.js";
 import {
   buildQuadroRT,
   buildQuadroRM,
@@ -344,7 +345,12 @@ export class Calculator {
       let carryForwardApplied = 0;
       const carryForwardEntriesRemaining: CarryForwardEntry[] = [];
       for (const entry of carryForwards) {
-        if (taxYear - entry.year > 4) continue;
+        // Eligible only if 1 <= taxYear - entry.year <= 4 (Art. 68 co.5
+        // TUIR): too-old entries are already skipped below, and an entry
+        // dated the same year as, or after, this report's taxYear must be
+        // skipped the same way — it has not yet been realized "before" this
+        // report, so it cannot offset it.
+        if (!isCarryForwardEligible(taxYear, entry.year)) continue;
         const consumed = remaining > 0 ? Math.min(entry.amount, remaining) : 0;
         // Guard mirrors buildQuadroRT's own equivalent update
         // (src/dichiarazione/engine.ts): a non-positive `consumed` — which

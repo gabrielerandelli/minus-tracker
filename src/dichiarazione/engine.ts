@@ -9,6 +9,7 @@ import type {
   QuadroRMReport,
   QuadroRTReport,
 } from "../types.js";
+import { isCarryForwardEligible } from "../carry-forward.js";
 
 function roundHalfUp(x: number): number {
   return (Math.sign(x) * Math.round(Math.abs(x) * 100)) / 100;
@@ -23,8 +24,10 @@ export function buildQuadroRT(
   const minusvalenze = bucketB.minusvalenze;
   const differenza = roundHalfUp(plusvalenze - minusvalenze);
 
-  // Carry-forward consumption: oldest-first, only unexpired entries
-  // (taxYear - entry.year <= 4), consuming only what this year's
+  // Carry-forward consumption: oldest-first, only eligible entries
+  // (1 <= taxYear - entry.year <= 4, via isCarryForwardEligible — this also
+  // excludes a same-year or future-dated entry, not just a too-old one),
+  // consuming only what this year's
   // `differenza` still needs. This mirrors the consumption order/formula
   // Calculator.calculateGains uses to derive bucketB.carryForwardEntriesRemaining
   // (src/calculator/index.ts) so the two stay in agreement; it is run in a
@@ -50,7 +53,9 @@ export function buildQuadroRT(
   let cumulativeConsumedRounded = 0;
 
   for (const entry of sorted) {
-    if (taxYear - entry.year > 4) continue; // expired: gone, not "remaining"
+    // expired (too old) or not-yet-eligible (same-year/future-dated): gone,
+    // not "remaining" — see isCarryForwardEligible for the shared rule.
+    if (!isCarryForwardEligible(taxYear, entry.year)) continue;
     const consumed = remaining > 0 ? Math.min(entry.amount, remaining) : 0;
     if (consumed > 0) {
       cumulativeConsumed += consumed;
