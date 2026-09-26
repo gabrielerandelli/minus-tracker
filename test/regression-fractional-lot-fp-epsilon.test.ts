@@ -223,6 +223,120 @@ describe("regression: three 8dp-rounded fractional BUYs closed by a round-number
   }
 });
 
+/**
+ * Regression: the broker-rounding-residual tolerance above (SELL_CLOSE_TOLERANCE, fixed at 5e-8)
+ * was derived from a *3-lot* example and does not scale with the number of lots consumed by a
+ * single SELL. With N independently-8dp-rounded BUY lots of a repeating fraction, each lot's own
+ * rounding contributes up to 0.5e-8 of worst-case residual, so the worst-case *cumulative*
+ * residual across N lots grows roughly linearly with N — for N=107 it reaches ~4.7e-7, about
+ * 9.4x the old fixed 5e-8 tolerance.
+ *
+ * This is entirely realistic: DEGIRO and IBKR both support recurring/fractional investment plans
+ * that place many small BUYs over months (daily/weekly), easily reaching 100+ lots on one ISIN.
+ *
+ * BUY  0.00934579 shares (= round(1/107, 8dp)) x107, on 107 consecutive calendar days starting
+ *      2024-01-02, 400.00 EUR each, zero fees. These 107 independently-8dp-rounded quantities sum
+ *      to 0.99999953 (not the mathematically-exact 1.0), a broker-rounding residual of 4.7e-7.
+ * SELL 1.00000000 shares the day after the last BUY, at 450.00 EUR, zero fees — exactly what a
+ *      broker's own UI would show for "close full position".
+ *
+ * Before the fix, this SELL correctly consumed all 107 open lots but was left with
+ * remainingSellQty == 4.7e-7 and no lots left; since 4.7e-7 > the old fixed 5e-8 tolerance, it
+ * threw NO_OPEN_LOTS even though the position was, for all real-world purposes, fully and
+ * correctly closed.
+ */
+const N_LOTS = 107;
+const LOT_QTY = "0.00934579"; // round(1/107, 8dp)
+const LOT_PRICE_EUR = 400.0;
+const SELL_PRICE_EUR = 450.0;
+const REPEATING_ISIN = "US0000000001";
+
+function fmtDDMMYYYY(d: Date): string {
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
+function buildRepeatingFractionCsv(): { csv: string; sellDate: string } {
+  const header =
+    "Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID";
+  const rows = [header];
+  const start = Date.UTC(2024, 0, 2); // 2024-01-02
+  const lotQtyNum = parseFloat(LOT_QTY);
+  const localValue = (-lotQtyNum * LOT_PRICE_EUR).toFixed(2);
+
+  for (let i = 0; i < N_LOTS; i++) {
+    const d = new Date(start);
+    d.setUTCDate(d.getUTCDate() + i);
+    const dateStr = fmtDDMMYYYY(d);
+    rows.push(
+      `${dateStr},09:00,Repeating Corp,${REPEATING_ISIN},XNAS,XNAS,${LOT_QTY},${LOT_PRICE_EUR.toFixed(2)},${localValue},EUR,${localValue},EUR,1,0.00,EUR,${localValue},EUR,buy-${i}`,
+    );
+  }
+
+  const sellDateObj = new Date(start);
+  sellDateObj.setUTCDate(sellDateObj.getUTCDate() + N_LOTS);
+  const sellDate = fmtDDMMYYYY(sellDateObj);
+  const sellValue = SELL_PRICE_EUR.toFixed(2);
+  rows.push(
+    `${sellDate},09:00,Repeating Corp,${REPEATING_ISIN},XNAS,XNAS,-1.00000000,${SELL_PRICE_EUR.toFixed(2)},${sellValue},EUR,${sellValue},EUR,1,0.00,EUR,${sellValue},EUR,sell-1`,
+  );
+
+  return { csv: rows.join("\n"), sellDate };
+}
+
+function runRepeatingFractionFor(method: LotMethod) {
+  const { csv } = buildRepeatingFractionCsv();
+  const transactions = new DEGIROParser().parse(csv);
+  return new Calculator(transactions).calculateGains(method);
+}
+
+describe("regression: N=107 independently-8dp-rounded fractional BUYs closed by a round-number SELL (residual scales with lot count)", () => {
+  it("sanity: parsing produces 108 transactions with zero warnings, and total BUY quantity is the expected broker-rounding residual", () => {
+    const { csv } = buildRepeatingFractionCsv();
+    const parser = new DEGIROParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(N_LOTS + 1);
+
+    const totalBuyQty = transactions
+      .filter((t) => t.type === "BUY")
+      .reduce((sum, t) => sum + t.quantity, 0);
+    expect(totalBuyQty).toBeCloseTo(0.99999953, 8);
+  });
+
+  for (const method of ["LIFO", "FIFO"] as const) {
+    describe(`${method}`, () => {
+      it("does not throw CalculationError", () => {
+        expect(() => runRepeatingFractionFor(method)).not.toThrow();
+      });
+
+      it("matched lots sum to the actual bought quantity (~0.99999953), not the SELL's 1.00000000", () => {
+        const report = runRepeatingFractionFor(method);
+        expect(report.lots).toHaveLength(N_LOTS);
+        const totalMatched = report.lots.reduce((sum, l) => sum + l.quantity, 0);
+        expect(totalMatched).toBeCloseTo(0.99999953, 8);
+        expect(totalMatched).not.toBeCloseTo(1.0, 8);
+      });
+
+      it("plusvalenze/minusvalenze/netResult are sane: a plusvalenza of roughly (450-400)*0.99999953", () => {
+        const report = runRepeatingFractionFor(method);
+        // Each of the 107 matched lots' gainLossEUR is independently rounded to the nearest cent
+        // (roundHalfUp) before summing — e.g. (450-400)*0.00934579 = 0.4672895 rounds to 0.47 per
+        // lot — so the aggregate plusvalenza carries up to ~107 * 0.005 = ~0.53 EUR of cumulative
+        // per-lot cent-rounding on top of the "ideal" (450-400)*0.99999953 figure. That per-lot
+        // rounding is pre-existing, correct behavior (not part of this bug or its fix), so this
+        // sanity check allows for it rather than asserting an exact-to-the-cent match.
+        const expectedGain = (SELL_PRICE_EUR - LOT_PRICE_EUR) * 0.99999953;
+        expect(report.minusvalenze).toBe(0);
+        expect(report.plusvalenze).toBeCloseTo(expectedGain, 0);
+        expect(report.netResult).toBeCloseTo(expectedGain, 0);
+        expect(report.netResult).toBeGreaterThan(0);
+      });
+    });
+  }
+});
+
 describe("regression: genuine insufficient-open-lots still throws (not masked by epsilon fix)", () => {
   const HEADER2 =
     "Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID";
