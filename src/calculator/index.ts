@@ -64,6 +64,23 @@ function roundQty(x: number): number {
 // orders of magnitude below any genuine oversell (e.g. 0.01 shares), which must still throw.
 const SELL_CLOSE_TOLERANCE = 5 * 10 ** -QUANTITY_DECIMALS;
 
+// SELL_CLOSE_TOLERANCE above was derived from a *3-lot* example and does not scale with the
+// number of lots consumed by a single SELL. Each independently-8dp-rounded BUY lot contributes
+// up to 0.5 * 10^-QUANTITY_DECIMALS of its own worst-case rounding error, so the worst-case
+// *cumulative* residual across N lots consumed by one SELL grows roughly linearly with N (e.g.
+// N=107 lots of a repeating fraction like 1/107 can leave a residual of ~4.7e-7 — about 9.4x the
+// fixed 5e-8 tolerance above). This is realistic: DEGIRO/IBKR recurring fractional-investment
+// plans can place 100+ small BUYs on one ISIN over a few months.
+//
+// SELL_CLOSE_TOLERANCE_PER_LOT scales the exhaustion tolerance with the number of lots actually
+// consumed while matching *this* SELL (see lotsConsumedThisSell below). The result is floored at
+// SELL_CLOSE_TOLERANCE (so the original few-lot behavior is unaffected or only strengthened) and
+// capped at SELL_CLOSE_TOLERANCE_CEILING, which stays several orders of magnitude below any
+// genuine oversell (e.g. 0.01 shares, per the "genuine insufficient-open-lots still throws"
+// regression test) — an oversell can never be masked, no matter how many lots a SELL consumed.
+const SELL_CLOSE_TOLERANCE_PER_LOT = 5 * 10 ** -(QUANTITY_DECIMALS + 1);
+const SELL_CLOSE_TOLERANCE_CEILING = 10 ** -(QUANTITY_DECIMALS - 2);
+
 // Most-frequent-year fallback, used only when there are no SELL transactions
 // at all to infer from (see inferTaxYear below, and TC-176 scenario (b)).
 // Pre-v0.11.2 inference logic, unchanged.
@@ -193,18 +210,30 @@ export class Calculator {
 
         const sellPricePerUnitEUR = tx.totalEUR / tx.quantity;
         let remainingSellQty = tx.quantity;
+        // Counts how many lots this SELL's own matching has consumed so far (incremented once
+        // per while-loop iteration below, i.e. once per lot touched) — see
+        // SELL_CLOSE_TOLERANCE_PER_LOT above for why the exhaustion tolerance scales with it.
+        let lotsConsumedThisSell = 0;
 
         while (remainingSellQty > 0) {
           if (!lots || lots.length === 0) {
             // Open lots are fully exhausted. A residual this small is a broker-rounding
-            // artifact (see SELL_CLOSE_TOLERANCE above), not a real oversell — treat the
-            // position as cleanly closed. Anything larger is a genuine mismatch and still
-            // throws.
-            if (remainingSellQty <= SELL_CLOSE_TOLERANCE) break;
+            // artifact (see SELL_CLOSE_TOLERANCE / SELL_CLOSE_TOLERANCE_PER_LOT above), not a
+            // real oversell — treat the position as cleanly closed. Anything larger is a genuine
+            // mismatch and still throws.
+            const dynamicTolerance = Math.min(
+              SELL_CLOSE_TOLERANCE_CEILING,
+              Math.max(
+                SELL_CLOSE_TOLERANCE,
+                lotsConsumedThisSell * SELL_CLOSE_TOLERANCE_PER_LOT,
+              ),
+            );
+            if (remainingSellQty <= dynamicTolerance) break;
             throw new CalculationError(tx.isin, tx.date);
           }
 
           const lot = method === "LIFO" ? lots[lots.length - 1] : lots[0];
+          lotsConsumedThisSell++;
           // Both operands are already snapped to QUANTITY_DECIMALS (BUY lots start clean from
           // tx.quantity; carried-over lot/remaining quantities are re-snapped below), so
           // matchedQty — which flows verbatim into the public MatchedLot.quantity field — is

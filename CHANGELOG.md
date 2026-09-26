@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Calculator.calculateGains()` still threw a spurious `NO_OPEN_LOTS` error when closing a
+  fractional-share position built from *many* BUY lots, even after the fixed `5e-8`
+  `SELL_CLOSE_TOLERANCE` introduced to handle this class of bug (see the 0.13.1-era fix below).**
+  That tolerance was sized for a 3-lot example and doesn't scale with the number of lots consumed
+  by a single SELL: each independently-8dp-rounded BUY lot (the precision real brokers export
+  fractional quantities at) contributes up to `0.5e-8` of its own worst-case rounding error, so the
+  worst-case *cumulative* residual across `N` lots grows roughly linearly with `N`. A position built
+  from 107 daily fractional BUYs of `0.00934579` shares each (`round(1/107, 8dp)` — a realistic
+  shape for a DEGIRO/IBKR recurring/fractional investment plan run over a few months), closed by a
+  single `1.00000000`-share SELL, left a `~4.7e-7` residual once every open lot was legitimately
+  consumed — about 9.4x the old fixed `5e-8` tolerance — and threw `NO_OPEN_LOTS` on a position
+  that was, for all real-world purposes, fully and correctly closed. The exhaustion check now uses
+  a dynamic tolerance that scales with the number of lots actually consumed while matching that
+  specific SELL (`lotsConsumedThisSell * SELL_CLOSE_TOLERANCE_PER_LOT`, floored at the original
+  `5e-8` so few-lot behavior is unaffected, and capped at a `1e-6` ceiling that stays four orders of
+  magnitude below any genuine oversell, e.g. selling `0.01` shares more than were ever bought — which
+  still throws exactly as before, regardless of lot count). New regression test:
+  `test/regression-fractional-lot-fp-epsilon.test.ts`.
 - **`Calculator.calculateGains()` silently inflated the Bucket B taxable base (`bucketB.netResult`)
   above its true value when a supplied `CarryForward` entry had a negative `amount`.** Neither the
   `CarryForward` type (`{ year: number; amount: number }`) nor the library/MCP API surface
