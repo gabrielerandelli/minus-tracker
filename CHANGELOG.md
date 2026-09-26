@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Calculator.calculateGains()` silently inflated the Bucket B taxable base (`bucketB.netResult`)
+  above its true value when a supplied `CarryForward` entry had a negative `amount`.** Neither the
+  `CarryForward` type (`{ year: number; amount: number }`) nor the library/MCP API surface
+  (`CalculatorOptions.carryForward`, `calculate_from_csv`/`calculate_gains`'s `carryForward` input)
+  validates that `amount` is non-negative — only the CLI's own `--carry-forward <YYYY>:<amount>`
+  flag parser rejects a non-positive value. A negative amount is an easy, realistic mistake by
+  analogy with `gainLossEUR`, which IS negative for losses elsewhere in this codebase (e.g. an
+  agent driving the MCP server could plausibly pass last year's loss as `-500` instead of `500`).
+  When Bucket B had a net gain for the tax year (`remaining > 0`), `Math.min(entry.amount,
+  remaining)` evaluated to that negative amount, and the carry-forward loop then unconditionally
+  ran `remaining -= consumed` — subtracting a negative number, which *increases* `remaining`
+  instead of leaving it untouched — silently inflating `bucketB.netResult` above the true taxable
+  base and reporting a nonsensical negative `bucketB.carryForwardApplied`. Worse, the same input
+  made `bucketB.netResult` disagree with `dichiarazione.quadroRT.imponibileNetto` for the identical
+  underlying result: `buildQuadroRT()` in `src/dichiarazione/engine.ts` already guards its
+  structurally identical update behind `if (consumed > 0)`, so it was unaffected — but
+  `Calculator`'s own loop lacked that guard, reintroducing the exact class of same-report
+  divergence the `REG-004` fix (above) already closed for a different trigger. `Calculator` now
+  wraps `carryForwardApplied += consumed; remaining -= consumed;` in the identical `if (consumed >
+  0)` guard `buildQuadroRT` already uses, so a non-positive `consumed` (from a zero or negative
+  carry-forward amount) is a pure no-op, restoring agreement between `bucketB.netResult` and
+  `dichiarazione.quadroRT.imponibileNetto` for this input shape too. New regression test:
+  `test/dichiarazione.test.ts`'s `REG-006`.
 - **A `carryForward` entry dated the same year as, or a future year relative to, the report's
   `taxYear` was silently applied instead of being rejected, incorrectly wiping out real Bucket B
   capital gains.** Both `Calculator.calculateGains()` (`src/calculator/index.ts`) and the

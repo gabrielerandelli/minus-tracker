@@ -646,6 +646,60 @@ describe("REG-005: dividendiEsteri/cedole amounts must be rounded to 2 decimal p
   });
 });
 
+describe("REG-006: a negative-amount carryForward entry must not inflate bucketB.netResult", () => {
+  it("treats a negative CF entry as a no-op instead of increasing remaining, agreeing with quadroRT.imponibileNetto", () => {
+    const buy = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-01-10",
+      type: "BUY",
+      quantity: 10,
+      pricePerUnit: 100,
+      totalLocal: -1000,
+      totalEUR: 1000,
+    });
+    const sell = makeTransaction({
+      isin: STOCK_ISIN,
+      date: "2024-06-10",
+      type: "SELL",
+      quantity: 10,
+      pricePerUnit: 200,
+      totalLocal: 2000,
+      totalEUR: 2000,
+    });
+
+    // A caller (e.g. an MCP tool argument or a hand-built CarryForward[])
+    // supplies a prior-year loss with the wrong sign — a plausible mistake by
+    // analogy with gainLossEUR, which IS negative for losses elsewhere in
+    // this codebase. Nothing in the CarryForward type or the library API
+    // forbids this (only the CLI's own flag parser rejects it).
+    //
+    // Before the fix: remaining = 1000 (bPlusvalenze - bMinusvalenze), and
+    // Math.min(-500, 1000) === -500, so `remaining -= consumed` becomes
+    // `remaining -= (-500)`, i.e. remaining INCREASES to 1500 — a negative
+    // carryForward entry silently inflates the taxable base above what it
+    // would be with no carryForward supplied at all, and
+    // carryForwardApplied comes out negative (-500) too.
+    const report = new Calculator([buy, sell], [], {
+      classification: CLASSIFICATION,
+      carryForward: [{ year: 2023, amount: -500 }],
+    }).calculateGains("LIFO");
+
+    // Bucket B gain this year is exactly 1000 (2000 sell - 1000 buy); a
+    // negative CF entry must never move it, in either direction.
+    expect(report.bucketB!.netResult).toBe(1000);
+    expect(report.bucketB!.carryForwardApplied).toBe(0);
+
+    // The REG-004 invariant: bucketB.netResult and
+    // dichiarazione.quadroRT.imponibileNetto must always agree for the same
+    // underlying result — buildQuadroRT already guards this input shape
+    // correctly, so this pins Calculator's own loop to the same behavior.
+    expect(report.bucketB!.netResult).toBe(
+      report.dichiarazione!.quadroRT.imponibileNetto,
+    );
+    expect(report.dichiarazione!.quadroRT.imponibileNetto).toBe(1000);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Category 13 — Income-row tax-year filtering (Calculator integration)
 // ---------------------------------------------------------------------------

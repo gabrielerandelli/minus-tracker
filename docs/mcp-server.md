@@ -49,7 +49,13 @@ It accepts `overrides`/`offline` (forwarded into the classify step) and `carryFo
 into the calculate step — this tool is fully stateless, so `carryForward` must be resent on every
 call or its effect is silently lost); the parse step's `incomeRows` is wired into the calculate
 step automatically. An unresolved ISIN still defaults to Bucket B (same as `calculate_gains`) and
-is listed in `unresolvedIsins`, so a follow-up call can pass `overrides` to correct it.
+is listed in `unresolvedIsins`, so a follow-up call can pass `overrides` to correct it. Each
+`carryForward` entry's `amount` must be the **positive** magnitude of the prior year's loss (e.g.
+`{ year: 2023, amount: 500 }` for a €500 loss) — do not pass it as a negative number by analogy
+with `gainLossEUR` elsewhere in this library's output, which IS negative for losses. A negative
+`amount` is treated as a no-op (it neither reduces nor increases the taxable base) rather than
+being rejected, so passing the wrong sign silently loses that year's carry-forward instead of
+applying it.
 
 **Transports:** `minus-tracker-mcp` defaults to stdio (unchanged). Pass `--transport sse --port
 <n>` to instead expose a [Streamable HTTP/SSE](https://modelcontextprotocol.io) listener — useful
