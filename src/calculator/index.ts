@@ -156,7 +156,12 @@ export class Calculator {
    * @throws {CalculationError} `.code === "NO_OPEN_LOTS"` when a SELL has no matching open
    *         buy lots (`error.isin`/`error.date` identify the transaction), or
    *         `.code === "AMBIGUOUS_TAX_YEAR"` when `options.taxYear` is omitted and SELL
-   *         transactions span more than one calendar year (`error.years`, ascending).
+   *         transactions span more than one calendar year (`error.years`, ascending), or
+   *         `.code === "INVALID_TAX_RATE"` when `options.classification` assigns a Bucket
+   *         A ("A") gain entry a `taxRate` other than exactly `0.26` or `0.125`
+   *         (`error.isin`/`error.taxRate` identify the offending entry) — Italian tax law
+   *         recognizes only these two rates for redditi di capitale, and any other value
+   *         would otherwise be silently dropped from the Quadro RM tax-filing export.
    */
   calculateGains(method: LotMethod): GainsReport {
     const warnings: string[] = [...this._parseWarnings];
@@ -337,6 +342,21 @@ export class Calculator {
       for (const lot of bucketALots) {
         const entry = classification[lot.isin]!;
         const rate = entry.taxRate;
+        // Italian tax law recognizes exactly two rates for Bucket A (redditi
+        // di capitale): 26% standard, 12.5% for whitelisted government bonds
+        // (Art. 68 co. 5 TUIR). buildQuadroRM (src/dichiarazione/engine.ts)
+        // only ever looks for these two exact rates when building the real
+        // Modello Redditi PF filing export — any other rate is not a
+        // legitimate third bucket, it is invalid/corrupt classification
+        // input (e.g. a typo in a hand-edited *.classify.json sidecar).
+        // Aggregating it here anyway would let it silently vanish from
+        // quadroRM's fixed capitaleAliquota26/capitaleAliquota125 fields
+        // later, under-reporting real taxable income with no diagnostic
+        // trail — so we fail loudly here instead, before it ever reaches
+        // report.bucketA or report.dichiarazione.
+        if (rate !== 0.26 && rate !== 0.125) {
+          throw new CalculationError("INVALID_TAX_RATE", lot.isin, rate);
+        }
         if (!groupsByRate.has(rate))
           groupsByRate.set(rate, { assetClasses: new Set(), plusvalenze: 0 });
         const g = groupsByRate.get(rate)!;

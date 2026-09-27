@@ -16,6 +16,14 @@ export interface ClassificationEntry {
   assetClass: AssetClass;
   bucketGain: "A" | "B";
   bucketLoss: "A" | "B";
+  /**
+   * Only meaningful when `bucketGain === "A"` (redditi di capitale). Italian
+   * tax law recognizes exactly two rates for this bucket: 0.26 (standard) and
+   * 0.125 (whitelisted government bonds, Art. 68 co. 5 TUIR). Calculator
+   * throws a CalculationError with code "INVALID_TAX_RATE" if a Bucket-A-gain
+   * lot's entry has any other value here, rather than silently dropping it
+   * from the Modello Redditi PF Quadro RM export.
+   */
   taxRate: number;
   whiteListed: boolean | null;
   confirmedByUser: boolean;

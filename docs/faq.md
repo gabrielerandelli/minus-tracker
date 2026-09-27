@@ -14,6 +14,9 @@ Rows are skipped (without aborting the calculation) when: the ISIN is empty, the
 **Error "no open lots for ISIN X on date Y"**
 The CSV contains a SELL for a position that has no prior BUY in the same file. The BUY may be in a prior year's export that was not included. Use `validate` to inspect the parsed transactions.
 
+**Error "Bucket A (redditi di capitale) classification for ISIN X has invalid taxRate Y"**
+A classification entry routes ISIN X's gains to Bucket A (ETFs, government bonds, capital-protected certificates) with a `taxRate` other than `0.26` (standard) or `0.125` (whitelisted government bonds, Art. 68 co. 5 TUIR) — the only two rates Italian tax law recognizes for this category. This usually means the `*.classify.json` sidecar was hand-edited with a typo, or a custom `ClassificationMap` was built outside `Classifier.classify()`. Fix the `taxRate` for that ISIN to `0.26` or `0.125` and re-run. (Before this check existed, such an entry's gain silently disappeared from the Quadro RM tax-filing export instead of erroring — see `CHANGELOG.md`.)
+
 **ECB rates are outdated**
 Run `minus-tracker rates --update`. The `calc` command never fetches rates on its own — refreshing is always an explicit, user-invoked action.
 
