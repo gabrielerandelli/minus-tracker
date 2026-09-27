@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Calculator.calculateGains()` silently dropped real taxable income from the Quadro RM
+  tax-filing export (`report.dichiarazione.quadroRM`) when a Bucket A ("redditi di capitale")
+  classification entry carried a `taxRate` other than exactly `0.26` or `0.125`.** Bucket A
+  aggregation (`src/calculator/index.ts`) groups gains generically by whatever numeric `taxRate`
+  is present in the caller-supplied `ClassificationMap` — so `report.bucketA.groups` correctly
+  computed a group and its `imposta` for ANY rate. But `buildQuadroRM()`
+  (`src/dichiarazione/engine.ts`), which builds the actual Modello Redditi PF filing export written
+  by `dichiarazione.exportTo()`, only ever looked for exactly `taxRate === 0.26` or
+  `taxRate === 0.125`; a group with any other rate matched neither lookup and vanished from
+  `quadroRM.capitaleAliquota26`/`capitaleAliquota125` with no warning, no error, and no trace in
+  `report.warnings`. `ClassificationEntry.taxRate` (part of the public `ClassificationMap` type
+  accepted by `CalculatorOptions.classification`) is a plain `number` with no restriction to these
+  two values, so a hand-edited `*.classify.json` sidecar entry (the field `confirmedByUser` exists
+  specifically to let users override/correct classifications) or a `ClassificationMap` built
+  directly by a downstream consumer could trigger this silent under-reporting of real taxable
+  income in an actual tax filing. Since Italian tax law recognizes only these two rates for Bucket
+  A (Art. 68 co. 5 TUIR), any other value is invalid/corrupt classification data, not a legitimate
+  third rate bucket — `Calculator.calculateGains()` now throws a new, additive
+  `CalculationError` with `.code === "INVALID_TAX_RATE"` (`error.isin`/`error.taxRate` identify the
+  offending entry) as soon as such an entry is found, before any report or Quadro RM export is
+  ever built, rather than letting it silently disappear downstream. No public API signature
+  changed (`DEGIROParser`, `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier`
+  are all unchanged); the new error code is purely additive, following the same discriminated-by-
+  `.code` pattern already used by `NO_OPEN_LOTS`/`AMBIGUOUS_TAX_YEAR`. New regression test:
+  `test/regression-quadro-rm-nonstandard-tax-rate.test.ts`.
+
 - **`Calculator.calculateGains()` silently inflated the Bucket B taxable base (`bucketB.netResult`)
   above its true value when a supplied `CarryForward` entry had a negative `amount`.** Neither the
   `CarryForward` type (`{ year: number; amount: number }`) nor the library/MCP API surface
