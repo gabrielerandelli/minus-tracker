@@ -337,6 +337,89 @@ describe("regression: N=107 independently-8dp-rounded fractional BUYs closed by 
   }
 });
 
+/**
+ * Regression: SELL_CLOSE_TOLERANCE_CEILING itself (not just SELL_CLOSE_TOLERANCE_PER_LOT) must
+ * scale far enough to cover realistic multi-year recurring-investment lot counts. The N=107 case
+ * above stays comfortably under the ceiling, but a *fixed* ceiling stops scaling with
+ * lotsConsumedThisSell once lotsConsumedThisSell * SELL_CLOSE_TOLERANCE_PER_LOT exceeds it — with
+ * the old fixed ceiling of 1e-6 and a per-lot rate of 5e-9, that saturates at just 200 lots — and
+ * a multi-year weekly/daily recurring-investment plan easily exceeds that: weekly contributions
+ * over 6 years alone is already ~312 lots.
+ *
+ * BUY  0.33333333 shares (= round(1/3, 8dp)) x N, on N consecutive calendar days — the same
+ *      repeating-fraction pattern as the three-lot 0.33333333 example earlier in this file, just
+ *      scaled up to realistic multi-year recurring-investment lot counts.
+ * SELL round(N/3, 8dp) shares — exactly what a broker's own UI would show for "close full
+ *      position" after N such BUYs.
+ *
+ * Confirmed via manual repro against the pre-fix code (fixed 1e-6 ceiling): N=300 lands exactly
+ * at the old ceiling (shortfall 1.000e-6, still passes), but N=305 already throws a spurious
+ * NO_OPEN_LOTS (shortfall 1.020e-6), and the shortfall only grows from there (N=310: 1.030e-6,
+ * N=330: 1.100e-6, N=350: 1.170e-6) — even though the position is, for all real-world purposes,
+ * fully and correctly closed. N=2000 (comfortably in "low thousands" territory) demonstrates the
+ * fix scales rather than merely nudging the ceiling by a fixed amount to clear N=305.
+ */
+function buildRepeatingThirdCsv(n: number): string {
+  const header =
+    "Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID";
+  const rows = [header];
+  const start = Date.UTC(2015, 0, 1);
+  const lotQty = "0.33333333"; // round(1/3, 8dp)
+  const lotQtyNum = parseFloat(lotQty);
+  const priceEUR = 100.0;
+  const localValue = (-lotQtyNum * priceEUR).toFixed(2);
+  // Unique ISIN per N so lots from different describe.each cases never mix.
+  const isin = `US000000TH${n}`;
+
+  for (let i = 0; i < n; i++) {
+    const d = new Date(start);
+    d.setUTCDate(d.getUTCDate() + i);
+    const dateStr = fmtDDMMYYYY(d);
+    rows.push(
+      `${dateStr},09:00,Repeating Third Corp,${isin},XNAS,XNAS,${lotQty},${priceEUR.toFixed(2)},${localValue},EUR,${localValue},EUR,1,0.00,EUR,${localValue},EUR,buy-${n}-${i}`,
+    );
+  }
+
+  const sellDateObj = new Date(start);
+  sellDateObj.setUTCDate(sellDateObj.getUTCDate() + n);
+  const sellDate = fmtDDMMYYYY(sellDateObj);
+  const sellQty = (Math.round((n / 3) * 1e8) / 1e8).toFixed(8);
+  const sellValue = (parseFloat(sellQty) * 110.0).toFixed(2);
+  rows.push(
+    `${sellDate},09:00,Repeating Third Corp,${isin},XNAS,XNAS,-${sellQty},110.00,${sellValue},EUR,${sellValue},EUR,1,0.00,EUR,${sellValue},EUR,sell-${n}`,
+  );
+
+  return rows.join("\n");
+}
+
+function runRepeatingThirdFor(n: number, method: LotMethod) {
+  const csv = buildRepeatingThirdCsv(n);
+  const transactions = new DEGIROParser().parse(csv);
+  return new Calculator(transactions).calculateGains(method);
+}
+
+describe.each([305, 2000])(
+  "regression: N=%i independently-8dp-rounded fractional BUYs closed by a round-number SELL (ceiling must scale with lot count, not saturate)",
+  (n) => {
+    for (const method of ["LIFO", "FIFO"] as const) {
+      describe(method, () => {
+        it("does not throw CalculationError", () => {
+          expect(() => runRepeatingThirdFor(n, method)).not.toThrow();
+        });
+
+        it("matched lots correctly sum to the actual bought quantity", () => {
+          const report = runRepeatingThirdFor(n, method);
+          expect(report.lots).toHaveLength(n);
+          let expectedTotal = 0;
+          for (let i = 0; i < n; i++) expectedTotal += 0.33333333;
+          const totalMatched = report.lots.reduce((sum, l) => sum + l.quantity, 0);
+          expect(totalMatched).toBeCloseTo(expectedTotal, 8);
+        });
+      });
+    }
+  },
+);
+
 describe("regression: genuine insufficient-open-lots still throws (not masked by epsilon fix)", () => {
   const HEADER2 =
     "Date,Time,Product,ISIN,Exchange,Execution centre,Quantity,Price,Local value,Local value currency,Value,Value currency,Exchange rate,Transaction costs,Transaction costs currency,Total,Total currency,Order ID";
