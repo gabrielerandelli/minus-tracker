@@ -79,7 +79,33 @@ const SELL_CLOSE_TOLERANCE = 5 * 10 ** -QUANTITY_DECIMALS;
 // genuine oversell (e.g. 0.01 shares, per the "genuine insufficient-open-lots still throws"
 // regression test) — an oversell can never be masked, no matter how many lots a SELL consumed.
 const SELL_CLOSE_TOLERANCE_PER_LOT = 5 * 10 ** -(QUANTITY_DECIMALS + 1);
-const SELL_CLOSE_TOLERANCE_CEILING = 10 ** -(QUANTITY_DECIMALS - 2);
+
+// SELL_CLOSE_TOLERANCE_CEILING was originally a fixed 1e-6 (10^-(QUANTITY_DECIMALS - 2)), picked
+// to comfortably clear the N=107 case above. But a *fixed* ceiling stops scaling with
+// lotsConsumedThisSell once lotsConsumedThisSell * SELL_CLOSE_TOLERANCE_PER_LOT exceeds it — at
+// 5e-9/lot that saturates at just 200 lots (1e-6 / 5e-9) — and real recurring/fractional
+// investment plans routinely exceed that: weekly contributions over 6 years is already ~312 lots;
+// daily contributions over a few years easily reaches 1,000+. A confirmed repro (three
+// 0.33333333-rounded BUYs closed by a round SELL, scaled up to N lots) throws a spurious
+// NO_OPEN_LOTS at N=305 under the old fixed ceiling even though the position is, for all
+// real-world purposes, fully and correctly closed — see the N=305/N=2000 regression tests below.
+//
+// The ceiling instead needs to be a closed-form function of "how many lots could a single real
+// SELL plausibly ever consume", not a constant tuned to just clear the latest known failing case.
+// MAX_REALISTIC_LOTS_PER_SELL is deliberately generous by that measure: no real recurring-
+// investment product on DEGIRO/IBKR buys more often than daily, so even 40 years of DAILY BUYs on
+// one ISIN (40 * 366, using 366 to conservatively account for leap years) is ~14,640 lots —
+// several multiples of any realistic human investing horizon at the most aggressive realistic
+// cadence. Scaling the ceiling to that many lots at SELL_CLOSE_TOLERANCE_PER_LOT each gives a
+// ceiling of ~7.32e-5 — still ~137x below the smallest amount this codebase treats as a genuine
+// oversell (0.01 shares = 1e-2, per the "genuine insufficient-open-lots still throws" regression
+// test), so a real data error can never be masked: a single runaway/corrupt SELL would have to
+// simultaneously (a) be preceded by an unrealistic number of open lots for one ISIN *and*
+// (b) leave a residual entirely explained by ≤0.5e-8-per-lot BUY-side rounding, which no
+// real-world oversell (always many orders of magnitude larger) will ever satisfy.
+const MAX_REALISTIC_LOTS_PER_SELL = 40 * 366; // ~14,640: 40 years of daily contributions
+const SELL_CLOSE_TOLERANCE_CEILING =
+  MAX_REALISTIC_LOTS_PER_SELL * SELL_CLOSE_TOLERANCE_PER_LOT; // ~7.32e-5
 
 // Most-frequent-year fallback, used only when there are no SELL transactions
 // at all to infer from (see inferTaxYear below, and TC-176 scenario (b)).

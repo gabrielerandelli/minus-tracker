@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Calculator.calculateGains()` still threw a spurious `NO_OPEN_LOTS` error when closing a
+  fractional-share position built from *hundreds* of BUY lots, even after the dynamic
+  `lotsConsumedThisSell`-scaled tolerance introduced for the 107-lot case (see the 0.13.1-era fix
+  below).** That fix correctly made `SELL_CLOSE_TOLERANCE_PER_LOT` scale linearly with the number
+  of lots consumed by a SELL, but capped the result at a *fixed* `SELL_CLOSE_TOLERANCE_CEILING` of
+  `1e-6` — which does not itself scale with lot count, so it silently became the binding (and too
+  tight) constraint once `lotsConsumedThisSell * SELL_CLOSE_TOLERANCE_PER_LOT` exceeded it, at only
+  ~200 lots. A multi-year weekly/daily recurring-investment plan on DEGIRO or IBKR — exactly the
+  use case this whole mechanism exists for — routinely exceeds that: weekly contributions over 6
+  years alone is already ~312 lots. A position built from `N` independently-8dp-rounded
+  `0.33333333`-share BUYs (`round(1/3, 8dp)`, one per day), closed by a single round-number SELL for
+  the true total, left a broker-rounding residual that grew past the old fixed `1e-6` ceiling at
+  `N=305` and beyond, throwing `NO_OPEN_LOTS` on a position that was, for all real-world purposes,
+  fully and correctly closed. `SELL_CLOSE_TOLERANCE_CEILING` is now derived from a concrete,
+  generous real-world bound — `MAX_REALISTIC_LOTS_PER_SELL` (40 years of *daily* BUYs on one
+  ISIN, ~14,640 lots) times the unchanged per-lot rate, ~`7.32e-5` — rather than a constant sized
+  only to clear the previously-known failing case. That new ceiling is still ~137x below the
+  smallest amount this codebase treats as a genuine oversell (`0.01` shares, per the existing
+  "genuine insufficient-open-lots still throws" regression test), so a real oversell still throws
+  exactly as before, regardless of lot count. New regression tests (`N=305`, `N=2000`) added to
+  `test/regression-fractional-lot-fp-epsilon.test.ts`.
+
 - **`Calculator.calculateGains()` silently dropped real taxable income from the Quadro RM
   tax-filing export (`report.dichiarazione.quadroRM`) when a Bucket A ("redditi di capitale")
   classification entry carried a `taxRate` other than exactly `0.26` or `0.125`.** Bucket A
