@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The MCP server's `calculate_gains` and `calculate_from_csv` tools had no way to resolve
+  `AMBIGUOUS_TAX_YEAR`, making them unusable for any transaction history whose SELLs span more
+  than one calendar year.** `Calculator.calculateGains()` already supports `options.taxYear`
+  specifically to scope a report to one tax year or disambiguate a multi-year SELL history (the
+  CLI exposes this as `--year`), but `CalculateGainsInput` and `CalculateFromCsvInput`
+  (`src/types.ts`) had no equivalent field, and neither `handleCalculateGains`
+  (`src/mcp/tools/calculate-gains.ts`) nor `handleCalculateFromCsv`
+  (`src/mcp/tools/calculate-from-csv.ts`) passed anything into `CalculatorOptions.taxYear`. Any
+  multi-year DEGIRO/IBKR export — the ordinary shape of a real multi-year portfolio, not invalid
+  input — made both tools permanently throw `AMBIGUOUS_TAX_YEAR` via MCP with no parameter an
+  agent could supply to recover, and the underlying error message ("...— specify --year") named a
+  CLI flag that doesn't exist for an MCP caller. Added an optional `taxYear?: number` to both
+  input types, wired through to `CalculatorOptions.taxYear` in both handlers (additive-only — a
+  caller that omits it keeps today's exact infer-from-SELLs behavior, including the
+  `AMBIGUOUS_TAX_YEAR` error on genuine ambiguity), regenerated `src/mcp/schemas.generated.ts`,
+  and reworded the `AMBIGUOUS_TAX_YEAR` error message to name the `taxYear` option generically
+  instead of only the CLI's `--year` flag. New regression tests in `test/mcp/calculate-gains.test.ts`
+  and `test/mcp/calculate-from-csv.test.ts` cover both the unchanged `taxYear`-omitted behavior and
+  the fix. See `docs/mcp-server.md` for usage.
+
 - **`Calculator.calculateGains()` still threw a spurious `NO_OPEN_LOTS` error when closing a
   fractional-share position built from *hundreds* of BUY lots, even after the dynamic
   `lotsConsumedThisSell`-scaled tolerance introduced for the 107-lot case (see the 0.13.1-era fix

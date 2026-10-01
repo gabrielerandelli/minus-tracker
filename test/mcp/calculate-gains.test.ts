@@ -180,6 +180,63 @@ describe("TC-113: calculate_gains — full pipeline output includes bucketA/B/di
   });
 });
 
+describe("regression: calculate_gains exposes taxYear so multi-year SELLs are no longer unrecoverable via MCP", () => {
+  // BUY in 2022, one SELL fully in 2023, another fully in 2024 — the
+  // ordinary shape of any multi-year DEGIRO/IBKR export (see TC-172 at the
+  // Calculator level, test/calculator/tax-year-scoping.test.ts).
+  const buy = makeTransaction({
+    date: "2022-01-10",
+    type: "BUY",
+    quantity: 10,
+    pricePerUnit: 100,
+    totalLocal: -1000,
+    totalEUR: 1000,
+  });
+  const sell2023 = makeTransaction({
+    date: "2023-03-01",
+    type: "SELL",
+    quantity: 5,
+    pricePerUnit: 150,
+    totalLocal: 750,
+    totalEUR: 750,
+  });
+  const sell2024 = makeTransaction({
+    date: "2024-03-01",
+    type: "SELL",
+    quantity: 5,
+    pricePerUnit: 200,
+    totalLocal: 1000,
+    totalEUR: 1000,
+  });
+
+  it("(a) taxYear omitted → still throws AMBIGUOUS_TAX_YEAR (unchanged behavior)", async () => {
+    const result = await handleCalculateGains({
+      transactions: [buy, sell2023, sell2024],
+      method: "LIFO",
+    });
+
+    expect(result.isError).toBe(true);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.code).toBe("CALCULATION_ERROR");
+    expect(typeof parsed.message).toBe("string");
+  });
+
+  it("(b) taxYear supplied → succeeds and scopes the report to the requested year", async () => {
+    const result = await handleCalculateGains({
+      transactions: [buy, sell2023, sell2024],
+      method: "LIFO",
+      taxYear: 2024,
+    });
+
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.taxYear).toBe(2024);
+    // SELL2024: proceeds 1000 - cost 500 = 500 gain; the 2023 SELL is
+    // excluded from this scoped report's totals.
+    expect(parsed.plusvalenze).toBe(500);
+  });
+});
+
 describe("TC-114: calculate_gains — CalculationError mapped to isError with isin/date/message", () => {
   it("returns isError:true with CALCULATION_ERROR code and the offending isin/date", async () => {
     const sell: Transaction = {

@@ -17,6 +17,7 @@ export async function handleCalculateGains(args: CalculateGainsInput) {
       classification: args.classification,
       carryForward: args.carryForward,
       incomeRows: args.incomeRows,
+      taxYear: args.taxYear,
     }).calculateGains(args.method);
     return {
       content: [

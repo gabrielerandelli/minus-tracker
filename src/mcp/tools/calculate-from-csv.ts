@@ -137,6 +137,7 @@ export async function handleCalculateFromCsv(
       classification,
       carryForward: args.carryForward,
       incomeRows,
+      taxYear: args.taxYear,
     }).calculateGains(args.method);
   } catch (err) {
     if (err instanceof CalculationError) return toCalculationErrorResult(err);

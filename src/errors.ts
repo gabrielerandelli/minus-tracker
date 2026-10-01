@@ -52,7 +52,13 @@ export class CalculationError extends Error {
     if (Array.isArray(dateOrYearsOrIsin)) {
       const years = dateOrYearsOrIsin;
       super(
-        `Transactions span multiple tax years (${years.join(", ")}) — specify --year`,
+        // v0.13.3 — wording kept transport-neutral (not "--year"): this
+        // message reaches MCP callers verbatim via toCalculationErrorResult
+        // (src/mcp/errors.ts), who have no CLI flag to act on. The CLI's own
+        // rendering (src/cli/commands/calc.ts) never uses this string — it
+        // renders the localized errorAmbiguousTaxYear(years) message instead,
+        // which still names --year for that surface.
+        `Transactions span multiple tax years (${years.join(", ")}) — specify a tax year (e.g. the taxYear option, or the CLI's --year flag) to resolve the ambiguity`,
       );
       this.name = "CalculationError";
       this.code = "AMBIGUOUS_TAX_YEAR";

@@ -362,6 +362,7 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
           "classification",
           "carryForward",
           "incomeRows",
+          "taxYear",
         ].sort(),
       );
       expect(calculateGainsInputSchema.required.slice().sort()).toEqual(
@@ -374,7 +375,7 @@ describe("TC-117 — generated MCP schemas match types.ts shapes", () => {
       expect(
         Object.keys(calculateFromCsvInputSchema.properties).sort(),
       ).toEqual(
-        ["csv", "method", "overrides", "offline", "carryForward"].sort(),
+        ["csv", "method", "overrides", "offline", "carryForward", "taxYear"].sort(),
       );
       expect(calculateFromCsvInputSchema.required.slice().sort()).toEqual(
         ["csv", "method"].sort(),
@@ -470,7 +471,9 @@ describe("TC-245 — both new v0.13.0 tools registered with valid schemas over t
     expect(() => ajv.compile(calcFromCsv!.inputSchema)).not.toThrow();
     expect(
       Object.keys(calcFromCsv!.inputSchema.properties ?? {}).sort(),
-    ).toEqual(["csv", "method", "overrides", "offline", "carryForward"].sort());
+    ).toEqual(
+      ["csv", "method", "overrides", "offline", "carryForward", "taxYear"].sort(),
+    );
 
     const checkCoverage = tools.find((t) => t.name === "check_rate_coverage");
     expect(checkCoverage).toBeDefined();
