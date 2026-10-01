@@ -286,6 +286,51 @@ describe("TC-243: calculate_from_csv — error shapes match the granular tools i
   });
 });
 
+describe("regression: calculate_from_csv exposes taxYear so multi-year SELLs are no longer unrecoverable via MCP", () => {
+  // BUY in 2022, one SELL fully in 2023, another fully in 2024 — the
+  // ordinary shape of any multi-year DEGIRO export.
+  const BUY_ROW_2022 =
+    "14-01-2022,09:05,Apple Inc,US0378331005,XNAS,XNAS,10,100.00,-1000.00,EUR,-1000.00,EUR,1,0.00,EUR,-1000.00,EUR,ord-0";
+  const SELL_ROW_2023 =
+    "01-03-2023,14:20,Apple Inc,US0378331005,XNAS,XNAS,-5,150.00,750.00,EUR,750.00,EUR,1,0.00,EUR,750.00,EUR,ord-1";
+  const SELL_ROW_2024 =
+    "01-03-2024,14:20,Apple Inc,US0378331005,XNAS,XNAS,-5,200.00,1000.00,EUR,1000.00,EUR,1,0.00,EUR,1000.00,EUR,ord-2";
+
+  it("(a) taxYear omitted → still throws AMBIGUOUS_TAX_YEAR (unchanged behavior)", async () => {
+    const csv = [HEADER, BUY_ROW_2022, SELL_ROW_2023, SELL_ROW_2024].join("\n");
+    const mockHttp = stockMockHttp();
+
+    const result = await handleCalculateFromCsv(
+      { csv, method: "LIFO" },
+      undefined,
+      mockHttp,
+    );
+
+    expect(result.isError).toBe(true);
+    const body = JSON.parse(result.content[0].text as string);
+    expect(body.code).toBe("CALCULATION_ERROR");
+    expect(typeof body.message).toBe("string");
+  });
+
+  it("(b) taxYear supplied → succeeds and scopes the report to the requested year", async () => {
+    const csv = [HEADER, BUY_ROW_2022, SELL_ROW_2023, SELL_ROW_2024].join("\n");
+    const mockHttp = stockMockHttp();
+
+    const result = await handleCalculateFromCsv(
+      { csv, method: "LIFO", taxYear: 2024 },
+      undefined,
+      mockHttp,
+    );
+
+    expect(result.isError).toBeUndefined();
+    const body = textBody(result);
+    expect((body.report as { taxYear: number }).taxYear).toBe(2024);
+    // SELL2024: proceeds 1000 - cost 500 = 500 gain; the 2023 SELL is
+    // excluded from this scoped report's totals.
+    expect((body.report as { plusvalenze: number }).plusvalenze).toBe(500);
+  });
+});
+
 describe("TC-244: calculate_from_csv — extra forwarded; multi-batch progress fires", () => {
   // 25 distinct ISINs -> ceil(25/10) = 3 OpenFIGI batches (Classifier's
   // batch size, src/classifier/index.ts:454-457), forcing multi-batch

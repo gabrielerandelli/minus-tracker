@@ -176,6 +176,12 @@ export interface CalculateGainsInput {
   classification?: ClassificationMap;
   carryForward?: CarryForward[];
   incomeRows?: IncomeRow[];
+  // Mirrors CalculatorOptions.taxYear (see above) — scopes report
+  // aggregation to one tax year while lot matching still runs on the full
+  // input. Omitted: taxYear is inferred from SELL transaction dates as
+  // before, throwing CalculationError with .code === "AMBIGUOUS_TAX_YEAR" if
+  // they span more than one calendar year.
+  taxYear?: number;
 }
 
 // Input shapes for the MCP server's 2 v0.13.0 extension tools (Part 19).
@@ -193,6 +199,12 @@ export interface CalculateFromCsvInput {
   // losses — this composite tool has no way to derive it from `csv` alone
   // (see docs/prd/19-mcp-server-extensions.md).
   carryForward?: CarryForward[];
+  // Mirrors CalculatorOptions.taxYear (see above) — scopes report
+  // aggregation to one tax year while lot matching still runs on the full
+  // input. Omitted: taxYear is inferred from SELL transaction dates as
+  // before, throwing CalculationError with .code === "AMBIGUOUS_TAX_YEAR" if
+  // they span more than one calendar year.
+  taxYear?: number;
 }
 
 export interface CheckRateCoverageInput {

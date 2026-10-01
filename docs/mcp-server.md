@@ -57,6 +57,13 @@ with `gainLossEUR` elsewhere in this library's output, which IS negative for los
 being rejected, so passing the wrong sign silently loses that year's carry-forward instead of
 applying it.
 
+Both `calculate_gains` and `calculate_from_csv` accept an optional `taxYear` input (mirroring
+`CalculatorOptions.taxYear` and the CLI's `--year` flag) to scope the report to one calendar year.
+Omit it and the tax year is inferred from SELL transaction dates as before; if those SELLs span
+more than one calendar year, the tool returns an `AMBIGUOUS_TAX_YEAR` error — pass `taxYear`
+(e.g. the later of the two years) to resolve it, since an MCP client has no `--year` flag to fall
+back on.
+
 **Transports:** `minus-tracker-mcp` defaults to stdio (unchanged). Pass `--transport sse --port
 <n>` to instead expose a [Streamable HTTP/SSE](https://modelcontextprotocol.io) listener — useful
 for agent frameworks that talk HTTP rather than spawning a subprocess. The listener binds to
