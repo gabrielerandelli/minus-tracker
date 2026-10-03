@@ -341,7 +341,7 @@ export class Calculator {
       const classification = this._options.classification;
       const unclassifiedIsins = new Set<string>();
 
-      for (const lot of matchedLots) {
+      for (const lot of scopedLots) {
         const entry = classification[lot.isin];
         if (!entry) {
           lot.bucket = "B";

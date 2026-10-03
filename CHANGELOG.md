@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Calculator.calculateGains()` could warn about an ISIN that has nothing to do with the
+  requested tax year.** When a classification map is supplied, the two-bucket routing step
+  assigns each matched lot's `bucket` and collects any ISIN missing from the map into the
+  "ISIN X not found in classification map — assigned to Bucket B" warning. That loop iterated
+  over the full, unscoped `matchedLots` instead of the already-computed `scopedLots` (lots
+  filtered to the report's `taxYear`) — the same scoped set every other report field
+  (`report.lots`, `bucketA`, `bucketB`) is documented as being derived from. The practical
+  effect: an unclassified ISIN whose BUY/SELL activity fell entirely in a *different* year than
+  the one requested (e.g. fully closed in 2022, with `taxYear: 2024` requested) still triggered
+  the classification warning on the 2024 report, even though that ISIN never appears anywhere
+  else in it (`report.lots`, `bucketA`, `bucketB` all correctly omitted it). This is silently
+  misleading output — a user generating a Dichiarazione for one tax year would be warned to
+  manually classify an instrument that is entirely out of scope for that filing. Fixed by scoping
+  the routing loop to `scopedLots`; since `scopedLots` is a `.filter()` of `matchedLots` holding
+  the same object references, in-scope lots are assigned a `bucket` exactly as before, and
+  `lot.bucket` is never read outside the `scopedLots.filter(...)` calls immediately below, so no
+  monetary calculation changes for any existing report. New regression test in
+  `test/regression-taxyear-scoped-classification-warnings.test.ts`.
+
 - **The MCP server's `calculate_gains` and `calculate_from_csv` tools had no way to resolve
   `AMBIGUOUS_TAX_YEAR`, making them unusable for any transaction history whose SELLs span more
   than one calendar year.** `Calculator.calculateGains()` already supports `options.taxYear`
