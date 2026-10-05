@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The CLI's Bucket B carry-forward line always showed a fake "CARRY 0" / "RIPORTO 0" instead of
+  the real origin year, even when the Dichiarazione's own Quadro RT section a few lines below
+  correctly listed it.** `renderReport()` (`src/cli/renderer.ts`) rendered the Bucket B summary's
+  carry-forward-applied amount with a hardcoded `s.bucketBCarryApplied(0)`, instead of reading the
+  real per-origin-year breakdown that was already correctly computed and available via
+  `report.dichiarazione.quadroRT.carryForwardApplied` (an array of `{ annoOrigine, importo }`,
+  whose entries sum to `report.bucketB.carryForwardApplied`) — the exact same array the Quadro RT
+  section of the same function already renders correctly. The practical effect: any report with
+  an applied carry-forward loss printed a visibly wrong "CARRY 0: X.XX EUR" line in the Bucket B
+  summary, directly above a Quadro RT section correctly showing "RT-C* Riporto 2021 (consumato)"
+  or similar — confusing and undermining trust in the CLI output, even though the underlying tax
+  calculation was always correct (this was a rendering-only bug; no monetary values were
+  affected). Fixed by sourcing the Bucket B carry line from
+  `report.dichiarazione?.quadroRT.carryForwardApplied`, printing one line per real contributing
+  origin year (so reports where more than one prior year's loss contributed to the same
+  carry-forward are shown faithfully, each with its own amount), and falling back to a new
+  year-less `bucketBCarryAppliedUnknownYear` i18n string ("CARRY (year unavailable)" / "RIPORTO
+  (anno non disponibile)") — never a fabricated year — when no Dichiarazione is present (e.g. a
+  hand-built `GainsReport` fixture with `bucketB` set but no `dichiarazione`, the shape already
+  exercised by the pre-existing `renderer-colors.test.ts` "Task 58 acceptance" fixture). New
+  regression test in `test/regression-bucketb-carry-year-label.test.ts` covers the single-year
+  case, the multi-year case (verifying each year's own amount and that they sum to
+  `bucketB.carryForwardApplied`), and the no-dichiarazione case (verifying no throw and no
+  fabricated year).
+
 - **`Calculator.calculateGains()` could warn about an ISIN that has nothing to do with the
   requested tax year.** When a classification map is supplied, the two-bucket routing step
   assigns each matched lot's `bucket` and collects any ISIN missing from the map into the

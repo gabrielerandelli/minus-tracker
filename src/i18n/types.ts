@@ -108,6 +108,13 @@ export interface LocaleStrings {
   bucketABtpWl: string;
   bucketATotalTax: string;
   bucketBCarryApplied: (year: number) => string;
+  /**
+   * Fallback for the Bucket B carry-forward line when no per-year breakdown
+   * (report.dichiarazione.quadroRT.carryForwardApplied) is available — e.g. a
+   * hand-built GainsReport fixture with bucketB set but no dichiarazione.
+   * Must never be paired with a fabricated year.
+   */
+  bucketBCarryAppliedUnknownYear: string;
   bucketBResult: string;
   bucketBCarryNote: string;
   warnMixedBuckets: string;

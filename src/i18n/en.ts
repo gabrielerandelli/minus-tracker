@@ -105,6 +105,7 @@ export const en: LocaleStrings = {
   bucketABtpWl: "Govt Bond WL",
   bucketATotalTax: "TOTAL TAX",
   bucketBCarryApplied: (year) => `CARRY ${year}`,
+  bucketBCarryAppliedUnknownYear: "CARRY (year unavailable)",
   bucketBResult: "RESULT",
   bucketBCarryNote: "(carriable over the next 4 years)",
   warnMixedBuckets: "Bucket B losses do not offset Bucket A plusvalenze.",
