@@ -320,9 +320,25 @@ export function renderReport(
       ),
     );
     if (report.bucketB.carryForwardApplied > 0) {
-      lines.push(
-        `${s.bucketBCarryApplied(0)}: ${fmt(report.bucketB.carryForwardApplied)} EUR`,
-      );
+      // Prefer the per-origin-year breakdown already computed for Quadro RT
+      // (report.dichiarazione.quadroRT.carryForwardApplied) — its entries sum
+      // to report.bucketB.carryForwardApplied (REG-004) — so one line is
+      // printed per real contributing year instead of a single aggregate.
+      const carryEntries = report.dichiarazione?.quadroRT.carryForwardApplied;
+      if (carryEntries && carryEntries.length > 0) {
+        for (const entry of carryEntries) {
+          lines.push(
+            `${s.bucketBCarryApplied(entry.annoOrigine)}: ${fmt(entry.importo)} EUR`,
+          );
+        }
+      } else {
+        // No per-year breakdown available (e.g. a GainsReport fixture with
+        // bucketB set but no dichiarazione) — fall back without fabricating
+        // a year.
+        lines.push(
+          `${s.bucketBCarryAppliedUnknownYear}: ${fmt(report.bucketB.carryForwardApplied)} EUR`,
+        );
+      }
     }
     const resultSegments: Segment[] = [
       { text: `${s.bucketBResult}: ` },

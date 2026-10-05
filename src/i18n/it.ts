@@ -109,6 +109,7 @@ export const it: LocaleStrings = {
   bucketABtpWl: "BTP/WL",
   bucketATotalTax: "TOTALE IMPOSTA",
   bucketBCarryApplied: (year) => `RIPORTO ${year}`,
+  bucketBCarryAppliedUnknownYear: "RIPORTO (anno non disponibile)",
   bucketBResult: "RISULTATO",
   bucketBCarryNote: "(riportabile ai prossimi 4 anni)",
   warnMixedBuckets:
