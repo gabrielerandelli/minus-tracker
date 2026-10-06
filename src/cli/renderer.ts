@@ -110,11 +110,11 @@ function renderDichiarazione(
   }
   lines.push(rtNLine);
   lines.push(`  ${s.quadroRTImposta}  ${fmt(rt.imposta)}`);
-  if (rt.differenza < 0) {
-    const riportato = rt.carryForwardRiportato.reduce(
-      (sum, e) => sum + e.importo,
-      0,
-    );
+  const riportato = rt.carryForwardRiportato.reduce(
+    (sum, e) => sum + e.importo,
+    0,
+  );
+  if (riportato > 0) {
     lines.push(
       `  ${s.quadroRTRiportabile}  ${fmt(riportato)}  ${s.bucketBCarryNote}`,
     );

@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The CLI's Quadro RT "[RT-R] Losses to carry forward" line silently disappeared whenever this
+  year's own Bucket B result was a gain or break-even, even when a real, unconsumed carry-forward
+  balance remained for future years.** `renderDichiarazione()` (`src/cli/renderer.ts`) only
+  printed the riportabile line when `rt.differenza < 0` — i.e. only when this year's own gross
+  Bucket B result (before any carry-forward offset) was itself a net loss. But
+  `report.dichiarazione.quadroRT.carryForwardRiportato` (already computed correctly by
+  `buildQuadroRT`, per the existing REG-001/REG-002 regression tests in `test/dichiarazione.test.ts`)
+  can be non-empty even when `differenza >= 0`: whenever a user supplies a `--carry-forward
+  YYYY:amount` entry (or a `~/.config/minus-tracker/carryforward.json` entry) larger than this
+  year's own gain, only part of it is consumed and the rest remains legitimately eligible to
+  offset gains in a future year (within the Art. 68 co.5 TUIR 4-year window) — but the CLI text
+  report never mentioned it. A user reading only the terminal output (not exporting the
+  Dichiarazione JSON) had no way to know they still had carry-forward left, risking under-claiming
+  it in a future year's filing. No monetary calculation was ever wrong — `carryForwardRiportato`
+  and `report.bucketB.carryForwardRemaining` were always correct; this was a display-only bug.
+  Fixed by gating the riportabile line on the actual remaining amount (the sum of
+  `rt.carryForwardRiportato`) being greater than zero, instead of on the sign of `rt.differenza`.
+  New regression test in `test/regression-quadrort-riportabile-line.test.ts` covers: a positive
+  `differenza` with leftover carry-forward (the bug case), the exact `differenza == 0` boundary
+  with leftover carry-forward, a positive `differenza` with no leftover (confirming the line
+  correctly stays absent), and the pre-existing `differenza < 0` case (confirming no regression).
+
 - **The CLI's Bucket B carry-forward line always showed a fake "CARRY 0" / "RIPORTO 0" instead of
   the real origin year, even when the Dichiarazione's own Quadro RT section a few lines below
   correctly listed it.** `renderReport()` (`src/cli/renderer.ts`) rendered the Bucket B summary's
