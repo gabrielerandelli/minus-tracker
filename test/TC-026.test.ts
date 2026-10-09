@@ -151,8 +151,15 @@ describe("TC-026: Rounding — half-up to 2 decimal places on final output field
       }
     });
 
-    it("plusvalenze equals sum of rounded lot gains (3 × 0.67 = 2.01)", () => {
-      expect(report.plusvalenze).toBe(2.01);
+    it("plusvalenze is the TRUE total gain (2.00), not the sum of per-lot-rounded gains (3 × 0.67 = 2.01)", () => {
+      // report.lots[i].gainLossEUR is cent-rounded per lot (0.67 each, asserted
+      // above) — that per-lot rounding is correct and unchanged. But the
+      // top-level aggregate must sum each lot's RAW (unrounded) gain
+      // (3 × 0.6666... = exactly 2.00, since the 1/3-fee allocation cancels
+      // out exactly across the 3 lots) and round only once at the end, not
+      // sum the already-rounded 0.67 figures (which would overstate the true
+      // gain as 2.01). See src/calculator/index.ts's rawGain/rawGainLossByLot.
+      expect(report.plusvalenze).toBe(2.0);
     });
   });
 

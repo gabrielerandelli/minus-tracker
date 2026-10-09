@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Calculator.calculateGains()` could silently round a real, taxable gain all the way down to
+  zero when a position was built or closed across many small lots.** `report.plusvalenze` /
+  `report.minusvalenze` (and, when a `classification` map is supplied, the Bucket A/B routing
+  decision and the `bucketA`/`bucketB` sums derived from them) were computed by summing each
+  matched lot's already-cent-rounded `gainLossEUR` — the same value published on
+  `report.lots[i].gainLossEUR` — instead of summing the lots' raw, unrounded gain/loss and
+  rounding only once at the end. This is the same "round at each step" vs. "sum raw values, round
+  once" bug category already fixed for carry-forward consumption and Quadro RM dividend/cedole
+  figures elsewhere in this codebase, but it had never been applied to this most fundamental
+  aggregation path. A recurring/DCA (dollar-cost-averaging) investment plan — entirely realistic
+  on DEGIRO/IBKR, which both support weekly or daily fractional-share contributions — can close
+  out across hundreds of small lots, each with a genuine but sub-cent per-lot gain that rounds to
+  EUR 0.00 in isolation while the true total across all of them is clearly positive and taxable.
+  Concretely: 300 BUY/SELL pairs of 1 share each with a true per-share gain of EUR 0.0049 sum to a
+  real EUR 1.47 gain, but were previously reported as EUR 0.00 plusvalenze — the entire taxable
+  gain silently vanished. Fixed by tracking each matched lot's raw (unrounded) gain/loss alongside
+  the cent-rounded value already published on `MatchedLot.gainLossEUR` (unchanged — individual
+  matched-lot figures in `report.lots` are still correctly rounded to the cent), and deriving
+  `plusvalenze`/`minusvalenze`, the Bucket A/B routing decision, and the Bucket A/B sums from the
+  raw values, rounding only once at the very end — matching the rounding discipline
+  `Calculator.calculateGains()` already uses for carry-forward consumption in this same file. New
+  regression tests in `test/regression-per-lot-rounding-aggregation.test.ts` cover the 300-lot DCA
+  case under both LIFO and FIFO, a mixed case with real cent-level losses alongside the sub-cent
+  gains, and a Bucket A/B classification case confirming `bucketA` + `bucketB` plusvalenze still
+  reconcile with the top-level total.
+
 - **The CLI's Quadro RT "[RT-R] Losses to carry forward" line silently disappeared whenever this
   year's own Bucket B result was a gain or break-even, even when a real, unconsumed carry-forward
   balance remained for future years.** `renderDichiarazione()` (`src/cli/renderer.ts`) only
