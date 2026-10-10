@@ -118,6 +118,7 @@ export const en: LocaleStrings = {
     `ISIN ${isin} not found in classification map — assigned to Bucket B.`,
   carryForwardInvalidFormat:
     "Invalid --carry-forward format. Use: YYYY:amount (e.g. 2023:2500)",
+  yearInvalidFormat: "Invalid --year format. Use a 4-digit year (e.g. 2023)",
 
   disclaimer: "minus-tracker è un ausilio al calcolo, non consulenza fiscale.",
 
