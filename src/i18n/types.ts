@@ -122,6 +122,7 @@ export interface LocaleStrings {
   headerBucket: string;
   warnUnclassifiedIsin: (isin: string) => string;
   carryForwardInvalidFormat: string;
+  yearInvalidFormat: string;
 
   // Legal disclaimer — always Italian
   disclaimer: string;
