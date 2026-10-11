@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A BUY or SELL `Transaction` with a non-positive `quantity` was silently mishandled by
+  `Calculator.calculateGains()` instead of being rejected.** `Transaction.quantity` is documented
+  (`src/types.ts`) as "always positive", but nothing enforced it. A SELL with a negative
+  `quantity` (e.g. from a buggy custom/community broker adapter that maps a raw export's signed
+  Quantity column straight through without taking `Math.abs()` on the SELL side) made the
+  lot-matching `while (remainingSellQty > 0)` loop a complete no-op: the transaction vanished
+  with zero warnings, the matching open BUY lot was left dangling, and the real capital gain/loss
+  simply never appeared in the report (`plusvalenze`/`minusvalenze`/`netResult` all read as if
+  the SELL never happened). A non-positive BUY was worse: it could inject a corrupt open lot that
+  poisoned a *later* SELL's matching. Fixed by validating `quantity` at the point each BUY/SELL is
+  consumed in `Calculator.calculateGains()` and throwing a new `CalculationError` code,
+  `INVALID_QUANTITY` (carrying `isin`/`date`/`quantity`/`transactionType`), for any non-positive
+  or `NaN` quantity, so this kind of upstream data-quality bug is now reported loudly and
+  precisely instead of silently corrupting the tax calculation. `DEGIROParser`/`IBKRParser`
+  already always emit positive quantities, so this only affects hand-built `Transaction` arrays
+  (library/MCP consumers, or custom broker adapters) — the two bundled parsers are unaffected.
+  New regression test in `test/regression-negative-quantity-sell-dropped.test.ts`.
+
 - **The CLI's Quadro RT "[RT-R] Losses to carry forward" line silently disappeared whenever this
   year's own Bucket B result was a gain or break-even, even when a real, unconsumed carry-forward
   balance remained for future years.** `renderDichiarazione()` (`src/cli/renderer.ts`) only

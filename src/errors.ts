@@ -35,19 +35,50 @@ export class CalculationError extends Error {
   // capitaleAliquota26/capitaleAliquota125 fields. Same discriminated-by-
   // .code, optional-field pattern ParseError already uses above, not a new
   // shape (see docs/prd/07-error-handling.md's compatibility note).
-  readonly code: "NO_OPEN_LOTS" | "AMBIGUOUS_TAX_YEAR" | "INVALID_TAX_RATE";
-  readonly isin?: string; // present when code === "NO_OPEN_LOTS" or "INVALID_TAX_RATE"
-  readonly date?: string; // present only when code === "NO_OPEN_LOTS"
+  //
+  // v0.13.4 — INVALID_QUANTITY added: Transaction.quantity (src/types.ts) is
+  // documented as "always positive" — an explicit invariant of the public
+  // contract — but a buggy upstream broker-adapter (e.g. a community PR per
+  // AGENTS.md's "extensible to other brokers" note) can map a raw signed
+  // Quantity column straight through without taking Math.abs(), producing a
+  // non-positive quantity. Previously this was never validated: a
+  // non-positive SELL made the matching `while (remainingSellQty > 0)` loop
+  // a complete no-op, silently dropping the whole transaction (and leaving
+  // its matching open BUY lot dangling) with zero diagnostic trail — real
+  // gains simply vanished from the tax report. A non-positive BUY is worse:
+  // it injects a negative-quantity open lot that can corrupt a LATER SELL's
+  // matching (Math.min(lot.quantity, remainingSellQty) with a negative
+  // lot.quantity yields a negative matchedQty, which can make
+  // remainingSellQty grow instead of shrink). Both must be rejected loudly,
+  // consistent with NO_OPEN_LOTS/INVALID_TAX_RATE above.
+  readonly code:
+    | "NO_OPEN_LOTS"
+    | "AMBIGUOUS_TAX_YEAR"
+    | "INVALID_TAX_RATE"
+    | "INVALID_QUANTITY";
+  readonly isin?: string; // present when code === "NO_OPEN_LOTS" | "INVALID_TAX_RATE" | "INVALID_QUANTITY"
+  readonly date?: string; // present when code === "NO_OPEN_LOTS" or "INVALID_QUANTITY"
   readonly years?: number[]; // ascending, deduped; present only when code === "AMBIGUOUS_TAX_YEAR"
   readonly taxRate?: number; // present only when code === "INVALID_TAX_RATE"
+  readonly quantity?: number; // present only when code === "INVALID_QUANTITY"
+  readonly transactionType?: "BUY" | "SELL"; // present only when code === "INVALID_QUANTITY"
 
   constructor(isin: string, date: string);
   constructor(code: "AMBIGUOUS_TAX_YEAR", years: number[]);
   constructor(code: "INVALID_TAX_RATE", isin: string, taxRate: number);
   constructor(
+    code: "INVALID_QUANTITY",
+    isin: string,
+    date: string,
+    quantity: number,
+    transactionType: "BUY" | "SELL",
+  );
+  constructor(
     isinOrCode: string,
     dateOrYearsOrIsin: string | number[],
-    taxRate?: number,
+    taxRateOrDate?: number | string,
+    quantity?: number,
+    transactionType?: "BUY" | "SELL",
   ) {
     if (Array.isArray(dateOrYearsOrIsin)) {
       const years = dateOrYearsOrIsin;
@@ -63,8 +94,12 @@ export class CalculationError extends Error {
       this.name = "CalculationError";
       this.code = "AMBIGUOUS_TAX_YEAR";
       this.years = years;
-    } else if (isinOrCode === "INVALID_TAX_RATE" && taxRate !== undefined) {
+    } else if (
+      isinOrCode === "INVALID_TAX_RATE" &&
+      typeof taxRateOrDate === "number"
+    ) {
       const isin = dateOrYearsOrIsin;
+      const taxRate = taxRateOrDate;
       super(
         `Bucket A (redditi di capitale) classification for ISIN ${isin} has ` +
           `invalid taxRate ${taxRate} — must be exactly 0.26 or 0.125`,
@@ -73,9 +108,27 @@ export class CalculationError extends Error {
       this.code = "INVALID_TAX_RATE";
       this.isin = isin;
       this.taxRate = taxRate;
+    } else if (
+      isinOrCode === "INVALID_QUANTITY" &&
+      typeof taxRateOrDate === "string" &&
+      quantity !== undefined &&
+      transactionType !== undefined
+    ) {
+      const isin = dateOrYearsOrIsin;
+      const date = taxRateOrDate;
+      super(
+        `${transactionType} transaction for ISIN ${isin} on ${date} has non-positive ` +
+          `quantity ${quantity} — Transaction.quantity must always be positive`,
+      );
+      this.name = "CalculationError";
+      this.code = "INVALID_QUANTITY";
+      this.isin = isin;
+      this.date = date;
+      this.quantity = quantity;
+      this.transactionType = transactionType;
     } else {
       const isin = isinOrCode;
-      const date = dateOrYearsOrIsin;
+      const date = dateOrYearsOrIsin as string;
       super(`No open lots for ISIN ${isin} on ${date}`);
       this.name = "CalculationError";
       this.code = "NO_OPEN_LOTS";
