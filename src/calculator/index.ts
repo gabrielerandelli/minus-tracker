@@ -187,7 +187,13 @@ export class Calculator {
    *         A ("A") gain entry a `taxRate` other than exactly `0.26` or `0.125`
    *         (`error.isin`/`error.taxRate` identify the offending entry) — Italian tax law
    *         recognizes only these two rates for redditi di capitale, and any other value
-   *         would otherwise be silently dropped from the Quadro RM tax-filing export.
+   *         would otherwise be silently dropped from the Quadro RM tax-filing export, or
+   *         `.code === "INVALID_QUANTITY"` when a BUY or SELL transaction has a
+   *         non-positive `quantity` (`error.isin`/`error.date`/`error.quantity`/
+   *         `error.transactionType` identify the offending transaction) — `quantity` is
+   *         documented as always positive (see `Transaction` in `src/types.ts`), and a
+   *         non-positive value would otherwise silently drop the transaction (SELL) or
+   *         corrupt later lot matching (BUY) with no diagnostic trail.
    */
   calculateGains(method: LotMethod): GainsReport {
     const warnings: string[] = [...this._parseWarnings];
@@ -222,6 +228,25 @@ export class Calculator {
       }
 
       if (tx.type === "BUY") {
+        // Transaction.quantity is documented (src/types.ts) as "always
+        // positive". A non-positive BUY would inject a non-positive-quantity
+        // open lot that can corrupt a LATER sell's matching (see
+        // INVALID_QUANTITY's doc comment in src/errors.ts) — reject it here,
+        // right where the BUY is actually consumed, so the error naturally
+        // references this exact transaction. `!(tx.quantity > 0)` (rather
+        // than `tx.quantity <= 0`) also rejects NaN, which would otherwise
+        // slip through `<= 0` (NaN <= 0 is false) and poison pricePerUnitEUR
+        // with the same silent-corruption failure mode this guard exists to
+        // prevent.
+        if (!(tx.quantity > 0)) {
+          throw new CalculationError(
+            "INVALID_QUANTITY",
+            tx.isin,
+            tx.date,
+            tx.quantity,
+            "BUY",
+          );
+        }
         const lot: Lot = {
           date: tx.date,
           quantity: tx.quantity,
@@ -234,6 +259,26 @@ export class Calculator {
         openLots.get(tx.isin)!.push(lot);
       } else {
         // SELL
+        // Transaction.quantity is documented (src/types.ts) as "always
+        // positive". A non-positive SELL makes the matching
+        // `while (remainingSellQty > 0)` loop below a complete no-op — the
+        // SELL would silently vanish with no diagnostic trail, leaving its
+        // matching open BUY lot dangling (see INVALID_QUANTITY's doc comment
+        // in src/errors.ts). Reject it here, right where the SELL is
+        // actually consumed, so the error naturally references this exact
+        // transaction. `!(tx.quantity > 0)` (rather than `tx.quantity <= 0`)
+        // also rejects NaN, which would otherwise slip through `<= 0` (NaN
+        // <= 0 is false) and silently no-op the SELL exactly like the
+        // original bug.
+        if (!(tx.quantity > 0)) {
+          throw new CalculationError(
+            "INVALID_QUANTITY",
+            tx.isin,
+            tx.date,
+            tx.quantity,
+            "SELL",
+          );
+        }
         const lots = openLots.get(tx.isin);
         if (!lots || lots.length === 0) {
           throw new CalculationError(tx.isin, tx.date);

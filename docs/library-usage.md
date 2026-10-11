@@ -70,7 +70,20 @@ try {
       console.error("Invalid CSV");
     }
   } else if (err instanceof CalculationError) {
-    console.error(`SELL without prior BUY: ${err.isin} on ${err.date}`);
+    if (err.code === "INVALID_QUANTITY") {
+      // Transaction.quantity must always be positive (see the Transaction type).
+      // Thrown for either a BUY or a SELL — err.transactionType says which.
+      console.error(
+        `${err.transactionType} for ${err.isin} on ${err.date} has invalid quantity ${err.quantity}`,
+      );
+    } else if (err.code === "AMBIGUOUS_TAX_YEAR") {
+      console.error("SELLs span multiple tax years:", err.years);
+    } else if (err.code === "INVALID_TAX_RATE") {
+      console.error(`Invalid Bucket A taxRate for ${err.isin}: ${err.taxRate}`);
+    } else {
+      // NO_OPEN_LOTS
+      console.error(`SELL without prior BUY: ${err.isin} on ${err.date}`);
+    }
   }
 }
 ```
