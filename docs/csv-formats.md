@@ -60,6 +60,14 @@ For instruments like options and futures, trade value is computed applying the o
 `Multiplier` column (e.g. 100 for a standard equity option), which defaults to 1 when the column
 is absent.
 
+A `Dividends` row with a non-positive `Amount` — which IBKR uses to reverse or reclassify (e.g.
+as return-of-capital) a previously-paid dividend — is excluded entirely: it produces no income
+row and no warning, and the original payment it corrects is still reported in full. This is a
+known simplification: without a column linking a reversal to the specific payment it corrects,
+netting it against same-ISIN/currency dividends would risk rescaling *other*, unrelated payments
+for the same instrument (e.g. a quarterly dividend payer where only one quarter is ever
+reversed). A negative-amount `Bond` `Interest` row is excluded the same way.
+
 ## Next steps
 
 - [CLI Usage](cli-usage.md) — validate and calculate against your CSV

@@ -497,7 +497,31 @@ export class IBKRParser implements Parser {
 
   /**
    * Parse one `Dividends` `Data` row into an income candidate, or return
-   * `undefined` if it must be skipped (blank ISIN, with a warning pushed).
+   * `undefined` if the row is out of scope entirely (`Amount` isn't
+   * positive — no warning, per spec, mirroring `parseInterestRow`'s
+   * `amount <= 0` scope filter) or has a blank ISIN (warning pushed, only
+   * reached once the scope filter passes).
+   *
+   * A non-positive `Amount` here is not a parse error: real IBKR exports can
+   * contain a `Dividends` row with a *negative* `Amount` when a previously
+   * paid dividend is reversed or reclassified (e.g. as return-of-capital).
+   * Taking `Math.abs()` of that reversal would turn it into a second,
+   * fabricated positive dividend — silently doubling/inflating the income
+   * that lands in the Quadro RM dichiarazione export. `IncomeRow` has no
+   * concept of a negative/offsetting entry in this release, so (as with
+   * `DEGIROParser`'s `isIncomeKeyword && localValue > 0` guard for the
+   * structurally identical DEGIRO case) the correct, tax-safe behavior is to
+   * exclude the row from `IncomeRow` scope entirely rather than report it —
+   * under-reporting nothing, since the original row it reverses is still
+   * reported as-is; this is not a cost-basis/netting adjustment. A netting
+   * approach was considered and rejected: grouping by (ISIN, currency) to
+   * offset a reversal against the specific payment it reverses would also
+   * smear its effect across *every other, unrelated* dividend payment for
+   * the same instrument/currency in the file (e.g. a stock paying quarterly
+   * dividends, where only one quarter's payment is ever reversed) — those
+   * unrelated, never-reversed payments would be silently rescaled away from
+   * their real, broker-reported amounts, replacing one correctness bug with
+   * a worse one that also corrupts otherwise-correct data.
    */
   private parseDividendsRow(
     row: string[],
@@ -508,6 +532,12 @@ export class IBKRParser implements Parser {
       const idx = colIndex[col];
       return idx === undefined ? "" : (row[idx] ?? "").trim();
     };
+
+    const rawAmount = parseNumericField(get("Amount"));
+    const amount = isNaN(rawAmount) ? 0 : rawAmount;
+    if (amount <= 0) {
+      return undefined;
+    }
 
     const isin = get("ISIN");
     if (!isin) {
@@ -521,8 +551,6 @@ export class IBKRParser implements Parser {
 
     const currency = get("CurrencyPrimary");
     const isoDate = ibkrDate(get("Date"));
-    const rawAmount = parseNumericField(get("Amount"));
-    const amount = Math.abs(isNaN(rawAmount) ? 0 : rawAmount);
     const product = get("Description") || get("Symbol");
 
     return {
