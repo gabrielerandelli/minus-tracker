@@ -187,7 +187,13 @@ export class Calculator {
    *         A ("A") gain entry a `taxRate` other than exactly `0.26` or `0.125`
    *         (`error.isin`/`error.taxRate` identify the offending entry) — Italian tax law
    *         recognizes only these two rates for redditi di capitale, and any other value
-   *         would otherwise be silently dropped from the Quadro RM tax-filing export.
+   *         would otherwise be silently dropped from the Quadro RM tax-filing export, or
+   *         `.code === "INVALID_QUANTITY"` when a BUY or SELL transaction has a
+   *         non-positive `quantity` (`error.isin`/`error.date`/`error.quantity`/
+   *         `error.transactionType` identify the offending transaction) — `quantity` is
+   *         documented as always positive (see `Transaction` in `src/types.ts`), and a
+   *         non-positive value would otherwise silently drop the transaction (SELL) or
+   *         corrupt later lot matching (BUY) with no diagnostic trail.
    */
   calculateGains(method: LotMethod): GainsReport {
     const warnings: string[] = [...this._parseWarnings];
@@ -211,6 +217,17 @@ export class Calculator {
     const openLots = new Map<string, Lot[]>();
     const matchedLots: MatchedLot[] = [];
     const ratesUsed: Record<string, number> = {};
+    // Carries each matched lot's RAW (unrounded) gainLossEUR alongside the cent-rounded
+    // value that lives on the public MatchedLot object (`gainLossEUR` below). Aggregation
+    // (step 5) and the Bucket A/B routing/sums must sum these raw values and round only
+    // once, at the very end — summing the already-rounded per-lot figures first (as before)
+    // accumulates cent-rounding error across many small lots, the same bug category already
+    // fixed elsewhere in this file and in src/dichiarazione/engine.ts for carry-forward and
+    // Quadro RM. Keyed by object identity (WeakMap) so the public MatchedLot shape itself
+    // never gains an extra field.
+    const rawGainLossByLot = new WeakMap<MatchedLot, number>();
+    const rawGain = (lot: MatchedLot): number =>
+      rawGainLossByLot.get(lot) ?? lot.gainLossEUR;
 
     for (const tx of sorted) {
       // Collect rates used
@@ -222,6 +239,25 @@ export class Calculator {
       }
 
       if (tx.type === "BUY") {
+        // Transaction.quantity is documented (src/types.ts) as "always
+        // positive". A non-positive BUY would inject a non-positive-quantity
+        // open lot that can corrupt a LATER sell's matching (see
+        // INVALID_QUANTITY's doc comment in src/errors.ts) — reject it here,
+        // right where the BUY is actually consumed, so the error naturally
+        // references this exact transaction. `!(tx.quantity > 0)` (rather
+        // than `tx.quantity <= 0`) also rejects NaN, which would otherwise
+        // slip through `<= 0` (NaN <= 0 is false) and poison pricePerUnitEUR
+        // with the same silent-corruption failure mode this guard exists to
+        // prevent.
+        if (!(tx.quantity > 0)) {
+          throw new CalculationError(
+            "INVALID_QUANTITY",
+            tx.isin,
+            tx.date,
+            tx.quantity,
+            "BUY",
+          );
+        }
         const lot: Lot = {
           date: tx.date,
           quantity: tx.quantity,
@@ -234,6 +270,26 @@ export class Calculator {
         openLots.get(tx.isin)!.push(lot);
       } else {
         // SELL
+        // Transaction.quantity is documented (src/types.ts) as "always
+        // positive". A non-positive SELL makes the matching
+        // `while (remainingSellQty > 0)` loop below a complete no-op — the
+        // SELL would silently vanish with no diagnostic trail, leaving its
+        // matching open BUY lot dangling (see INVALID_QUANTITY's doc comment
+        // in src/errors.ts). Reject it here, right where the SELL is
+        // actually consumed, so the error naturally references this exact
+        // transaction. `!(tx.quantity > 0)` (rather than `tx.quantity <= 0`)
+        // also rejects NaN, which would otherwise slip through `<= 0` (NaN
+        // <= 0 is false) and silently no-op the SELL exactly like the
+        // original bug.
+        if (!(tx.quantity > 0)) {
+          throw new CalculationError(
+            "INVALID_QUANTITY",
+            tx.isin,
+            tx.date,
+            tx.quantity,
+            "SELL",
+          );
+        }
         const lots = openLots.get(tx.isin);
         if (!lots || lots.length === 0) {
           throw new CalculationError(tx.isin, tx.date);
@@ -283,7 +339,7 @@ export class Calculator {
             sellPricePerUnitEUR * matchedQty - allocatedSellFeesEUR;
           const gainLossEUR = sellProceedsEUR - buyCostEUR;
 
-          matchedLots.push({
+          const matchedLot: MatchedLot = {
             isin: tx.isin,
             product: tx.product,
             quantity: matchedQty,
@@ -296,7 +352,9 @@ export class Calculator {
             gainLossEUR: roundHalfUp(gainLossEUR),
             buyFxRate: lot.fxRate,
             sellFxRate: tx.fxRate,
-          });
+          };
+          matchedLots.push(matchedLot);
+          rawGainLossByLot.set(matchedLot, gainLossEUR);
 
           // Snap immediately after subtracting: this both eliminates near-zero residue (as the
           // old QUANTITY_EPSILON-only check did) AND rounds any non-zero residue (e.g.
@@ -328,12 +386,17 @@ export class Calculator {
       (lot) => parseInt(lot.sellDate.slice(0, 4), 10) === taxYear,
     );
 
-    // 5. Aggregate
+    // 5. Aggregate — summed from each lot's RAW (unrounded) gain/loss, rounded once at the
+    // end (see rawGain/rawGainLossByLot above), not from the already-cent-rounded
+    // lot.gainLossEUR. Rounding each lot first and summing those rounded values would
+    // accumulate cumulative rounding error across many small lots (e.g. hundreds of DCA
+    // lots each with a sub-cent gain that individually rounds to 0.00).
     let plusvalenze = 0;
     let minusvalenze = 0;
     for (const lot of scopedLots) {
-      if (lot.gainLossEUR > 0) plusvalenze += lot.gainLossEUR;
-      else minusvalenze += Math.abs(lot.gainLossEUR);
+      const raw = rawGain(lot);
+      if (raw > 0) plusvalenze += raw;
+      else minusvalenze += Math.abs(raw);
     }
 
     // Two-bucket routing (only when classification map provided)
@@ -346,7 +409,7 @@ export class Calculator {
         if (!entry) {
           lot.bucket = "B";
           unclassifiedIsins.add(lot.isin);
-        } else if (entry.bucketGain === "A" && lot.gainLossEUR >= 0) {
+        } else if (entry.bucketGain === "A" && rawGain(lot) >= 0) {
           lot.bucket = "A";
         } else {
           lot.bucket = "B";
@@ -387,7 +450,7 @@ export class Calculator {
           groupsByRate.set(rate, { assetClasses: new Set(), plusvalenze: 0 });
         const g = groupsByRate.get(rate)!;
         g.assetClasses.add(entry.assetClass);
-        g.plusvalenze += lot.gainLossEUR;
+        g.plusvalenze += rawGain(lot);
       }
       const bucketAGroups = [...groupsByRate.entries()].map(([taxRate, g]) => ({
         taxRate,
@@ -407,8 +470,9 @@ export class Calculator {
       let bPlusvalenze = 0;
       let bMinusvalenze = 0;
       for (const lot of bucketBLots) {
-        if (lot.gainLossEUR >= 0) bPlusvalenze += lot.gainLossEUR;
-        else bMinusvalenze += Math.abs(lot.gainLossEUR);
+        const raw = rawGain(lot);
+        if (raw >= 0) bPlusvalenze += raw;
+        else bMinusvalenze += Math.abs(raw);
       }
       bPlusvalenze = roundHalfUp(bPlusvalenze);
       bMinusvalenze = roundHalfUp(bMinusvalenze);
