@@ -135,7 +135,15 @@ export async function runCalc(
       : filePath.replace(/\.csv$/i, "") + ".dichiarazione.json";
 
   // --year: sets CalculatorOptions.taxYear, scoping the report to that year.
+  // Must be a well-formed 4-digit calendar year (docs/prd/06-cli.md's <YYYY>
+  // contract) — otherwise parseInt would silently yield NaN, which flows
+  // through as an "explicit" taxYear and scopes every lot out of the report.
   const yearFlag = flags["year"] as string | undefined;
+  const yearRegex = /^\d{4}$/;
+  if (yearFlag !== undefined && !yearRegex.test(yearFlag)) {
+    stderr.write(s.yearInvalidFormat + "\n");
+    return 2;
+  }
   const taxYear = yearFlag !== undefined ? parseInt(yearFlag, 10) : undefined;
 
   // --carry-forward flag parsing

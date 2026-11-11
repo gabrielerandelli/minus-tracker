@@ -183,10 +183,19 @@ using half-up rounding.
 **Report aggregation:**
 
 ```
-plusvalenze  = Σ gainLossEUR where gainLossEUR > 0
-minusvalenze = Σ |gainLossEUR| where gainLossEUR < 0
+plusvalenze  = round(Σ rawGainLossEUR where rawGainLossEUR > 0)
+minusvalenze = round(Σ |rawGainLossEUR| where rawGainLossEUR < 0)
 netResult    = plusvalenze − minusvalenze
 ```
+
+The sum above is taken over each matched lot's **raw, unrounded** gain/loss — not over the
+already-cent-rounded `MatchedLot.gainLossEUR` values published on `report.lots[]` — with rounding
+applied exactly once, to the final sum. Summing the already-rounded per-lot figures instead would
+accumulate cent-rounding error across many small lots (e.g. a recurring/DCA investment plan closed
+across hundreds of small lots, each with a genuine but sub-cent gain that rounds to 0 in
+isolation), understating or even zeroing out a real, taxable aggregate gain. The same "sum raw,
+round once" rule applies to the Bucket A/B routing decision and sums (`src/calculator/index.ts`)
+when a `classification` map is supplied.
 
 ---
 
