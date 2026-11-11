@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The CLI's `calc --year` flag accepted any garbage value and silently produced a confidently
+  "correct" but completely zeroed-out report instead of an error.** `runCalc()`
+  (`src/cli/commands/calc.ts`) read `--year` with a bare `parseInt(yearFlag, 10)` and passed the
+  result straight through as `CalculatorOptions.taxYear`, with no validation of the parsed value.
+  A malformed value (e.g. `--year abc`, `--year 203`, `--year -5`, `--year 2024.5`) parses to
+  `NaN` (or a truncated, nonsensical integer), which `Calculator.calculateGains()` treats as an
+  explicit, authoritative tax year — short-circuiting its own inference logic — and the tax-year
+  scoping filter then compares every matched lot's real sell-year against that value with `===`,
+  which `NaN` never satisfies. The result: `plusvalenze`/`minusvalenze`/`netResult` were all
+  silently `0`, `lots` was empty, and the command exited with code `0` (success) and no warning
+  of any kind — even against a CSV with a real, substantial gain. The human-readable renderer and
+  the Modello Redditi PF Dichiarazione export were just as affected, literally printing
+  `ANNO FISCALE: NaN` / `ANNO D'IMPOSTA: NaN` into what otherwise reads as a normal tax report.
+  Every other constrained flag `runCalc()` parses (`--method`, `--broker`, `--carry-forward`)
+  already validates its input and exits `2` on a bad value; `--year` was the one exception. Fixed
+  by validating `--year` against the documented `<YYYY>` 4-digit-calendar-year contract
+  (`/^\d{4}$/`, matching `--carry-forward`'s own strict-regex validation) before it is ever passed
+  to `parseInt`, writing a clear error to stderr and exiting `2` on a mismatch — exactly mirroring
+  the existing `--carry-forward` validation block. New regression test in
+  `test/regression-cli-invalid-year-flag.test.ts` covers non-numeric, non-4-digit, negative, and
+  fractional `--year` values (each asserting exit code `2`, a clear stderr message, and no
+  silently-zeroed report ever reaching stdout), plus a well-formed `--year 2024` case confirming
+  no regression on the flag's legitimate, documented use.
 - **`Calculator.calculateGains()` could silently round a real, taxable gain all the way down to
   zero when a position was built or closed across many small lots.** `report.plusvalenze` /
   `report.minusvalenze` (and, when a `classification` map is supplied, the Bucket A/B routing
