@@ -211,6 +211,17 @@ export class Calculator {
     const openLots = new Map<string, Lot[]>();
     const matchedLots: MatchedLot[] = [];
     const ratesUsed: Record<string, number> = {};
+    // Carries each matched lot's RAW (unrounded) gainLossEUR alongside the cent-rounded
+    // value that lives on the public MatchedLot object (`gainLossEUR` below). Aggregation
+    // (step 5) and the Bucket A/B routing/sums must sum these raw values and round only
+    // once, at the very end — summing the already-rounded per-lot figures first (as before)
+    // accumulates cent-rounding error across many small lots, the same bug category already
+    // fixed elsewhere in this file and in src/dichiarazione/engine.ts for carry-forward and
+    // Quadro RM. Keyed by object identity (WeakMap) so the public MatchedLot shape itself
+    // never gains an extra field.
+    const rawGainLossByLot = new WeakMap<MatchedLot, number>();
+    const rawGain = (lot: MatchedLot): number =>
+      rawGainLossByLot.get(lot) ?? lot.gainLossEUR;
 
     for (const tx of sorted) {
       // Collect rates used
@@ -283,7 +294,7 @@ export class Calculator {
             sellPricePerUnitEUR * matchedQty - allocatedSellFeesEUR;
           const gainLossEUR = sellProceedsEUR - buyCostEUR;
 
-          matchedLots.push({
+          const matchedLot: MatchedLot = {
             isin: tx.isin,
             product: tx.product,
             quantity: matchedQty,
@@ -296,7 +307,9 @@ export class Calculator {
             gainLossEUR: roundHalfUp(gainLossEUR),
             buyFxRate: lot.fxRate,
             sellFxRate: tx.fxRate,
-          });
+          };
+          matchedLots.push(matchedLot);
+          rawGainLossByLot.set(matchedLot, gainLossEUR);
 
           // Snap immediately after subtracting: this both eliminates near-zero residue (as the
           // old QUANTITY_EPSILON-only check did) AND rounds any non-zero residue (e.g.
@@ -328,12 +341,17 @@ export class Calculator {
       (lot) => parseInt(lot.sellDate.slice(0, 4), 10) === taxYear,
     );
 
-    // 5. Aggregate
+    // 5. Aggregate — summed from each lot's RAW (unrounded) gain/loss, rounded once at the
+    // end (see rawGain/rawGainLossByLot above), not from the already-cent-rounded
+    // lot.gainLossEUR. Rounding each lot first and summing those rounded values would
+    // accumulate cumulative rounding error across many small lots (e.g. hundreds of DCA
+    // lots each with a sub-cent gain that individually rounds to 0.00).
     let plusvalenze = 0;
     let minusvalenze = 0;
     for (const lot of scopedLots) {
-      if (lot.gainLossEUR > 0) plusvalenze += lot.gainLossEUR;
-      else minusvalenze += Math.abs(lot.gainLossEUR);
+      const raw = rawGain(lot);
+      if (raw > 0) plusvalenze += raw;
+      else minusvalenze += Math.abs(raw);
     }
 
     // Two-bucket routing (only when classification map provided)
@@ -346,7 +364,7 @@ export class Calculator {
         if (!entry) {
           lot.bucket = "B";
           unclassifiedIsins.add(lot.isin);
-        } else if (entry.bucketGain === "A" && lot.gainLossEUR >= 0) {
+        } else if (entry.bucketGain === "A" && rawGain(lot) >= 0) {
           lot.bucket = "A";
         } else {
           lot.bucket = "B";
@@ -387,7 +405,7 @@ export class Calculator {
           groupsByRate.set(rate, { assetClasses: new Set(), plusvalenze: 0 });
         const g = groupsByRate.get(rate)!;
         g.assetClasses.add(entry.assetClass);
-        g.plusvalenze += lot.gainLossEUR;
+        g.plusvalenze += rawGain(lot);
       }
       const bucketAGroups = [...groupsByRate.entries()].map(([taxRate, g]) => ({
         taxRate,
@@ -407,8 +425,9 @@ export class Calculator {
       let bPlusvalenze = 0;
       let bMinusvalenze = 0;
       for (const lot of bucketBLots) {
-        if (lot.gainLossEUR >= 0) bPlusvalenze += lot.gainLossEUR;
-        else bMinusvalenze += Math.abs(lot.gainLossEUR);
+        const raw = rawGain(lot);
+        if (raw >= 0) bPlusvalenze += raw;
+        else bMinusvalenze += Math.abs(raw);
       }
       bPlusvalenze = roundHalfUp(bPlusvalenze);
       bMinusvalenze = roundHalfUp(bMinusvalenze);
