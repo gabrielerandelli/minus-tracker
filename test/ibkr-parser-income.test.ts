@@ -195,3 +195,75 @@ describe("TC-158: Optional sections entirely absent → incomeRows = [], not an 
     expect(parser.incomeRows).toEqual([]);
   });
 });
+
+describe("QA regression (2026-10): Dividends row with a negative Amount (reversal/correction) → excluded silently, not reported as a second positive dividend", () => {
+  const csv = [
+    "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+    "Dividends,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND USD 0.24 PER SHARE,50.00",
+    "Dividends,Data,USD,US0378331005,AAPL,20240320,APPLE INC CASH DIVIDEND USD 0.24 PER SHARE - REVERSAL,-50.00",
+    TRADES_HEADER,
+    TRADES_ROW,
+  ].join("\n");
+  const snapshot = { USD: { "2024-03-15": 1.2, "2024-03-20": 1.2 }, EUR: {} };
+
+  it("keeps only the original positive dividend; the negative reversal row is dropped, not converted into a second positive income entry", () => {
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(1);
+    const row = parser.incomeRows[0];
+    expect(row.incomeType).toBe("dividend");
+    expect(row.date).toBe("2024-03-15");
+    expect(row.grossAmount).toBeCloseTo(50.0 / 1.2, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+
+  it("a plain positive-amount Dividends row is completely unaffected by the fix", () => {
+    const plainCsv = [
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND USD 0.24 PER SHARE,2.40",
+      TRADES_HEADER,
+      TRADES_ROW,
+    ].join("\n");
+    const parser = new IBKRParser({ USD: { "2024-03-15": 1.2 }, EUR: {} });
+    parser.parse(plainCsv);
+    expect(parser.incomeRows).toHaveLength(1);
+    expect(parser.incomeRows[0].grossAmount).toBeCloseTo(2.0, 6);
+  });
+});
+
+describe("QA regression (2026-10): a reversal row never rescales OTHER, unrelated Dividends rows sharing the same ISIN/currency (e.g. a quarterly dividend payer)", () => {
+  // Four quarterly dividend payments, same ISIN/currency, only the first is reversed.
+  // A netting-by-(ISIN,currency) fix was considered and rejected specifically because it
+  // would spread the reversal's effect across Q2/Q3/Q4 too, corrupting amounts that were
+  // never reversed. The exclusion-based fix must leave Q2/Q3/Q4 at their real, full amounts.
+  const csv = [
+    "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+    "Dividends,Data,USD,US0378331005,AAPL,20240315,APPLE INC Q1 DIVIDEND,50.00",
+    "Dividends,Data,USD,US0378331005,AAPL,20240320,APPLE INC Q1 DIVIDEND - REVERSAL,-50.00",
+    "Dividends,Data,USD,US0378331005,AAPL,20240615,APPLE INC Q2 DIVIDEND,50.00",
+    "Dividends,Data,USD,US0378331005,AAPL,20240915,APPLE INC Q3 DIVIDEND,50.00",
+    "Dividends,Data,USD,US0378331005,AAPL,20241215,APPLE INC Q4 DIVIDEND,50.00",
+    TRADES_HEADER,
+    TRADES_ROW,
+  ].join("\n");
+  const snapshot = {
+    USD: {
+      "2024-03-15": 1.2,
+      "2024-03-20": 1.2,
+      "2024-06-15": 1.2,
+      "2024-09-15": 1.2,
+      "2024-12-15": 1.2,
+    },
+    EUR: {},
+  };
+
+  it("reports Q1 (the reversed quarter) plus the three untouched quarters, each at their real full amount — never a rescaled fraction", () => {
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(4);
+    for (const row of parser.incomeRows) {
+      expect(row.grossAmount).toBeCloseTo(50.0 / 1.2, 6);
+    }
+    expect(parser.warnings).toEqual([]);
+  });
+});

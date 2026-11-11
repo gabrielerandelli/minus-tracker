@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`IBKRParser` silently doubled a dividend's reported taxable income when the broker reversed
+  or corrected it.** `parseDividendsRow()` (`src/parser/ibkr.ts`), which turns `Dividends`-section
+  rows of an IBKR Activity Flex Query export into `IncomeRow`s, took `Math.abs()` of the row's
+  `Amount` unconditionally. Real IBKR exports can legitimately contain a **negative** `Amount` in
+  this section when a previously-paid dividend is reversed or reclassified (e.g. as
+  return-of-capital, or an erroneous credit corrected a few days later) — `Math.abs()` turned that
+  reversal into a *second, fabricated positive dividend* instead of recognizing it as a correction,
+  silently inflating the foreign dividend income that lands in
+  `report.dichiarazione.quadroRM.dividendiEsteri`, this library's actual Modello Redditi PF
+  tax-filing export. A $50 dividend followed by its $50 reversal was reported as $100 of taxable
+  income instead of $0 — a realistic, broker-documented scenario, not a crash or a clean rejection
+  of invalid input. `parseInterestRow` already has the equivalent `amount <= 0` scope filter for
+  the structurally identical `Interest`/Bond-row case (see `docs/test_plan/20-ibkr-parser-income-rows.md`'s
+  TC-156), and `DEGIROParser.parse()` already requires `isIncomeKeyword && localValue > 0` before
+  treating a row as dividend/coupon income — `Dividends` had no equivalent guard. Fixed by adding
+  the same `amount <= 0` exclusion to `parseDividendsRow`: a non-positive `Amount` now produces no
+  `IncomeRow` and no warning, exactly like the pre-existing `Interest` precedent. A netting
+  approach (offsetting a reversal against the specific payment it reverses, by grouping rows
+  sharing the same ISIN/currency) was considered and deliberately rejected: without a column
+  linking a reversal to the specific payment it corrects, grouping by (ISIN, currency) alone would
+  also smear the reversal's effect across *every other, unrelated* dividend payment for the same
+  instrument/currency in the file — e.g. a stock paying quarterly dividends, where only one
+  quarter is ever reversed, would have its three untouched quarters silently rescaled away from
+  their real, broker-reported amounts. The chosen fix is a known, narrower simplification (the
+  original payment a reversal corrects is still reported in full, rather than netted to zero) that
+  never fabricates or corrupts an amount for a payment that was never reversed — the same
+  trade-off the existing `Interest`/Bond out-of-scope exclusion already makes (see
+  `docs/prd/16-ibkr-parser.md`'s "Out of scope" section). No public API changed (`DEGIROParser`,
+  `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier` are all unchanged). New
+  regression tests in `test/ibkr-parser-income.test.ts` cover: the reversal-doubling repro, a
+  plain positive-amount row staying unaffected, and — guarding specifically against ever
+  reintroducing the rejected netting approach — a quarterly-dividend scenario confirming that
+  reversing one payment never rescales the other, unrelated payments for the same instrument.
 - **A BUY or SELL `Transaction` with a non-positive `quantity` was silently mishandled by
   `Calculator.calculateGains()` instead of being rejected.** `Transaction.quantity` is documented
   (`src/types.ts`) as "always positive", but nothing enforced it. A SELL with a negative
