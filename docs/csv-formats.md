@@ -60,6 +60,13 @@ For instruments like options and futures, trade value is computed applying the o
 `Multiplier` column (e.g. 100 for a standard equity option), which defaults to 1 when the column
 is absent.
 
+A `Trades` row with a **negative** `TradePrice` is skipped with a warning rather than calculated.
+This is real market history for some derivatives (e.g. CME WTI crude oil futures settled at
+-$37.63/barrel on 2020-04-20) rather than malformed data, but this release has no supported way to
+correctly compute Italian capital gains/losses for a negative-price settlement — attempting to
+anyway previously produced a silently wrong result (a real loss reported as a gain). If you hit
+this warning, handle that trade manually rather than relying on the generated report for it.
+
 A `Dividends` row with a non-positive `Amount` — which IBKR uses to reverse or reclassify (e.g.
 as return-of-capital) a previously-paid dividend — is excluded entirely: it produces no income
 row and no warning, and the original payment it corrects is still reported in full. This is a
