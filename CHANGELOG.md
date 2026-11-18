@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A hand-edited or partially-written `*.classify.json` sidecar with the right `version` but a
+  missing/`null` `"classifications"` field crashed `Classifier.load()`/`.classify()` with a raw,
+  unhandled `TypeError` instead of the documented `ClassificationError`.** `Classifier.load()`
+  (`src/classifier/index.ts`) validated only that the parsed sidecar JSON was an object with
+  `version === 1` before returning `parsed.classifications` — it never checked that
+  `"classifications"` itself was actually present or shaped like a `ClassificationMap`. A sidecar
+  like `{"version": 1}` (the key entirely absent, e.g. from an interrupted write or a merge
+  conflict left half-resolved — the sidecar is explicitly documented as something a user may
+  hand-edit) made `load()` silently return `undefined` with no error at all. `classify()`'s
+  sidecar-mode branch then ran `Object.entries(existingMap)` on that `undefined`, throwing
+  `TypeError: Cannot convert undefined or null to object` — not a typed `ClassificationError`,
+  breaking the documented contract (`load()`/`classify()` are specified, and tested via
+  `test/TC-045/046/047.test.ts`, to throw only `SIDECAR_NOT_FOUND` | `SIDECAR_VERSION` |
+  `SIDECAR_MALFORMED` | `WRITE_ERROR` | `NETWORK_ERROR` for malformed sidecar content). Fixed by
+  validating, immediately after the existing version check, that `"classifications"` is present
+  and is a genuine plain object (not `undefined`, not `null`, not an `Array`) before returning it,
+  throwing the existing `ClassificationError("SIDECAR_MALFORMED")` otherwise — the same code
+  already used for other malformed-sidecar-content cases, so no new error code was introduced. The
+  existing `SIDECAR_NOT_FOUND`/`SIDECAR_VERSION`/JSON-parse-failure `SIDECAR_MALFORMED` paths, and
+  the normal well-formed-sidecar happy path, are unaffected. No public API changed (`DEGIROParser`,
+  `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier` are all unchanged). New
+  regression tests in `test/regression-sidecar-shape-missing-classifications.test.ts` cover both
+  `load()` and `classify()` for a missing-key sidecar and an explicit-`null` sidecar, and confirm
+  `classify()` throws before ever attempting an OpenFIGI network call.
 - **`IBKRParser` silently doubled a dividend's reported taxable income when the broker reversed
   or corrected it.** `parseDividendsRow()` (`src/parser/ibkr.ts`), which turns `Dividends`-section
   rows of an IBKR Activity Flex Query export into `IncomeRow`s, took `Math.abs()` of the row's
