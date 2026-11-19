@@ -60,6 +60,13 @@ For instruments like options and futures, trade value is computed applying the o
 `Multiplier` column (e.g. 100 for a standard equity option), which defaults to 1 when the column
 is absent.
 
+For `BOND` rows, `TradePrice` is treated as a **percentage of face/par value** (e.g. a
+`TradePrice` of `98` means "98% of par"), not an absolute per-unit cash price — the standard
+bond-market quoting convention, also reflected in IBKR's own documentation. `Quantity` is read as
+the face/par value of the position, not a share count. Without this scaling, a bond trade's
+cost/proceeds basis would be overstated by roughly 100x (e.g. a true 400 EUR gain miscalculated
+as 40,000 EUR). Other asset categories (`STK`, `OPT`, `FUT`, …) are unaffected.
+
 A `Dividends` row with a non-positive `Amount` — which IBKR uses to reverse or reclassify (e.g.
 as return-of-capital) a previously-paid dividend — is excluded entirely: it produces no income
 row and no warning, and the original payment it corrects is still reported in full. This is a
