@@ -416,8 +416,22 @@ export class IBKRParser implements Parser {
     const multiplier =
       isNaN(rawMultiplier) || rawMultiplier <= 0 ? 1 : rawMultiplier;
 
+    // --- Bond price-as-percent-of-par ---
+    // Unlike a stock (quoted as an absolute cash price per share) or an
+    // option/future (absolute price per underlying unit, scaled by
+    // Multiplier above), a BOND's TradePrice is universally quoted as a
+    // PERCENTAGE OF FACE/PAR VALUE (e.g. TradePrice=98 means "98% of par"),
+    // and Quantity is the face/par value of the position, not a share
+    // count. Treating TradePrice as an absolute per-unit price for bonds
+    // (the pre-fix behavior) overstates the cash value of the trade by
+    // ~100x. This mirrors IBKR's own documented "bond trade value" factor
+    // and is a universal fixed-income convention, not broker-specific
+    // guesswork — see docs/csv-formats.md for details and a worked example.
+    const isBond = assetCategory.toUpperCase() === "BOND";
+    const effectiveUnitPrice = isBond ? tradePrice / 100 : tradePrice;
+
     const totalLocal =
-      (type === "SELL" ? 1 : -1) * quantity * multiplier * tradePrice;
+      (type === "SELL" ? 1 : -1) * quantity * multiplier * effectiveUnitPrice;
     const totalEUR = Math.abs(totalLocal) / ecbRate;
 
     // --- Commission FX (independent lookup, per-decision) ---
