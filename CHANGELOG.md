@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`IBKRParser` could silently fabricate a capital gain or loss when an option/future row in the
+  `Trades` section shared its ISIN with the underlying stock's own rows.** `Transaction.quantity`
+  means different things depending on instrument type: for a plain equity (`AssetCategory` `STK`)
+  it is a raw share count, but for an option or future (`OPT`/`FUT`) it is a *contract* count, with
+  the optional `Multiplier` column (e.g. 100 for a standard equity option) scaling `TradePrice`
+  into the real cash value at parse time — `quantity` itself is never multiplier-adjusted.
+  `Calculator.calculateGains()` matches LIFO/FIFO lots purely by `isin`, with no concept of
+  `AssetCategory` at all. Real-world IBKR exports often leave an option's own `ISIN` column blank
+  (OCC options aren't ISIN-registered) or have it backfilled with the underlying's ISIN by an
+  upstream pipeline — when that happens, a 1-contract option lot and the underlying stock's
+  per-share lots end up in the exact same ISIN-keyed matching pool, and `Calculator` silently
+  cross-matches them as if 1 contract equalled 1 share. Concretely: 10 shares of stock bought at
+  100 CHF and sold at 120 CHF, plus a single, completely unrelated 1-contract call option (strike
+  110, multiplier 100, premium 2 CHF, never sold) sharing the stock's ISIN, produced — depending on
+  which method and lot order — a 10-share stock position incorrectly split into 9+1, with the "1"
+  share's cost basis taken from the option's total premium instead of the stock's real per-share
+  cost, fabricating a loss that never happened, while the user's real, still-open option position
+  silently vanished from tracking as if it had been sold. No warning of any kind was emitted. Fixed
+  in `IBKRParser.parse()`: Trades `Data` rows are now collected and counted per `(ISIN,
+  AssetCategory)` before any `Transaction` is built; whenever one ISIN spans more than one
+  distinct `AssetCategory`, only the dominant category for that ISIN (the one with the most rows;
+  ties broken by whichever was encountered first in the file) is kept, and the rest are excluded
+  from `Transaction[]` with a new `MIXED_ASSET_CATEGORY_ISIN` warning naming both categories and
+  their row counts — the same "skip the untrustworthy rows, keep the rest of the file, warn
+  loudly" philosophy this parser already uses for `MISSING_ISIN`/`NO_ECB_RATE`/`QUANTITY_ZERO`,
+  rather than aborting the whole file or discarding the unaffected, legitimate side of the
+  collision. No public API changed (`DEGIROParser`, `Calculator.calculateGains('LIFO'|'FIFO')`,
+  `IBKRParser`, `Classifier` are all unchanged — only `IBKRParser`'s internal behavior and its
+  warnings surface). New regression tests in `test/ibkr-parser-trades.test.ts` cover: the exact
+  repro above resolving correctly under both LIFO and FIFO once the minority option rows are
+  dropped, dominance in the reverse direction (option rows outnumbering a single stock row), the
+  row-count tie-break, and a sanity check that an ISIN consistently using one `AssetCategory`
+  never triggers a false positive.
 - **`IBKRParser` silently doubled a dividend's reported taxable income when the broker reversed
   or corrected it.** `parseDividendsRow()` (`src/parser/ibkr.ts`), which turns `Dividends`-section
   rows of an IBKR Activity Flex Query export into `IncomeRow`s, took `Math.abs()` of the row's

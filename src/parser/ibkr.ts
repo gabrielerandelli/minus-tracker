@@ -113,6 +113,16 @@ export class IBKRParser implements Parser {
    * rate within 5 calendar days (see lookupRate's MAX_LOOKBACK_DAYS in
    * src/rates/index.ts) are skipped silently. Inspect `parser.warnings`
    * for details.
+   *
+   * If the same ISIN appears across more than one distinct AssetCategory
+   * value in the Trades section (e.g. a stock's own rows and an option/future
+   * row sharing the underlying's ISIN — real-world exports sometimes
+   * populate an option's ISIN with the underlying's for linkage), only the
+   * dominant AssetCategory for that isin (the one with the most Data rows;
+   * ties broken by first-encountered-in-file) is kept — the rest are
+   * excluded, with a `MIXED_ASSET_CATEGORY_ISIN` warning. This avoids
+   * silently cross-matching unrelated instruments in `Calculator`'s
+   * isin-keyed lot matching.
    */
   parse(csv: string): Transaction[] {
     this._warningEntries = [];
@@ -132,6 +142,12 @@ export class IBKRParser implements Parser {
     const transactions: Transaction[] = [];
     const incomeCandidates: IBKRIncomeCandidate[] = [];
     const withholdingCandidates: IBKRWithholdingCandidate[] = [];
+    // Trades `Data` rows are collected here, not parsed immediately — actual
+    // Transaction building is deferred until after the full file has been
+    // scanned, so the same-ISIN/mixed-AssetCategory check below (which needs
+    // to see every Trades row before deciding anything) can run first. See
+    // "MIXED_ASSET_CATEGORY_ISIN" below.
+    const tradesDataRows: { row: string[]; rowCounter: number }[] = [];
 
     for (const row of rows) {
       if (row.every((cell) => cell.trim() === "")) continue;
@@ -158,8 +174,7 @@ export class IBKRParser implements Parser {
           }
           const rowCounter = (sectionRowCounters["Trades"] =
             (sectionRowCounters["Trades"] ?? 0) + 1);
-          const tx = this.parseTradesRow(row, colIndex, rowCounter, snapshot);
-          if (tx) transactions.push(tx);
+          tradesDataRows.push({ row, rowCounter });
           continue;
         }
 
@@ -197,6 +212,93 @@ export class IBKRParser implements Parser {
       if (tradesColIndex[col] === undefined) {
         throw new ParseError("MISSING_COLUMN", col);
       }
+    }
+
+    const getTradesCell = (row: string[], col: string): string => {
+      const idx = tradesColIndex[col];
+      return idx === undefined ? "" : (row[idx] ?? "").trim();
+    };
+
+    // --- Detect an ISIN shared across more than one distinct AssetCategory ---
+    // Calculator keys lot-matching purely on isin (see this method's doc
+    // comment above), so an isin that spans e.g. a STK row and an OPT row
+    // would otherwise be silently cross-matched as if 1 contract == 1 share.
+    // Counted over the same scope parseTradesRow itself would otherwise
+    // accept (DataDiscriminator "Order", AssetCategory !== "CASH", non-blank
+    // ISIN) — a row this loose scan wouldn't count was never going to become
+    // a Transaction anyway, so it can't be party to a real cross-match.
+    interface CategoryCount {
+      count: number;
+    }
+    const categoryCountsByIsin = new Map<string, Map<string, CategoryCount>>();
+    for (const { row } of tradesDataRows) {
+      const discriminator = getTradesCell(row, "DataDiscriminator");
+      const assetCategory = getTradesCell(row, "AssetCategory");
+      const isin = getTradesCell(row, "ISIN");
+      if (discriminator !== "Order" || assetCategory === "CASH" || !isin) {
+        continue;
+      }
+      let catCounts = categoryCountsByIsin.get(isin);
+      if (!catCounts) {
+        catCounts = new Map();
+        categoryCountsByIsin.set(isin, catCounts);
+      }
+      const existing = catCounts.get(assetCategory);
+      if (existing) {
+        existing.count++;
+      } else {
+        catCounts.set(assetCategory, { count: 1 });
+      }
+    }
+
+    // isin -> AssetCategory to keep; only populated for isins with a real
+    // conflict (more than one distinct AssetCategory value seen).
+    const dominantCategoryByIsin = new Map<string, string>();
+    for (const [isin, catCounts] of categoryCountsByIsin) {
+      if (catCounts.size <= 1) continue;
+
+      // catCounts iterates in first-encountered order (insertion order), so
+      // a strict `>` here already implements the documented tie-break
+      // ("first AssetCategory encountered in the file wins"): a later
+      // category can only displace the current leader by having strictly
+      // more rows, never by tying it.
+      let dominantCategory: string | undefined;
+      let dominantCount = -1;
+      for (const [category, { count }] of catCounts) {
+        if (count > dominantCount) {
+          dominantCategory = category;
+          dominantCount = count;
+        }
+      }
+
+      dominantCategoryByIsin.set(isin, dominantCategory!);
+      for (const [category, { count }] of catCounts) {
+        if (category === dominantCategory) continue;
+        this._warningEntries.push({
+          code: "MIXED_ASSET_CATEGORY_ISIN",
+          isin,
+          keptCategory: dominantCategory!,
+          droppedCategory: category,
+          keptRows: dominantCount,
+          droppedRows: count,
+          section: "Trades",
+        });
+      }
+    }
+
+    // --- Build Transactions, excluding minority-AssetCategory rows ---
+    for (const { row, rowCounter } of tradesDataRows) {
+      const isin = getTradesCell(row, "ISIN");
+      const assetCategory = getTradesCell(row, "AssetCategory");
+      const dominantCategory = dominantCategoryByIsin.get(isin);
+      if (dominantCategory !== undefined && assetCategory !== dominantCategory) {
+        // Already warned about via MIXED_ASSET_CATEGORY_ISIN above (once per
+        // isin/dropped-category pair, not once per row) — silently excluded
+        // from Transaction[] here.
+        continue;
+      }
+      const tx = this.parseTradesRow(row, tradesColIndex, rowCounter, snapshot);
+      if (tx) transactions.push(tx);
     }
 
     // --- FX-convert Withholding Tax candidates independently, per row ---

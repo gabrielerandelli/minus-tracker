@@ -462,3 +462,107 @@ describe("regression: Multiplier column absent, blank, non-numeric, zero, or neg
     expect(transactions[0].totalEUR).toBeCloseTo(950, 6);
   });
 });
+
+/**
+ * Regression — an ISIN shared across more than one distinct AssetCategory in
+ * the Trades section (e.g. a STK row and an OPT row sharing the underlying's
+ * ISIN, which real IBKR exports can produce when an option's own ISIN is
+ * left blank and a pipeline backfills it with the underlying's). Calculator
+ * matches lots purely by isin with no concept of AssetCategory, so without
+ * this guard a 1-contract option lot would silently cross-match against the
+ * stock's per-share lots as if 1 contract == 1 share. The parser must keep
+ * only the dominant (most Data rows) AssetCategory per isin, drop the rest,
+ * and warn — under both LIFO and FIFO.
+ */
+describe("regression: ISIN shared across AssetCategory values (MIXED_ASSET_CATEGORY_ISIN)", () => {
+  const ASSET_HEADER =
+    "Trades,Header,DataDiscriminator,AssetCategory,CurrencyPrimary,Symbol,Description,ISIN,Multiplier,TradeDate,Buy/Sell,Quantity,TradePrice,IBCommission,IBCommissionCurrency";
+
+  describe("stock dominant (2 STK rows) vs option minority (1 OPT row) — the confirmed repro", () => {
+    const csv = [
+      ASSET_HEADER,
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240301,BUY,10,100,-1,CHF",
+      "Trades,Data,Order,OPT,CHF,NESN 20APR24 110 C,NESN APR24 110 CALL,CH0038863350,100,20240401,BUY,1,2,-1,CHF",
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240905,SELL,10,120,-1,CHF",
+    ].join("\n");
+
+    it("excludes the minority OPT row from Transaction[] and warns", () => {
+      const parser = new IBKRParser();
+      const transactions = parser.parse(csv);
+      expect(transactions).toHaveLength(2);
+      expect(transactions.every((t) => t.quantity === 10)).toBe(true);
+      expect(parser.warnings).toContain(
+        "ISIN CH0038863350: mixed AssetCategory values in Trades (STK: 2 row(s), OPT: 1 row(s)) — kept STK as the dominant instrument, dropped OPT rows as the minority/likely-unrelated instrument",
+      );
+    });
+
+    it.each(["LIFO", "FIFO"] as const)(
+      "produces exactly one correct 10-share lot under %s — the option contributes nothing",
+      (method) => {
+        const parser = new IBKRParser();
+        const transactions = parser.parse(csv);
+        const calculator = new Calculator(transactions, parser.warnings);
+        const report = calculator.calculateGains(method);
+
+        expect(report.lots).toHaveLength(1);
+        const lot = report.lots[0];
+        expect(lot.isin).toBe("CH0038863350");
+        expect(lot.quantity).toBe(10);
+        expect(lot.buyDate).toBe("2024-03-01");
+        expect(lot.sellDate).toBe("2024-09-05");
+        expect(lot.gainLossEUR).toBeCloseTo(232.22, 2);
+      },
+    );
+  });
+
+  describe("option dominant (2 OPT rows) vs stock minority (1 STK row) — dominance in the other direction", () => {
+    const csv = [
+      ASSET_HEADER,
+      "Trades,Data,Order,OPT,CHF,NESN 20APR24 110 C,NESN APR24 110 CALL,CH0038863350,100,20240301,BUY,1,2,-1,CHF",
+      "Trades,Data,Order,OPT,CHF,NESN 20APR24 110 C,NESN APR24 110 CALL,CH0038863350,100,20240701,SELL,1,3,-1,CHF",
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240401,BUY,5,50,-1,CHF",
+    ].join("\n");
+
+    it("keeps the OPT rows and excludes the minority STK row", () => {
+      const parser = new IBKRParser();
+      const transactions = parser.parse(csv);
+      expect(transactions).toHaveLength(2);
+      expect(transactions.every((t) => t.quantity === 1)).toBe(true);
+      expect(parser.warnings).toContain(
+        "ISIN CH0038863350: mixed AssetCategory values in Trades (OPT: 2 row(s), STK: 1 row(s)) — kept OPT as the dominant instrument, dropped STK rows as the minority/likely-unrelated instrument",
+      );
+    });
+  });
+
+  describe("tie (1 STK row vs 1 OPT row) — first AssetCategory encountered in the file wins", () => {
+    const csv = [
+      ASSET_HEADER,
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240301,BUY,10,100,-1,CHF",
+      "Trades,Data,Order,OPT,CHF,NESN 20APR24 110 C,NESN APR24 110 CALL,CH0038863350,100,20240401,BUY,1,2,-1,CHF",
+    ].join("\n");
+
+    it("keeps the first-encountered STK row and drops the later OPT row", () => {
+      const parser = new IBKRParser();
+      const transactions = parser.parse(csv);
+      expect(transactions).toHaveLength(1);
+      expect(transactions[0].quantity).toBe(10);
+      expect(parser.warnings).toContain(
+        "ISIN CH0038863350: mixed AssetCategory values in Trades (STK: 1 row(s), OPT: 1 row(s)) — kept STK as the dominant instrument, dropped OPT rows as the minority/likely-unrelated instrument (tie on row count — first AssetCategory encountered in the file was kept)",
+      );
+    });
+  });
+
+  it("same AssetCategory across all rows for an isin → no conflict, no warning", () => {
+    const csv = [
+      ASSET_HEADER,
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240301,BUY,10,100,-1,CHF",
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240905,SELL,10,120,-1,CHF",
+    ].join("\n");
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(2);
+    expect(
+      parser.warningEntries.some((w) => w.code === "MIXED_ASSET_CATEGORY_ISIN"),
+    ).toBe(false);
+  });
+});
