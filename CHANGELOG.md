@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`IBKRParser` silently doubled (or further inflated) the foreign tax credit reported for a
+  dividend whose withholding tax was later reversed or corrected by the broker.**
+  `parseWithholdingRow()` (`src/parser/ibkr.ts`), which turns `Withholding Tax`-section rows of an
+  IBKR Activity Flex Query export into withholding candidates, took `Math.abs()` of the row's
+  `Amount` unconditionally, before those rows are summed per `(ISIN, Date, CurrencyPrimary)` key
+  into the total that becomes `IncomeRow.withholdingTax` — the value this library reports as the
+  foreign tax credit (`credito d'imposta estero`) in `report.dichiarazione.quadroRM`. Real IBKR
+  exports report a genuine withholding charge as a *negative* `Amount` (a cash outflow); a
+  same-day correction or reversal of that exact charge (e.g. the broker over-withheld and later
+  credits it back) is reported with the *opposite* sign — positive — sharing the same join key as
+  the charge it reverses. Because `Math.abs()` discarded that sign before the per-key sum, a
+  charge (`-15.00`) and its full reversal (`+15.00`) summed to `30.00` instead of netting to `0`,
+  roughly doubling the reported foreign tax credit instead of correctly reducing it toward zero; a
+  partial correction was similarly over-counted rather than netted down. Fixed by keeping
+  `amount` signed through `parseWithholdingRow()` and FX conversion, letting the existing
+  per-`(ISIN, Date, CurrencyPrimary)` aggregation in `parse()` sum the raw signed amounts (so a
+  same-key reversal nets against the exact charge it corrects), and converting each key's final
+  net total to a non-negative credit via `Math.max(0, -net)` right after aggregation (a net cash
+  *inflow* for a key, from an over-correction, means no tax was ultimately withheld — the credit
+  floors at 0, never goes negative). Unlike the `Dividends`-reversal fix below, which excludes the
+  reversal row outright, netting is safe and correct here specifically because Withholding Tax
+  rows were already being aggregated by the exact `(ISIN, Date, CurrencyPrimary)` key *before*
+  this fix — unlike a `Dividends` reversal (commonly posted on a different date than the payment
+  it corrects), a same-key Withholding Tax reversal can only ever net against the precise charge
+  it reverses, never smear onto an unrelated row. No public API changed (`DEGIROParser`,
+  `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier`, and `IncomeRow`'s public
+  shape are all unchanged). New regression tests in `test/ibkr-parser-income.test.ts` cover: a
+  full reversal netting to zero, a plain charge with no reversal staying unaffected, a *partial*
+  reversal netting down (not zeroing or doubling), and — guarding against ever reintroducing a
+  smearing bug — confirming a reversal never affects another withholding-bearing dividend on a
+  different date or ISIN.
 - **`IBKRParser` silently doubled a dividend's reported taxable income when the broker reversed
   or corrected it.** `parseDividendsRow()` (`src/parser/ibkr.ts`), which turns `Dividends`-section
   rows of an IBKR Activity Flex Query export into `IncomeRow`s, took `Math.abs()` of the row's

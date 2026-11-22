@@ -68,6 +68,14 @@ netting it against same-ISIN/currency dividends would risk rescaling *other*, un
 for the same instrument (e.g. a quarterly dividend payer where only one quarter is ever
 reversed). A negative-amount `Bond` `Interest` row is excluded the same way.
 
+`Withholding Tax` rows, by contrast, **are** netted — but only within the same `(ISIN, Date,
+CurrencyPrimary)` key the parser already groups them by before matching them to an income row. A
+genuine withholding charge is reported with a negative `Amount`; a same-day correction or
+reversal of that exact charge is reported with the opposite (positive) sign and shares that same
+key, so it nets safely against the precise charge it corrects without ever affecting another
+row — a full reversal nets `withholdingTax` to `0`, a partial one nets it down proportionally,
+and the foreign tax credit never comes out doubled or inflated by a broker-side correction.
+
 ## Next steps
 
 - [CLI Usage](cli-usage.md) — validate and calculate against your CSV

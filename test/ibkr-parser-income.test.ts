@@ -267,3 +267,129 @@ describe("QA regression (2026-10): a reversal row never rescales OTHER, unrelate
     expect(parser.warnings).toEqual([]);
   });
 });
+
+describe("QA regression (2026-11): Withholding Tax charge fully offset by a same-key reversal → withholdingTax must not double, must net to ~0", () => {
+  // Real IBKR exports report a genuine withholding charge as a NEGATIVE Amount
+  // (cash outflow). A correction/reversal row undoing that exact charge shares
+  // the SAME (ISIN, Date, CurrencyPrimary) key — that is the realistic case for
+  // Withholding Tax corrections, unlike a Dividends reversal (which is commonly
+  // posted on a later date and therefore does NOT share the Dividends row's own
+  // join key — see the Dividends QA-regression blocks above, where the fix had
+  // to be row exclusion for exactly that reason).
+  //
+  // Because Withholding Tax rows are already aggregated by this exact
+  // (isin, date, currency) key before being joined to income rows
+  // (`totalsByKey` in src/parser/ibkr.ts), a same-key reversal CAN be netted
+  // safely here without any risk of smearing its effect onto other, unrelated
+  // withholding rows — unlike the rejected (ISIN, currency)-only netting
+  // considered (and rejected) for Dividends, this key already includes the
+  // date, so it only ever nets a reversal against the exact charge it reverses.
+  //
+  // Expected value: the charge (-15.00) and its full reversal (+15.00) are the
+  // same real-world cash-flow event undone — net cash withheld is 0, so no
+  // foreign tax credit was ultimately retained by the broker. withholdingTax
+  // must therefore be 0 (not 15, the original charge, and definitely not 30,
+  // the pre-fix doubled value from summing two Math.abs()'d positive rows).
+  const csv = [
+    "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+    "Dividends,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND,100.00",
+    "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+    "Withholding Tax,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND TAX,-15.00",
+    "Withholding Tax,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND TAX - CORRECTION REVERSAL,15.00",
+    TRADES_HEADER,
+    TRADES_ROW,
+  ].join("\n");
+  const snapshot = { USD: { "2024-03-15": 1.2 }, EUR: {} };
+
+  it("nets the charge and its full reversal to zero withholdingTax, not double the charge", () => {
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(1);
+    const row = parser.incomeRows[0];
+    expect(row.grossAmount).toBeCloseTo(100.0 / 1.2, 6);
+    // Must not double (30 EUR-equivalent) nor even just report the original
+    // charge (15 EUR-equivalent) — the reversal fully cancels it.
+    expect(row.withholdingTax).toBeCloseTo(0, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+
+  it("a standalone withholding charge with no reversal is still reported at its real, non-doubled amount", () => {
+    const soloCsv = [
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND,100.00",
+      "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND TAX,-15.00",
+      TRADES_HEADER,
+      TRADES_ROW,
+    ].join("\n");
+    const parser = new IBKRParser(snapshot);
+    parser.parse(soloCsv);
+    expect(parser.incomeRows).toHaveLength(1);
+    expect(parser.incomeRows[0].withholdingTax).toBeCloseTo(15.0 / 1.2, 6);
+  });
+
+  it("a PARTIAL reversal correctly reduces (not doubles or zeroes) the net withholding", () => {
+    // Net charge is -15 + 5 = -10 USD → credit magnitude 10 USD → /1.2 EUR.
+    // The pre-fix buggy behavior would have produced abs(-15)+abs(5) = 20 USD
+    // (/1.2) instead — this is the scenario that specifically distinguishes a
+    // correct netting fix from a fix that merely excludes any non-negative
+    // row outright (which would wrongly keep the full original -15 charge
+    // and ignore the partial correction entirely).
+    const partialCsv = [
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND,100.00",
+      "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND TAX,-15.00",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240315,APPLE INC CASH DIVIDEND TAX - PARTIAL CORRECTION,5.00",
+      TRADES_HEADER,
+      TRADES_ROW,
+    ].join("\n");
+    const parser = new IBKRParser(snapshot);
+    parser.parse(partialCsv);
+    expect(parser.incomeRows).toHaveLength(1);
+    expect(parser.incomeRows[0].withholdingTax).toBeCloseTo(10.0 / 1.2, 6);
+  });
+});
+
+describe("QA regression (2026-11): a Withholding Tax reversal never rescales OTHER, unrelated withholding-bearing dividends (different date/ISIN)", () => {
+  // Mirrors the Dividends "never rescales OTHER rows" regression test above.
+  // Here the join key already includes the date, so a same-key reversal must
+  // stay scoped to its own (isin, date, currency) and leave every other key's
+  // withholding total completely untouched.
+  const csv = [
+    "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+    "Dividends,Data,USD,US0378331005,AAPL,20240315,APPLE INC Q1 DIVIDEND,100.00",
+    "Dividends,Data,USD,US0378331005,AAPL,20240615,APPLE INC Q2 DIVIDEND,100.00",
+    "Dividends,Data,EUR,IE00BK5BQT80,VWCE,20240315,VWCE DIVIDEND,50.00",
+    "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+    "Withholding Tax,Data,USD,US0378331005,AAPL,20240315,APPLE INC Q1 DIVIDEND TAX,-15.00",
+    "Withholding Tax,Data,USD,US0378331005,AAPL,20240315,APPLE INC Q1 DIVIDEND TAX - CORRECTION REVERSAL,15.00",
+    "Withholding Tax,Data,USD,US0378331005,AAPL,20240615,APPLE INC Q2 DIVIDEND TAX,-20.00",
+    "Withholding Tax,Data,EUR,IE00BK5BQT80,VWCE,20240315,VWCE DIVIDEND TAX,-5.00",
+    TRADES_HEADER,
+    TRADES_ROW,
+  ].join("\n");
+  const snapshot = {
+    USD: { "2024-03-15": 1.2, "2024-06-15": 1.2 },
+    EUR: {},
+  };
+
+  it("nets only the Q1 (isin, date, currency) key to zero, leaving Q2 and the unrelated VWCE dividend at their real, un-rescaled withholding amounts", () => {
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(3);
+
+    const q1 = parser.incomeRows.find(
+      (r) => r.isin === "US0378331005" && r.date === "2024-03-15",
+    )!;
+    const q2 = parser.incomeRows.find(
+      (r) => r.isin === "US0378331005" && r.date === "2024-06-15",
+    )!;
+    const vwce = parser.incomeRows.find((r) => r.isin === "IE00BK5BQT80")!;
+
+    expect(q1.withholdingTax).toBeCloseTo(0, 6);
+    expect(q2.withholdingTax).toBeCloseTo(20.0 / 1.2, 6);
+    expect(vwce.withholdingTax).toBeCloseTo(5.0, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+});
