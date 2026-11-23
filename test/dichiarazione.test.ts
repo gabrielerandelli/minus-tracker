@@ -496,7 +496,17 @@ describe("REG-003: multiple CF entries whose independently-rounded consumption w
     // The two fields describing "how much CF was consumed this year" must
     // agree exactly.
     expect(appliedSum).toBe(report.bucketB!.carryForwardApplied);
-    expect(report.bucketB!.carryForwardApplied).toBe(1);
+    // The true Bucket-B gain here (sell 101.005 - buy 100) is exactly 1.005 EUR — itself an
+    // exact half-cent tie, which must round AWAY from zero (half-up) to 1.01, not 1.00. This
+    // expectation was 1 because roundHalfUp's old `Math.round(Math.abs(x) * 100) / 100`
+    // implementation computed the raw 1.005 as the double 1.0049999999999955 (IEEE-754 double
+    // arithmetic landing a hair below the true tie) and silently rounded it DOWN to 1.00; fixing
+    // that bug makes the correctly-available-to-absorb gain (and so the correctly-applied CF
+    // total) 1.01, one cent more than before. The invariant this test exists to guard — that
+    // applying three independently-tied 0.335 CF entries never overstates what's actually
+    // available (naive independent rounding would give 0.34 + 0.34 + 0.34 = 1.02) — still holds,
+    // just relative to the now-correct 1.01 total instead of the previously-miscalculated 1.00.
+    expect(report.bucketB!.carryForwardApplied).toBe(1.01);
 
     // A filing must never show more carry-forward applied than there was
     // Bucket-B gain (differenza) to absorb it.

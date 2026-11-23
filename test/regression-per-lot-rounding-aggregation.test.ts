@@ -107,7 +107,17 @@ describe("regression: per-lot sub-cent gains must not vanish on aggregation", ()
 
     expect(report.plusvalenze).toBeCloseTo(0.74, 2); // 150 * 0.0049 = 0.735 -> 0.74
     expect(report.minusvalenze).toBeCloseTo(25.0, 2); // 10 * 2.50
-    expect(report.netResult).toBeCloseTo(report.plusvalenze - report.minusvalenze, 2);
+    // netResult is roundHalfUp() of the RAW (unrounded) plusvalenze/minusvalenze accumulators,
+    // not of the already-cent-rounded report.plusvalenze/report.minusvalenze — see the
+    // "plusvalenze is the TRUE total gain" test in TC-026.test.ts for why that matters. Here the
+    // raw net is exactly 0.735 - 25.00 = -24.265 EUR, itself an exact half-cent tie, which must
+    // round AWAY from zero (half-up) to -24.27, not -24.26 (what you'd get by instead
+    // subtracting the two already-rounded totals, 0.74 - 25.00). This expectation used to compare
+    // against `report.plusvalenze - report.minusvalenze` (i.e. -24.26) because roundHalfUp's old
+    // `Math.round(Math.abs(x) * 100) / 100` implementation computed the raw -24.265 as the double
+    // -24.264999999999996 (IEEE-754 arithmetic landing a hair above the true tie) and silently
+    // rounded it DOWN in magnitude to -24.26.
+    expect(report.netResult).toBeCloseTo(-24.27, 2);
   });
 
   it("Bucket A + Bucket B plusvalenze still sum to the top-level plusvalenze under the classification map", () => {
