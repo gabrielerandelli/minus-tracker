@@ -18,6 +18,7 @@ export type WarningEntry =
       section?: IBKRSection;
     }
   | { code: "QUANTITY_ZERO"; row: number; section?: IBKRSection }
+  | { code: "NEGATIVE_TRADE_PRICE"; row: number; section?: IBKRSection }
   | {
       code: "INVALID_BUY_SELL";
       row: number;
@@ -81,6 +82,10 @@ export function warningToEnglish(w: WarningEntry): string {
       return w.section
         ? `${w.section} row ${w.row}: quantity is 0 — skipped`
         : `Row ${w.row}: quantity is 0 — skipped`;
+    case "NEGATIVE_TRADE_PRICE":
+      return w.section
+        ? `${w.section} row ${w.row}: negative TradePrice settlement is not supported in this release — skipped (handle this trade manually)`
+        : `Row ${w.row}: negative TradePrice settlement is not supported in this release — skipped (handle this trade manually)`;
     case "INVALID_BUY_SELL":
       return w.section
         ? `${w.section} row ${w.row}: invalid Buy/Sell value "${w.value}" (expected "BUY" or "SELL") — skipped`

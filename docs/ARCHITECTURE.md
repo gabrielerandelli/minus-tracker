@@ -178,7 +178,12 @@ Fees are allocated proportionally to the matched quantity relative to the origin
 
 **Rounding:** All intermediate arithmetic uses full float precision. Only final output fields
 (`MatchedLot.gainLossEUR`, `GainsReport.plusvalenze`, etc.) are rounded to 2 decimal places
-using half-up rounding.
+using half-up rounding (ties round away from zero). The internal `roundHalfUp` helper decides a
+tie from the value's exact decimal rendering (`toFixed`), not from a second, further-lossy
+floating-point multiplication — a true half-cent tie (e.g. a raw gain of exactly 45.865) always
+rounds up to the next cent (45.87), even though IEEE-754 arithmetic on the preceding
+subtraction/division steps can itself produce a double that sits a hair below the exact tie
+(e.g. `45.864999999999995`).
 
 **Report aggregation:**
 

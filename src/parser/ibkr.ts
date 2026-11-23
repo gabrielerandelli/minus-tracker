@@ -506,6 +506,26 @@ export class IBKRParser implements Parser {
 
     const tradePrice = parseNumericField(get("TradePrice"));
 
+    // A strictly negative TradePrice is real market history (e.g. CME WTI
+    // crude oil futures settled at -$37.63/barrel on 2020-04-20) but breaks
+    // the Transaction.totalLocal/totalEUR sign contract documented in
+    // types.ts: totalEUR is always forced non-negative via Math.abs() below,
+    // so a SELL executed at a negative price would be silently treated as
+    // proceeds received instead of the economic loss it actually represents
+    // (the seller must pay to close the position). Rather than inventing new
+    // signed cost-basis/proceeds math for negative-price derivative
+    // settlements — untested against any Agenzia Entrate FAQ case — skip the
+    // row like the other not-safely-interpretable cases above. A TradePrice
+    // of exactly 0 is unaffected (e.g. a worthless expired option).
+    if (tradePrice < 0) {
+      this._warningEntries.push({
+        code: "NEGATIVE_TRADE_PRICE",
+        row: rowCounter,
+        section: "Trades",
+      });
+      return undefined;
+    }
+
     // --- Multiplier (optional column) ---
     // For instruments quoted per underlying unit (options: per-share
     // premium; futures: per-unit price), TradePrice alone understates the
@@ -518,8 +538,22 @@ export class IBKRParser implements Parser {
     const multiplier =
       isNaN(rawMultiplier) || rawMultiplier <= 0 ? 1 : rawMultiplier;
 
+    // --- Bond price-as-percent-of-par ---
+    // Unlike a stock (quoted as an absolute cash price per share) or an
+    // option/future (absolute price per underlying unit, scaled by
+    // Multiplier above), a BOND's TradePrice is universally quoted as a
+    // PERCENTAGE OF FACE/PAR VALUE (e.g. TradePrice=98 means "98% of par"),
+    // and Quantity is the face/par value of the position, not a share
+    // count. Treating TradePrice as an absolute per-unit price for bonds
+    // (the pre-fix behavior) overstates the cash value of the trade by
+    // ~100x. This mirrors IBKR's own documented "bond trade value" factor
+    // and is a universal fixed-income convention, not broker-specific
+    // guesswork — see docs/csv-formats.md for details and a worked example.
+    const isBond = assetCategory.toUpperCase() === "BOND";
+    const effectiveUnitPrice = isBond ? tradePrice / 100 : tradePrice;
+
     const totalLocal =
-      (type === "SELL" ? 1 : -1) * quantity * multiplier * tradePrice;
+      (type === "SELL" ? 1 : -1) * quantity * multiplier * effectiveUnitPrice;
     const totalEUR = Math.abs(totalLocal) / ecbRate;
 
     // --- Commission FX (independent lookup, per-decision) ---
