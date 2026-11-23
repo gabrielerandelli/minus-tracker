@@ -11,8 +11,48 @@ import type {
 } from "../types.js";
 import { isCarryForwardEligible } from "../carry-forward.js";
 
+// Rounds to the cent using true half-up (ties round away from zero), as required by Italian
+// tax convention. The naive `Math.round(Math.abs(x) * 100) / 100` is unsound: IEEE-754 double
+// arithmetic on x (e.g. summing a price with a proportionally-allocated fee) routinely produces
+// a value that lands a hair below the true decimal tie — a true 45.865 can compute as
+// 45.864999999999995 — and multiplying that by 100 carries the noise straight into Math.round,
+// which then silently rounds DOWN instead of UP. This happens often in ordinary fee-allocation
+// arithmetic (partial-lot sells), not just in contrived inputs.
+//
+// Fix: never multiply the (already noisy) value by 100 again right before rounding. Instead,
+// render it through `toFixed(8)` — which performs IEEE-754-correct decimal rendering of the
+// actual double, not a further lossy float multiplication — and decide the half-up tie purely
+// from the resulting decimal *string*. 8 decimal places mirrors QUANTITY_DECIMALS in
+// src/calculator/index.ts: real broker inputs (prices, fees, fx rates) never carry more
+// precision than that, so anything beyond the 8th decimal digit is pure FP noise from prior
+// arithmetic, never a genuine, intentional value this function needs to distinguish from an
+// exact tie.
+//
+// IMPORTANT: this function is duplicated verbatim in src/calculator/index.ts. The two copies
+// must never drift — fix both together.
 function roundHalfUp(x: number): number {
-  return (Math.sign(x) * Math.round(Math.abs(x) * 100)) / 100;
+  if (!Number.isFinite(x)) return x;
+  if (x === 0) return 0;
+  if (Math.abs(x) >= 1e15) {
+    // Astronomically large amounts are outside toFixed's fixed-notation range and outside
+    // any realistic tax amount; fall back to the plain approach rather than risk the
+    // exponential-notation string toFixed would otherwise return.
+    return (Math.sign(x) * Math.round(Math.abs(x) * 100)) / 100;
+  }
+  const sign = x < 0 ? -1 : 1;
+  const [intPart, fracPartRaw] = Math.abs(x).toFixed(8).split(".");
+  const fracPart = (fracPartRaw ?? "").padEnd(8, "0");
+  let cents = Number(fracPart.slice(0, 2));
+  const remainder = fracPart.slice(2); // always 6 digits — safe to compare lexically
+  let whole = BigInt(intPart);
+  if (remainder >= "500000") {
+    cents += 1;
+    if (cents === 100) {
+      cents = 0;
+      whole += 1n;
+    }
+  }
+  return sign * (Number(whole) + cents / 100);
 }
 
 export function buildQuadroRT(

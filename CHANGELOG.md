@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`roundHalfUp` (the internal cent-rounding helper shared by `Calculator.calculateGains()` and
+  the Quadro RT/RM Dichiarazione engine) silently rounded a true half-cent tie DOWN instead of
+  UP, under-reporting the headline taxable gain/loss by one cent.** The helper, duplicated
+  verbatim in `src/calculator/index.ts` and `src/dichiarazione/engine.ts`, implemented half-up
+  rounding as `(Math.sign(x) * Math.round(Math.abs(x) * 100)) / 100` — but IEEE-754
+  double-precision arithmetic on `x` (e.g. a sell proceeds total minus a cost basis that itself
+  includes a proportionally fee-allocated BUY lot) routinely produces a value that lands a hair
+  *below* the true mathematical halfway point rather than exactly on it: a genuine, exact
+  45.865 EUR gain computes as the double `45.864999999999995`, and multiplying that by 100 before
+  rounding carries the noise straight into `Math.round`, which then rounds to 45.86 instead of
+  the fiscally-correct 45.87. This is not a contrived edge case: it arises routinely from
+  ordinary fee-allocation arithmetic on a partially-sold BUY lot (selling only part of a position
+  bought in one lot — a common real-world DEGIRO/IBKR scenario), and it propagates straight into
+  `report.plusvalenze`/`report.minusvalenze`/`report.netResult` and the Quadro RT/RM figures that
+  actually get filed with Agenzia Entrate. Confirmed via the real public API (`DEGIROParser` +
+  `Calculator.calculateGains("LIFO")`): a BUY of 2 units for a total of €90.00 with €0.03
+  transaction costs, followed by a SELL of 1 of those 2 units for €90.88, produces a true,
+  unambiguous half-cent-tie gain of exactly €45.865 (half of €90.03 cost basis, i.e. €45.015,
+  subtracted from €90.88 proceeds) — TC-026's own docstring already documents and tests that this
+  library's rounding mode is "half-up, not half-down or truncation", so this tie must round to
+  €45.87, not €45.86. Fixed by replacing the lossy "multiply by 100, then `Math.round`" approach
+  with a decimal-string-based implementation: the value is rendered via `Math.abs(x).toFixed(8)`
+  (an IEEE-754-correct decimal rendering of the actual stored double, performing no further lossy
+  float multiplication) and the half-up tie is decided by a plain string/`BigInt` comparison
+  against the rendered digits, with an explicit fallback to the old formula for amounts ≥1e15
+  (outside `toFixed`'s fixed-notation range, and far beyond any realistic tax amount). 8 decimal
+  places mirrors this same file's own `QUANTITY_DECIMALS` convention: real broker inputs never
+  carry more precision than that, so anything beyond the 8th decimal digit is always prior
+  arithmetic noise, never a genuine value the function needs to distinguish from an exact tie.
+  Both duplicated copies of `roundHalfUp` were fixed identically, per the existing in-code
+  comments warning they must never independently drift. No public API changed (`DEGIROParser`,
+  `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier` are all unchanged). New
+  regression tests in `test/regression-roundhalfup-true-tie-fp-noise.test.ts` cover the confirmed
+  repro (a true 45.865 gain tie, via the real `DEGIROParser`+`Calculator` API) and an
+  independently-constructed negative/loss mirror case (a true -45.865 loss tie); two pre-existing
+  tests (`test/dichiarazione.test.ts`'s REG-003, `test/regression-per-lot-rounding-aggregation.test.ts`)
+  had hardcoded expectations that happened to encode this same bug for other true half-cent ties
+  incidental to their own fixtures (1.005 EUR and -24.265 EUR respectively) and were corrected to
+  the mathematically correct half-up results, each with an explanatory comment.
 - **`IBKRParser` silently flipped a real capital loss into a fabricated capital gain for a Trades
   row with a negative `TradePrice`.** `parseTradesRow()` (`src/parser/ibkr.ts`) computed
   `totalLocal` directly from `quantity * multiplier * tradePrice` and then took `Math.abs()` of it
