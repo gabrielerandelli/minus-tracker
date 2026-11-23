@@ -59,7 +59,7 @@ interface IBKRWithholdingCandidate {
   isin: string;
   date: string;
   currency: string;
-  amount: number; // signed, in source currency — see parseWithholdingRow
+  amount: number; // signed, in source currency — see parseWithholdingRow()
   row: number;
 }
 
@@ -343,12 +343,20 @@ export class IBKRParser implements Parser {
     for (const cw of convertedWithholding) {
       totalsByKey.set(cw.key, (totalsByKey.get(cw.key) ?? 0) + cw.amountEUR);
     }
-    for (const [key, netAmount] of totalsByKey) {
-      // A negative net (more charged than reversed) is the real tax credit;
-      // a zero or positive net (fully/over reversed) means no net tax was
-      // ultimately withheld, so the credit floors at 0 rather than going
-      // negative.
-      totalsByKey.set(key, Math.max(0, -netAmount));
+    // A same-key correction/reversal row (reported by IBKR as a positive
+    // Amount) nets against the original debit (a negative Amount) it
+    // corrects, instead of both being Math.abs()'d and summed into a
+    // doubled figure. The true withheld amount is `-net` whenever net is
+    // negative — the plain single-debit case, and a partial correction
+    // that doesn't fully offset the debit. When net is zero (a full
+    // reversal) or positive (an over-correction, or a lone non-negative
+    // row with no debit to offset), nothing was actually withheld, so
+    // floor at 0 rather than reporting the overshoot's magnitude as if it
+    // were withheld tax — `Math.abs(net)` would do exactly that for a
+    // net-positive key, which is wrong: a net credit back to the account
+    // is not a foreign tax paid, and can't be claimed as one in Quadro RM.
+    for (const [key, netAmountEUR] of totalsByKey) {
+      totalsByKey.set(key, Math.max(0, -netAmountEUR));
     }
 
     // --- FX-convert income candidates (Dividends + qualifying Interest) independently ---
@@ -719,29 +727,24 @@ export class IBKRParser implements Parser {
    * income row's key downstream and surfaces as the same
    * `UNMATCHED_WITHHOLDING` orphan warning every other unmatched row gets.
    *
-   * `amount` is kept **signed** here (not `Math.abs()`'d) on purpose. A real
-   * IBKR export reports a genuine withholding charge as a NEGATIVE `Amount`
-   * (cash outflow). A correction/reversal row undoing a previously reported
-   * charge is reported with the OPPOSITE sign — i.e. positive, since it
-   * undoes a negative — and it shares the SAME `(ISIN, Date,
-   * CurrencyPrimary)` key as the charge it reverses, which is the realistic
-   * shape of a Withholding Tax correction (contrast this with
-   * `parseDividendsRow`'s reversal above, which is realistically posted on a
-   * *later* date and so does not share its own row's join key — that is why
-   * that fix excludes the row instead of netting it).
+   * `amount` is kept **signed** here, not `Math.abs()`'d. A normal
+   * withholding debit is reported by IBKR as a negative `Amount`; a broker
+   * correction/reversal of that same debit is reported as a positive
+   * `Amount` sharing the exact same (ISIN, Date, CurrencyPrimary) join key
+   * as the debit it corrects — that key already includes `Date`, so a
+   * same-key row is, by construction, about the exact same withholding
+   * event, not some unrelated payment (unlike `parseDividendsRow`'s
+   * (ISIN, currency) key, which has no `Date` and can't make that
+   * guarantee — see that method's own comment for why it excludes
+   * negative-amount rows instead of netting them).
    *
-   * Taking `Math.abs()` per-row here, before the `totalsByKey` aggregation a
-   * few lines above in `parse()`, would turn a charge/reversal pair that
-   * should cancel to (near) zero into two same-sign amounts that *sum*
-   * instead — silently doubling the foreign tax credit reported for that
-   * dividend in the Quadro RM dichiarazione export. Keeping the sign through
-   * FX conversion and letting `totalsByKey` sum the raw signed amounts nets a
-   * same-key reversal against its exact charge correctly, with no risk of
-   * smearing that reversal onto any *other* key (date is already part of the
-   * key). The final per-key total is turned back into a non-negative credit
-   * (`Math.max(0, -total)`) right after the aggregation above, since a net
-   * cash *inflow* for a key (an over-correction) means no net tax was
-   * ultimately withheld, not a negative credit.
+   * `parse()` sums every same-key candidate's signed amount and takes
+   * `Math.max(0, -net)` of that total: a full reversal nets to 0, a
+   * partial correction nets to the true remaining amount, an
+   * over-correction (or a lone non-debit row with nothing to offset) is
+   * floored at 0 instead of reporting its magnitude as withheld tax, and a
+   * lone debit row — the overwhelmingly common case — is completely
+   * unaffected (its net is just itself, same as the old `Math.abs()`).
    */
   private parseWithholdingRow(
     row: string[],

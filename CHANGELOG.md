@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`IBKRParser` silently doubled (or otherwise mis-netted) foreign withholding tax when the
+  broker corrected or reversed a previously-withheld amount.** `parseWithholdingRow()`
+  (`src/parser/ibkr.ts`), which turns `Withholding Tax`-section rows of an IBKR Activity Flex
+  Query export into withholding candidates, took `Math.abs()` of each row's `Amount`
+  *independently*, before summing same-key rows together. Real IBKR exports report a normal
+  withholding debit as a **negative** `Amount`, but can also contain a correction/reversal row
+  for that same debit reported as a **positive** `Amount` sharing the exact same (ISIN, Date,
+  `CurrencyPrimary`) join key used downstream to match withholding to income rows. Because each
+  row was `Math.abs()`'d before summing, a -18.00 debit followed by its full +18.00 reversal
+  summed to 36.00 instead of netting to 0 — doubling the figure that lands in
+  `IncomeRow.withholdingTax` and from there in
+  `report.dichiarazione.quadroRM.dividendiEsteri[].rittenutaEstera` /
+  `cedole[].rittenutaEstera`, this library's actual Modello Redditi PF tax-filing export, which
+  directly overstates the foreign tax credit basis on a real Italian tax return. Unlike the
+  structurally similar `parseDividendsRow` bug fixed below, a netting fix is actually correct
+  here rather than an unsafe simplification: the Withholding Tax join key already includes
+  `Date`, so a same-key row is, by construction, a correction of that exact withholding event on
+  that exact date and can never smear onto an unrelated payment the way a Dividends-section
+  reversal (keyed only by ISIN + currency, with no `Date`) could. Fixed by keeping each row's
+  signed `Amount` through to the per-key summation in `parse()`, then deriving the final
+  withholding total from that net as `Math.max(0, -net)` rather than `Math.abs(net)`: a plain
+  debit or a partial correction nets to the true remaining withheld amount, a full reversal nets
+  to 0, and an over-correction (or a lone non-debit row with nothing to net against) is floored
+  at 0 instead of reporting the overshoot's magnitude as if it were tax actually withheld — a net
+  credit back to the account is not a foreign tax paid and cannot be claimed as one in Quadro RM.
+  The single-row case (every previously-passing fixture) is numerically unaffected, since
+  `Math.max(0, -net)` and the old `Math.abs()` agree whenever `net` is non-positive. No public
+  API changed (`DEGIROParser`, `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`,
+  `Classifier` are all unchanged). New regression tests in `test/ibkr-parser-income.test.ts`
+  cover: a full reversal netting to 0, a partial correction netting to the true remainder, a
+  plain single debit row staying unaffected, an over-correction flooring at 0, and a lone
+  positive-`Amount` row with no debit to offset also flooring at 0.
 - **`IBKRParser` silently doubled (or further inflated) the foreign tax credit reported for a
   dividend whose withholding tax was later reversed or corrected by the broker.**
   `parseWithholdingRow()` (`src/parser/ibkr.ts`), which turns `Withholding Tax`-section rows of an
