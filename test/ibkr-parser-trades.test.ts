@@ -462,3 +462,46 @@ describe("regression: Multiplier column absent, blank, non-numeric, zero, or neg
     expect(transactions[0].totalEUR).toBeCloseTo(950, 6);
   });
 });
+
+describe("regression: FUT Trades row with a negative TradePrice (real negative-settlement history, e.g. CME WTI crude oil 2020-04-20) is skipped, not silently sign-flipped (QA-found bug)", () => {
+  // A futures contract bought at +20.00/unit, then later closed at a
+  // genuinely negative settlement price (-37.63/unit) — real market
+  // history, not malformed data. Before the fix, totalLocal/totalEUR were
+  // computed from the raw signed tradePrice and then forced positive via
+  // Math.abs(), so the SELL's real economic loss (the seller had to PAY to
+  // close the position) was reported as positive proceeds — fabricating a
+  // large capital GAIN out of what was actually a large capital LOSS. The
+  // correct behavior is to skip the negative-TradePrice row entirely, with
+  // a clear warning, and never let it corrupt the Calculator's gain figure.
+  const HEADER_WITH_MULTIPLIER =
+    "Trades,Header,DataDiscriminator,AssetCategory,CurrencyPrimary,Symbol,Description,ISIN,Multiplier,TradeDate,Buy/Sell,Quantity,TradePrice,IBCommission,IBCommissionCurrency";
+  const csv = [
+    HEADER_WITH_MULTIPLIER,
+    "Trades,Data,Order,FUT,EUR,CLK0,CRUDE OIL FUTURE APR20,FAKE0000CL01,1000,20200401,BUY,1,20.00,-2.50,EUR",
+    "Trades,Data,Order,FUT,EUR,CLK0,CRUDE OIL FUTURE APR20,FAKE0000CL01,1000,20200420,SELL,1,-37.63,-2.50,EUR",
+  ].join("\n");
+
+  it("skips the negative-TradePrice row, keeping only the legitimate BUY", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].type).toBe("BUY");
+  });
+
+  it("emits a clear NEGATIVE_TRADE_PRICE warning referencing the skipped row", () => {
+    const parser = new IBKRParser();
+    parser.parse(csv);
+    expect(parser.warnings).toContain(
+      "Trades row 2: negative TradePrice settlement is not supported in this release — skipped (handle this trade manually)",
+    );
+  });
+
+  it("does not fabricate a capital gain: with only the real BUY on record, LIFO gains are zero", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    const calculator = new Calculator(transactions, parser.warnings);
+    const report = calculator.calculateGains("LIFO");
+    expect(report.netResult).toBe(0);
+    expect(report.lots).toHaveLength(0);
+  });
+});

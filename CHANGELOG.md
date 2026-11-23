@@ -48,6 +48,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had hardcoded expectations that happened to encode this same bug for other true half-cent ties
   incidental to their own fixtures (1.005 EUR and -24.265 EUR respectively) and were corrected to
   the mathematically correct half-up results, each with an explanatory comment.
+- **`IBKRParser` silently flipped a real capital loss into a fabricated capital gain for a Trades
+  row with a negative `TradePrice`.** `parseTradesRow()` (`src/parser/ibkr.ts`) computed
+  `totalLocal` directly from `quantity * multiplier * tradePrice` and then took `Math.abs()` of it
+  to derive `totalEUR` ("|totalLocal| / ecbRate — always positive", per `src/types.ts`). A negative
+  `TradePrice` is real market history for some derivatives — not malformed data — e.g. CME WTI
+  crude oil futures (contract `CL`) settled at **-$37.63/barrel** on 2020-04-20, and IBKR's own
+  Activity Flex Query export records that literal negative value in `TradePrice`. `Calculator`
+  (`src/calculator/index.ts`) treats `totalEUR` as straight cost for a BUY and straight proceeds
+  for a SELL; forcing it positive via `Math.abs()` silently inverted the real economic outcome of a
+  SELL at a negative price — where the seller must *pay* to close the position — into a reported
+  cash inflow. A synthetic repro (BUY at $20.00/unit, SELL/close at -$37.63/unit, 1000x multiplier)
+  reported a ~€16,357 capital **gain** for a trade that, economically, was a real loss of roughly
+  the full notional value. This also violated `totalLocal`'s own documented sign contract ("negative
+  for BUY, positive for SELL") for the affected row. Fixed by skipping any `Trades` row with a
+  strictly negative `TradePrice` before it reaches the `totalLocal`/`totalEUR` computation, pushing
+  a new `NEGATIVE_TRADE_PRICE` warning (same shape as the existing `QUANTITY_ZERO`/
+  `INVALID_BUY_SELL` skip-with-warning cases) instead of a hard parse error — the same established
+  convention this parser already uses for a row it cannot safely interpret. A `TradePrice` of
+  exactly `0` is unaffected (e.g. a worthless expired option). This is deliberately a narrower fix
+  than inventing new signed cost-basis/proceeds tax accounting for negative-price derivative
+  settlements under the Regime Dichiarativo: that scenario isn't covered by any Agenzia Entrate FAQ
+  this library's calculations are grounded in, so guessing at new tax logic there risked being
+  wrong in a different, less visible way. `DEGIROParser` is unaffected (it reads `totalLocal`
+  directly from the broker's own already-signed `Local value` column, never recomputing it from
+  price × quantity) and no public API changed (`DEGIROParser`, `Calculator.calculateGains('LIFO'|'FIFO')`,
+  `IBKRParser`, `Classifier` are all unchanged). New regression tests in
+  `test/ibkr-parser-trades.test.ts` cover: the negative-`TradePrice` row being skipped (only the
+  valid BUY survives as a `Transaction`), the exact `NEGATIVE_TRADE_PRICE` warning text being
+  emitted, and `Calculator.calculateGains` reporting zero lots/zero net result instead of the
+  fabricated gain.
 - **`IBKRParser` silently doubled a dividend's reported taxable income when the broker reversed
   or corrected it.** `parseDividendsRow()` (`src/parser/ibkr.ts`), which turns `Dividends`-section
   rows of an IBKR Activity Flex Query export into `IncomeRow`s, took `Math.abs()` of the row's
