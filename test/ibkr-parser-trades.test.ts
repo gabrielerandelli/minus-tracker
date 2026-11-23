@@ -462,3 +462,199 @@ describe("regression: Multiplier column absent, blank, non-numeric, zero, or neg
     expect(transactions[0].totalEUR).toBeCloseTo(950, 6);
   });
 });
+
+/**
+ * Regression — an ISIN shared across more than one distinct AssetCategory in
+ * the Trades section (e.g. a STK row and an OPT row sharing the underlying's
+ * ISIN, which real IBKR exports can produce when an option's own ISIN is
+ * left blank and a pipeline backfills it with the underlying's). Calculator
+ * matches lots purely by isin with no concept of AssetCategory, so without
+ * this guard a 1-contract option lot would silently cross-match against the
+ * stock's per-share lots as if 1 contract == 1 share. The parser must keep
+ * only the dominant (most Data rows) AssetCategory per isin, drop the rest,
+ * and warn — under both LIFO and FIFO.
+ */
+describe("regression: ISIN shared across AssetCategory values (MIXED_ASSET_CATEGORY_ISIN)", () => {
+  const ASSET_HEADER =
+    "Trades,Header,DataDiscriminator,AssetCategory,CurrencyPrimary,Symbol,Description,ISIN,Multiplier,TradeDate,Buy/Sell,Quantity,TradePrice,IBCommission,IBCommissionCurrency";
+
+  describe("stock dominant (2 STK rows) vs option minority (1 OPT row) — the confirmed repro", () => {
+    const csv = [
+      ASSET_HEADER,
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240301,BUY,10,100,-1,CHF",
+      "Trades,Data,Order,OPT,CHF,NESN 20APR24 110 C,NESN APR24 110 CALL,CH0038863350,100,20240401,BUY,1,2,-1,CHF",
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240905,SELL,10,120,-1,CHF",
+    ].join("\n");
+
+    it("excludes the minority OPT row from Transaction[] and warns", () => {
+      const parser = new IBKRParser();
+      const transactions = parser.parse(csv);
+      expect(transactions).toHaveLength(2);
+      expect(transactions.every((t) => t.quantity === 10)).toBe(true);
+      expect(parser.warnings).toContain(
+        "ISIN CH0038863350: mixed AssetCategory values in Trades (STK: 2 row(s), OPT: 1 row(s)) — kept STK as the dominant instrument, dropped OPT rows as the minority/likely-unrelated instrument",
+      );
+    });
+
+    it.each(["LIFO", "FIFO"] as const)(
+      "produces exactly one correct 10-share lot under %s — the option contributes nothing",
+      (method) => {
+        const parser = new IBKRParser();
+        const transactions = parser.parse(csv);
+        const calculator = new Calculator(transactions, parser.warnings);
+        const report = calculator.calculateGains(method);
+
+        expect(report.lots).toHaveLength(1);
+        const lot = report.lots[0];
+        expect(lot.isin).toBe("CH0038863350");
+        expect(lot.quantity).toBe(10);
+        expect(lot.buyDate).toBe("2024-03-01");
+        expect(lot.sellDate).toBe("2024-09-05");
+        expect(lot.gainLossEUR).toBeCloseTo(232.22, 2);
+      },
+    );
+  });
+
+  describe("option dominant (2 OPT rows) vs stock minority (1 STK row) — dominance in the other direction", () => {
+    const csv = [
+      ASSET_HEADER,
+      "Trades,Data,Order,OPT,CHF,NESN 20APR24 110 C,NESN APR24 110 CALL,CH0038863350,100,20240301,BUY,1,2,-1,CHF",
+      "Trades,Data,Order,OPT,CHF,NESN 20APR24 110 C,NESN APR24 110 CALL,CH0038863350,100,20240701,SELL,1,3,-1,CHF",
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240401,BUY,5,50,-1,CHF",
+    ].join("\n");
+
+    it("keeps the OPT rows and excludes the minority STK row", () => {
+      const parser = new IBKRParser();
+      const transactions = parser.parse(csv);
+      expect(transactions).toHaveLength(2);
+      expect(transactions.every((t) => t.quantity === 1)).toBe(true);
+      expect(parser.warnings).toContain(
+        "ISIN CH0038863350: mixed AssetCategory values in Trades (OPT: 2 row(s), STK: 1 row(s)) — kept OPT as the dominant instrument, dropped STK rows as the minority/likely-unrelated instrument",
+      );
+    });
+  });
+
+  describe("tie (1 STK row vs 1 OPT row) — first AssetCategory encountered in the file wins", () => {
+    const csv = [
+      ASSET_HEADER,
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240301,BUY,10,100,-1,CHF",
+      "Trades,Data,Order,OPT,CHF,NESN 20APR24 110 C,NESN APR24 110 CALL,CH0038863350,100,20240401,BUY,1,2,-1,CHF",
+    ].join("\n");
+
+    it("keeps the first-encountered STK row and drops the later OPT row", () => {
+      const parser = new IBKRParser();
+      const transactions = parser.parse(csv);
+      expect(transactions).toHaveLength(1);
+      expect(transactions[0].quantity).toBe(10);
+      expect(parser.warnings).toContain(
+        "ISIN CH0038863350: mixed AssetCategory values in Trades (STK: 1 row(s), OPT: 1 row(s)) — kept STK as the dominant instrument, dropped OPT rows as the minority/likely-unrelated instrument (tie on row count — first AssetCategory encountered in the file was kept)",
+      );
+    });
+  });
+
+  it("same AssetCategory across all rows for an isin → no conflict, no warning", () => {
+    const csv = [
+      ASSET_HEADER,
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240301,BUY,10,100,-1,CHF",
+      "Trades,Data,Order,STK,CHF,NESN,NESTLE SA,CH0038863350,,20240905,SELL,10,120,-1,CHF",
+    ].join("\n");
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(2);
+    expect(
+      parser.warningEntries.some((w) => w.code === "MIXED_ASSET_CATEGORY_ISIN"),
+    ).toBe(false);
+describe("regression (QA-found bug): BOND Trades rows scale TradePrice as a percent-of-par, not an absolute per-unit price", () => {
+  // A BOND's TradePrice is quoted as a percentage of face/par value — e.g.
+  // TradePrice=98 means "98% of par" — and Quantity is the face/par value
+  // of the position, not a share count. Before this fix, the parser treated
+  // TradePrice as an absolute per-unit cash price for every AssetCategory
+  // (same formula used for STK), which overstated a bond trade's cash value
+  // by ~100x (quantity * tradePrice instead of quantity * tradePrice/100).
+  //
+  // Real economics here: 10,000 face value bought at 98% of par = 9,800 EUR
+  // cash cost; sold at 102% of par = 10,200 EUR cash proceeds; real gain =
+  // 400 EUR. The pre-fix formula instead computed a cost of 980,000 EUR and
+  // proceeds of 1,020,000 EUR, a gain of 40,000 EUR — 100x too large.
+  const BOND_HEADER =
+    "Trades,Header,DataDiscriminator,AssetCategory,ISIN,TradeDate,Buy/Sell,Quantity,TradePrice,CurrencyPrimary,IBCommission,IBCommissionCurrency,Description,Symbol";
+  const csv = [
+    BOND_HEADER,
+    "Trades,Data,Order,BOND,XX0000000BND1,20240101,BUY,10000,98,EUR,0,EUR,Fake Govt Bond 2030,FAKEBND",
+    "Trades,Data,Order,BOND,XX0000000BND1,20240601,SELL,10000,102,EUR,0,EUR,Fake Govt Bond 2030,FAKEBND",
+  ].join("\n");
+
+  it("scales TradePrice by /100 for a BOND row, yielding the real cash cost/proceeds in totalEUR", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(2);
+    expect(transactions[0].totalEUR).toBeCloseTo(9800, 6);
+    expect(transactions[1].totalEUR).toBeCloseTo(10200, 6);
+    // pricePerUnit keeps the raw quoted percent-of-par figure from the row —
+    // the /100 scaling is folded into totalLocal/totalEUR only, same
+    // convention as the Multiplier column above.
+    expect(transactions[0].pricePerUnit).toBe(98);
+    expect(transactions[1].pricePerUnit).toBe(102);
+  });
+
+  it("produces the correct real-economics gain (400 EUR, not the pre-fix 40,000 EUR) via Calculator.calculateGains", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    const calculator = new Calculator(transactions, parser.warnings);
+    const report = calculator.calculateGains("FIFO");
+    expect(report.lots).toHaveLength(1);
+    expect(report.lots[0].gainLossEUR).toBeCloseTo(400, 6);
+    expect(report.plusvalenze).toBeCloseTo(400, 6);
+  });
+
+  it("a non-BOND AssetCategory (e.g. STK) is unaffected by the percent-of-par scaling", () => {
+    const stkCsv = [
+      BOND_HEADER,
+      "Trades,Data,Order,STK,IE00BK5BQT80,20240102,BUY,10,95.00,EUR,-1.00,EUR,VANGUARD FTSE ALL-WORLD,VWCE",
+    ].join("\n");
+    const parser = new IBKRParser();
+    const transactions = parser.parse(stkCsv);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].totalEUR).toBeCloseTo(950, 6);
+describe("regression: FUT Trades row with a negative TradePrice (real negative-settlement history, e.g. CME WTI crude oil 2020-04-20) is skipped, not silently sign-flipped (QA-found bug)", () => {
+  // A futures contract bought at +20.00/unit, then later closed at a
+  // genuinely negative settlement price (-37.63/unit) — real market
+  // history, not malformed data. Before the fix, totalLocal/totalEUR were
+  // computed from the raw signed tradePrice and then forced positive via
+  // Math.abs(), so the SELL's real economic loss (the seller had to PAY to
+  // close the position) was reported as positive proceeds — fabricating a
+  // large capital GAIN out of what was actually a large capital LOSS. The
+  // correct behavior is to skip the negative-TradePrice row entirely, with
+  // a clear warning, and never let it corrupt the Calculator's gain figure.
+  const HEADER_WITH_MULTIPLIER =
+    "Trades,Header,DataDiscriminator,AssetCategory,CurrencyPrimary,Symbol,Description,ISIN,Multiplier,TradeDate,Buy/Sell,Quantity,TradePrice,IBCommission,IBCommissionCurrency";
+  const csv = [
+    HEADER_WITH_MULTIPLIER,
+    "Trades,Data,Order,FUT,EUR,CLK0,CRUDE OIL FUTURE APR20,FAKE0000CL01,1000,20200401,BUY,1,20.00,-2.50,EUR",
+    "Trades,Data,Order,FUT,EUR,CLK0,CRUDE OIL FUTURE APR20,FAKE0000CL01,1000,20200420,SELL,1,-37.63,-2.50,EUR",
+  ].join("\n");
+
+  it("skips the negative-TradePrice row, keeping only the legitimate BUY", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].type).toBe("BUY");
+  });
+
+  it("emits a clear NEGATIVE_TRADE_PRICE warning referencing the skipped row", () => {
+    const parser = new IBKRParser();
+    parser.parse(csv);
+    expect(parser.warnings).toContain(
+      "Trades row 2: negative TradePrice settlement is not supported in this release — skipped (handle this trade manually)",
+    );
+  });
+
+  it("does not fabricate a capital gain: with only the real BUY on record, LIFO gains are zero", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    const calculator = new Calculator(transactions, parser.warnings);
+    const report = calculator.calculateGains("LIFO");
+    expect(report.netResult).toBe(0);
+    expect(report.lots).toHaveLength(0);
+  });
+});

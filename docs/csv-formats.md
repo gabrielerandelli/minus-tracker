@@ -60,6 +60,28 @@ For instruments like options and futures, trade value is computed applying the o
 `Multiplier` column (e.g. 100 for a standard equity option), which defaults to 1 when the column
 is absent.
 
+If the same `ISIN` appears on `Trades` rows with more than one distinct `AssetCategory` (e.g. a
+stock's own rows and an option/future row sharing the underlying's ISIN — some real exports leave
+an option's own ISIN blank and a pipeline backfills it with the underlying's), only the dominant
+`AssetCategory` for that ISIN — the one with the most rows, ties broken by whichever was
+encountered first in the file — is kept; the rest are excluded with a warning naming both
+categories and their row counts. `Calculator` matches lots purely by ISIN, so without this guard
+a 1-contract option lot could silently cross-match against the stock's per-share lots as if 1
+contract equalled 1 share, fabricating a gain or loss. Run `validate` to see which `AssetCategory`
+was kept/dropped for an affected ISIN.
+For `BOND` rows, `TradePrice` is treated as a **percentage of face/par value** (e.g. a
+`TradePrice` of `98` means "98% of par"), not an absolute per-unit cash price — the standard
+bond-market quoting convention, also reflected in IBKR's own documentation. `Quantity` is read as
+the face/par value of the position, not a share count. Without this scaling, a bond trade's
+cost/proceeds basis would be overstated by roughly 100x (e.g. a true 400 EUR gain miscalculated
+as 40,000 EUR). Other asset categories (`STK`, `OPT`, `FUT`, …) are unaffected.
+A `Trades` row with a **negative** `TradePrice` is skipped with a warning rather than calculated.
+This is real market history for some derivatives (e.g. CME WTI crude oil futures settled at
+-$37.63/barrel on 2020-04-20) rather than malformed data, but this release has no supported way to
+correctly compute Italian capital gains/losses for a negative-price settlement — attempting to
+anyway previously produced a silently wrong result (a real loss reported as a gain). If you hit
+this warning, handle that trade manually rather than relying on the generated report for it.
+
 A `Dividends` row with a non-positive `Amount` — which IBKR uses to reverse or reclassify (e.g.
 as return-of-capital) a previously-paid dividend — is excluded entirely: it produces no income
 row and no warning, and the original payment it corrects is still reported in full. This is a

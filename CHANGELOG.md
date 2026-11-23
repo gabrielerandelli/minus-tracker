@@ -40,6 +40,156 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reversal netting down (not zeroing or doubling), and — guarding against ever reintroducing a
   smearing bug — confirming a reversal never affects another withholding-bearing dividend on a
   different date or ISIN.
+- **`IBKRParser` could silently fabricate a capital gain or loss when an option/future row in the
+  `Trades` section shared its ISIN with the underlying stock's own rows.** `Transaction.quantity`
+  means different things depending on instrument type: for a plain equity (`AssetCategory` `STK`)
+  it is a raw share count, but for an option or future (`OPT`/`FUT`) it is a *contract* count, with
+  the optional `Multiplier` column (e.g. 100 for a standard equity option) scaling `TradePrice`
+  into the real cash value at parse time — `quantity` itself is never multiplier-adjusted.
+  `Calculator.calculateGains()` matches LIFO/FIFO lots purely by `isin`, with no concept of
+  `AssetCategory` at all. Real-world IBKR exports often leave an option's own `ISIN` column blank
+  (OCC options aren't ISIN-registered) or have it backfilled with the underlying's ISIN by an
+  upstream pipeline — when that happens, a 1-contract option lot and the underlying stock's
+  per-share lots end up in the exact same ISIN-keyed matching pool, and `Calculator` silently
+  cross-matches them as if 1 contract equalled 1 share. Concretely: 10 shares of stock bought at
+  100 CHF and sold at 120 CHF, plus a single, completely unrelated 1-contract call option (strike
+  110, multiplier 100, premium 2 CHF, never sold) sharing the stock's ISIN, produced — depending on
+  which method and lot order — a 10-share stock position incorrectly split into 9+1, with the "1"
+  share's cost basis taken from the option's total premium instead of the stock's real per-share
+  cost, fabricating a loss that never happened, while the user's real, still-open option position
+  silently vanished from tracking as if it had been sold. No warning of any kind was emitted. Fixed
+  in `IBKRParser.parse()`: Trades `Data` rows are now collected and counted per `(ISIN,
+  AssetCategory)` before any `Transaction` is built; whenever one ISIN spans more than one
+  distinct `AssetCategory`, only the dominant category for that ISIN (the one with the most rows;
+  ties broken by whichever was encountered first in the file) is kept, and the rest are excluded
+  from `Transaction[]` with a new `MIXED_ASSET_CATEGORY_ISIN` warning naming both categories and
+  their row counts — the same "skip the untrustworthy rows, keep the rest of the file, warn
+  loudly" philosophy this parser already uses for `MISSING_ISIN`/`NO_ECB_RATE`/`QUANTITY_ZERO`,
+  rather than aborting the whole file or discarding the unaffected, legitimate side of the
+  collision. No public API changed (`DEGIROParser`, `Calculator.calculateGains('LIFO'|'FIFO')`,
+  `IBKRParser`, `Classifier` are all unchanged — only `IBKRParser`'s internal behavior and its
+  warnings surface). New regression tests in `test/ibkr-parser-trades.test.ts` cover: the exact
+  repro above resolving correctly under both LIFO and FIFO once the minority option rows are
+  dropped, dominance in the reverse direction (option rows outnumbering a single stock row), the
+  row-count tie-break, and a sanity check that an ISIN consistently using one `AssetCategory`
+  never triggers a false positive.
+- **`IBKRParser` overstated a `BOND` trade's cost/proceeds basis by roughly 100x.**
+  `parseTradesRow()` (`src/parser/ibkr.ts`) computed every `Trades`-section row's cash value as
+  `quantity * multiplier * tradePrice`, treating `TradePrice` as an absolute per-unit cash price —
+  correct for a stock, and correct for an option/future once scaled by the optional `Multiplier`
+  column, but wrong for a `BOND` row. Bond prices are quoted as a **percentage of face/par value**
+  (e.g. a `TradePrice` of `98` means "98% of par"), the standard bond-market convention also
+  reflected in IBKR's own documentation, and `Quantity` for a bond trade is the face/par value of
+  the position rather than a share count — this parser had no special-casing for either. A
+  realistic repro: 10,000 face value of a bond bought at 98% of par and sold at 102% of par has a
+  true economic gain of 400 EUR (9,800 EUR cost, 10,200 EUR proceeds), but the pre-fix formula read
+  `Quantity=10000` and `TradePrice=98`/`102` as absolute per-unit prices, computing a cost of
+  980,000 EUR and proceeds of 1,020,000 EUR — a reported gain of 40,000 EUR, 100x too large. Since
+  this library's `Classifier` already models government and corporate bonds as first-class taxed
+  asset classes (`src/classifier/index.ts`) and `IBKRParser` already recognizes bond *interest*
+  rows (`parseInterestRow`), a bond *trade* reaching `Calculator.calculateGains()` with a wildly
+  wrong basis was a real, live path, not dead code. Fixed by scaling `TradePrice` by `/100` before
+  computing `totalLocal`/`totalEUR` whenever `AssetCategory === "BOND"`; every other asset category
+  (`STK`, `OPT`, `FUT`, …) is unaffected, and `Transaction.pricePerUnit` keeps the raw quoted
+  percent-of-par figure from the row (same convention already used for the `Multiplier` column —
+  the scaling is folded into `totalLocal`/`totalEUR` only). No public API changed (`DEGIROParser`,
+  `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier` are all unchanged). New
+  regression tests in `test/ibkr-parser-trades.test.ts` cover: the 100x-overstatement repro against
+  the corrected 400 EUR real-economics gain, `pricePerUnit` staying the raw percent-of-par figure,
+  and a non-`BOND` row confirming the scaling is bond-specific.
+- **A hand-edited or partially-written `*.classify.json` sidecar with the right `version` but a
+  missing/`null` `"classifications"` field crashed `Classifier.load()`/`.classify()` with a raw,
+  unhandled `TypeError` instead of the documented `ClassificationError`.** `Classifier.load()`
+  (`src/classifier/index.ts`) validated only that the parsed sidecar JSON was an object with
+  `version === 1` before returning `parsed.classifications` — it never checked that
+  `"classifications"` itself was actually present or shaped like a `ClassificationMap`. A sidecar
+  like `{"version": 1}` (the key entirely absent, e.g. from an interrupted write or a merge
+  conflict left half-resolved — the sidecar is explicitly documented as something a user may
+  hand-edit) made `load()` silently return `undefined` with no error at all. `classify()`'s
+  sidecar-mode branch then ran `Object.entries(existingMap)` on that `undefined`, throwing
+  `TypeError: Cannot convert undefined or null to object` — not a typed `ClassificationError`,
+  breaking the documented contract (`load()`/`classify()` are specified, and tested via
+  `test/TC-045/046/047.test.ts`, to throw only `SIDECAR_NOT_FOUND` | `SIDECAR_VERSION` |
+  `SIDECAR_MALFORMED` | `WRITE_ERROR` | `NETWORK_ERROR` for malformed sidecar content). Fixed by
+  validating, immediately after the existing version check, that `"classifications"` is present
+  and is a genuine plain object (not `undefined`, not `null`, not an `Array`) before returning it,
+  throwing the existing `ClassificationError("SIDECAR_MALFORMED")` otherwise — the same code
+  already used for other malformed-sidecar-content cases, so no new error code was introduced. The
+  existing `SIDECAR_NOT_FOUND`/`SIDECAR_VERSION`/JSON-parse-failure `SIDECAR_MALFORMED` paths, and
+  the normal well-formed-sidecar happy path, are unaffected. No public API changed (`DEGIROParser`,
+  `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier` are all unchanged). New
+  regression tests in `test/regression-sidecar-shape-missing-classifications.test.ts` cover both
+  `load()` and `classify()` for a missing-key sidecar and an explicit-`null` sidecar, and confirm
+  `classify()` throws before ever attempting an OpenFIGI network call.
+- **`roundHalfUp` (the internal cent-rounding helper shared by `Calculator.calculateGains()` and
+  the Quadro RT/RM Dichiarazione engine) silently rounded a true half-cent tie DOWN instead of
+  UP, under-reporting the headline taxable gain/loss by one cent.** The helper, duplicated
+  verbatim in `src/calculator/index.ts` and `src/dichiarazione/engine.ts`, implemented half-up
+  rounding as `(Math.sign(x) * Math.round(Math.abs(x) * 100)) / 100` — but IEEE-754
+  double-precision arithmetic on `x` (e.g. a sell proceeds total minus a cost basis that itself
+  includes a proportionally fee-allocated BUY lot) routinely produces a value that lands a hair
+  *below* the true mathematical halfway point rather than exactly on it: a genuine, exact
+  45.865 EUR gain computes as the double `45.864999999999995`, and multiplying that by 100 before
+  rounding carries the noise straight into `Math.round`, which then rounds to 45.86 instead of
+  the fiscally-correct 45.87. This is not a contrived edge case: it arises routinely from
+  ordinary fee-allocation arithmetic on a partially-sold BUY lot (selling only part of a position
+  bought in one lot — a common real-world DEGIRO/IBKR scenario), and it propagates straight into
+  `report.plusvalenze`/`report.minusvalenze`/`report.netResult` and the Quadro RT/RM figures that
+  actually get filed with Agenzia Entrate. Confirmed via the real public API (`DEGIROParser` +
+  `Calculator.calculateGains("LIFO")`): a BUY of 2 units for a total of €90.00 with €0.03
+  transaction costs, followed by a SELL of 1 of those 2 units for €90.88, produces a true,
+  unambiguous half-cent-tie gain of exactly €45.865 (half of €90.03 cost basis, i.e. €45.015,
+  subtracted from €90.88 proceeds) — TC-026's own docstring already documents and tests that this
+  library's rounding mode is "half-up, not half-down or truncation", so this tie must round to
+  €45.87, not €45.86. Fixed by replacing the lossy "multiply by 100, then `Math.round`" approach
+  with a decimal-string-based implementation: the value is rendered via `Math.abs(x).toFixed(8)`
+  (an IEEE-754-correct decimal rendering of the actual stored double, performing no further lossy
+  float multiplication) and the half-up tie is decided by a plain string/`BigInt` comparison
+  against the rendered digits, with an explicit fallback to the old formula for amounts ≥1e15
+  (outside `toFixed`'s fixed-notation range, and far beyond any realistic tax amount). 8 decimal
+  places mirrors this same file's own `QUANTITY_DECIMALS` convention: real broker inputs never
+  carry more precision than that, so anything beyond the 8th decimal digit is always prior
+  arithmetic noise, never a genuine value the function needs to distinguish from an exact tie.
+  Both duplicated copies of `roundHalfUp` were fixed identically, per the existing in-code
+  comments warning they must never independently drift. No public API changed (`DEGIROParser`,
+  `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier` are all unchanged). New
+  regression tests in `test/regression-roundhalfup-true-tie-fp-noise.test.ts` cover the confirmed
+  repro (a true 45.865 gain tie, via the real `DEGIROParser`+`Calculator` API) and an
+  independently-constructed negative/loss mirror case (a true -45.865 loss tie); two pre-existing
+  tests (`test/dichiarazione.test.ts`'s REG-003, `test/regression-per-lot-rounding-aggregation.test.ts`)
+  had hardcoded expectations that happened to encode this same bug for other true half-cent ties
+  incidental to their own fixtures (1.005 EUR and -24.265 EUR respectively) and were corrected to
+  the mathematically correct half-up results, each with an explanatory comment.
+- **`IBKRParser` silently flipped a real capital loss into a fabricated capital gain for a Trades
+  row with a negative `TradePrice`.** `parseTradesRow()` (`src/parser/ibkr.ts`) computed
+  `totalLocal` directly from `quantity * multiplier * tradePrice` and then took `Math.abs()` of it
+  to derive `totalEUR` ("|totalLocal| / ecbRate — always positive", per `src/types.ts`). A negative
+  `TradePrice` is real market history for some derivatives — not malformed data — e.g. CME WTI
+  crude oil futures (contract `CL`) settled at **-$37.63/barrel** on 2020-04-20, and IBKR's own
+  Activity Flex Query export records that literal negative value in `TradePrice`. `Calculator`
+  (`src/calculator/index.ts`) treats `totalEUR` as straight cost for a BUY and straight proceeds
+  for a SELL; forcing it positive via `Math.abs()` silently inverted the real economic outcome of a
+  SELL at a negative price — where the seller must *pay* to close the position — into a reported
+  cash inflow. A synthetic repro (BUY at $20.00/unit, SELL/close at -$37.63/unit, 1000x multiplier)
+  reported a ~€16,357 capital **gain** for a trade that, economically, was a real loss of roughly
+  the full notional value. This also violated `totalLocal`'s own documented sign contract ("negative
+  for BUY, positive for SELL") for the affected row. Fixed by skipping any `Trades` row with a
+  strictly negative `TradePrice` before it reaches the `totalLocal`/`totalEUR` computation, pushing
+  a new `NEGATIVE_TRADE_PRICE` warning (same shape as the existing `QUANTITY_ZERO`/
+  `INVALID_BUY_SELL` skip-with-warning cases) instead of a hard parse error — the same established
+  convention this parser already uses for a row it cannot safely interpret. A `TradePrice` of
+  exactly `0` is unaffected (e.g. a worthless expired option). This is deliberately a narrower fix
+  than inventing new signed cost-basis/proceeds tax accounting for negative-price derivative
+  settlements under the Regime Dichiarativo: that scenario isn't covered by any Agenzia Entrate FAQ
+  this library's calculations are grounded in, so guessing at new tax logic there risked being
+  wrong in a different, less visible way. `DEGIROParser` is unaffected (it reads `totalLocal`
+  directly from the broker's own already-signed `Local value` column, never recomputing it from
+  price × quantity) and no public API changed (`DEGIROParser`, `Calculator.calculateGains('LIFO'|'FIFO')`,
+  `IBKRParser`, `Classifier` are all unchanged). New regression tests in
+  `test/ibkr-parser-trades.test.ts` cover: the negative-`TradePrice` row being skipped (only the
+  valid BUY survives as a `Transaction`), the exact `NEGATIVE_TRADE_PRICE` warning text being
+  emitted, and `Calculator.calculateGains` reporting zero lots/zero net result instead of the
+  fabricated gain.
 - **`IBKRParser` silently doubled a dividend's reported taxable income when the broker reversed
   or corrected it.** `parseDividendsRow()` (`src/parser/ibkr.ts`), which turns `Dividends`-section
   rows of an IBKR Activity Flex Query export into `IncomeRow`s, took `Math.abs()` of the row's

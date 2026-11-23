@@ -113,6 +113,16 @@ export class IBKRParser implements Parser {
    * rate within 5 calendar days (see lookupRate's MAX_LOOKBACK_DAYS in
    * src/rates/index.ts) are skipped silently. Inspect `parser.warnings`
    * for details.
+   *
+   * If the same ISIN appears across more than one distinct AssetCategory
+   * value in the Trades section (e.g. a stock's own rows and an option/future
+   * row sharing the underlying's ISIN — real-world exports sometimes
+   * populate an option's ISIN with the underlying's for linkage), only the
+   * dominant AssetCategory for that isin (the one with the most Data rows;
+   * ties broken by first-encountered-in-file) is kept — the rest are
+   * excluded, with a `MIXED_ASSET_CATEGORY_ISIN` warning. This avoids
+   * silently cross-matching unrelated instruments in `Calculator`'s
+   * isin-keyed lot matching.
    */
   parse(csv: string): Transaction[] {
     this._warningEntries = [];
@@ -132,6 +142,12 @@ export class IBKRParser implements Parser {
     const transactions: Transaction[] = [];
     const incomeCandidates: IBKRIncomeCandidate[] = [];
     const withholdingCandidates: IBKRWithholdingCandidate[] = [];
+    // Trades `Data` rows are collected here, not parsed immediately — actual
+    // Transaction building is deferred until after the full file has been
+    // scanned, so the same-ISIN/mixed-AssetCategory check below (which needs
+    // to see every Trades row before deciding anything) can run first. See
+    // "MIXED_ASSET_CATEGORY_ISIN" below.
+    const tradesDataRows: { row: string[]; rowCounter: number }[] = [];
 
     for (const row of rows) {
       if (row.every((cell) => cell.trim() === "")) continue;
@@ -158,8 +174,7 @@ export class IBKRParser implements Parser {
           }
           const rowCounter = (sectionRowCounters["Trades"] =
             (sectionRowCounters["Trades"] ?? 0) + 1);
-          const tx = this.parseTradesRow(row, colIndex, rowCounter, snapshot);
-          if (tx) transactions.push(tx);
+          tradesDataRows.push({ row, rowCounter });
           continue;
         }
 
@@ -197,6 +212,93 @@ export class IBKRParser implements Parser {
       if (tradesColIndex[col] === undefined) {
         throw new ParseError("MISSING_COLUMN", col);
       }
+    }
+
+    const getTradesCell = (row: string[], col: string): string => {
+      const idx = tradesColIndex[col];
+      return idx === undefined ? "" : (row[idx] ?? "").trim();
+    };
+
+    // --- Detect an ISIN shared across more than one distinct AssetCategory ---
+    // Calculator keys lot-matching purely on isin (see this method's doc
+    // comment above), so an isin that spans e.g. a STK row and an OPT row
+    // would otherwise be silently cross-matched as if 1 contract == 1 share.
+    // Counted over the same scope parseTradesRow itself would otherwise
+    // accept (DataDiscriminator "Order", AssetCategory !== "CASH", non-blank
+    // ISIN) — a row this loose scan wouldn't count was never going to become
+    // a Transaction anyway, so it can't be party to a real cross-match.
+    interface CategoryCount {
+      count: number;
+    }
+    const categoryCountsByIsin = new Map<string, Map<string, CategoryCount>>();
+    for (const { row } of tradesDataRows) {
+      const discriminator = getTradesCell(row, "DataDiscriminator");
+      const assetCategory = getTradesCell(row, "AssetCategory");
+      const isin = getTradesCell(row, "ISIN");
+      if (discriminator !== "Order" || assetCategory === "CASH" || !isin) {
+        continue;
+      }
+      let catCounts = categoryCountsByIsin.get(isin);
+      if (!catCounts) {
+        catCounts = new Map();
+        categoryCountsByIsin.set(isin, catCounts);
+      }
+      const existing = catCounts.get(assetCategory);
+      if (existing) {
+        existing.count++;
+      } else {
+        catCounts.set(assetCategory, { count: 1 });
+      }
+    }
+
+    // isin -> AssetCategory to keep; only populated for isins with a real
+    // conflict (more than one distinct AssetCategory value seen).
+    const dominantCategoryByIsin = new Map<string, string>();
+    for (const [isin, catCounts] of categoryCountsByIsin) {
+      if (catCounts.size <= 1) continue;
+
+      // catCounts iterates in first-encountered order (insertion order), so
+      // a strict `>` here already implements the documented tie-break
+      // ("first AssetCategory encountered in the file wins"): a later
+      // category can only displace the current leader by having strictly
+      // more rows, never by tying it.
+      let dominantCategory: string | undefined;
+      let dominantCount = -1;
+      for (const [category, { count }] of catCounts) {
+        if (count > dominantCount) {
+          dominantCategory = category;
+          dominantCount = count;
+        }
+      }
+
+      dominantCategoryByIsin.set(isin, dominantCategory!);
+      for (const [category, { count }] of catCounts) {
+        if (category === dominantCategory) continue;
+        this._warningEntries.push({
+          code: "MIXED_ASSET_CATEGORY_ISIN",
+          isin,
+          keptCategory: dominantCategory!,
+          droppedCategory: category,
+          keptRows: dominantCount,
+          droppedRows: count,
+          section: "Trades",
+        });
+      }
+    }
+
+    // --- Build Transactions, excluding minority-AssetCategory rows ---
+    for (const { row, rowCounter } of tradesDataRows) {
+      const isin = getTradesCell(row, "ISIN");
+      const assetCategory = getTradesCell(row, "AssetCategory");
+      const dominantCategory = dominantCategoryByIsin.get(isin);
+      if (dominantCategory !== undefined && assetCategory !== dominantCategory) {
+        // Already warned about via MIXED_ASSET_CATEGORY_ISIN above (once per
+        // isin/dropped-category pair, not once per row) — silently excluded
+        // from Transaction[] here.
+        continue;
+      }
+      const tx = this.parseTradesRow(row, tradesColIndex, rowCounter, snapshot);
+      if (tx) transactions.push(tx);
     }
 
     // --- FX-convert Withholding Tax candidates independently, per row ---
@@ -416,6 +518,26 @@ export class IBKRParser implements Parser {
 
     const tradePrice = parseNumericField(get("TradePrice"));
 
+    // A strictly negative TradePrice is real market history (e.g. CME WTI
+    // crude oil futures settled at -$37.63/barrel on 2020-04-20) but breaks
+    // the Transaction.totalLocal/totalEUR sign contract documented in
+    // types.ts: totalEUR is always forced non-negative via Math.abs() below,
+    // so a SELL executed at a negative price would be silently treated as
+    // proceeds received instead of the economic loss it actually represents
+    // (the seller must pay to close the position). Rather than inventing new
+    // signed cost-basis/proceeds math for negative-price derivative
+    // settlements — untested against any Agenzia Entrate FAQ case — skip the
+    // row like the other not-safely-interpretable cases above. A TradePrice
+    // of exactly 0 is unaffected (e.g. a worthless expired option).
+    if (tradePrice < 0) {
+      this._warningEntries.push({
+        code: "NEGATIVE_TRADE_PRICE",
+        row: rowCounter,
+        section: "Trades",
+      });
+      return undefined;
+    }
+
     // --- Multiplier (optional column) ---
     // For instruments quoted per underlying unit (options: per-share
     // premium; futures: per-unit price), TradePrice alone understates the
@@ -428,8 +550,22 @@ export class IBKRParser implements Parser {
     const multiplier =
       isNaN(rawMultiplier) || rawMultiplier <= 0 ? 1 : rawMultiplier;
 
+    // --- Bond price-as-percent-of-par ---
+    // Unlike a stock (quoted as an absolute cash price per share) or an
+    // option/future (absolute price per underlying unit, scaled by
+    // Multiplier above), a BOND's TradePrice is universally quoted as a
+    // PERCENTAGE OF FACE/PAR VALUE (e.g. TradePrice=98 means "98% of par"),
+    // and Quantity is the face/par value of the position, not a share
+    // count. Treating TradePrice as an absolute per-unit price for bonds
+    // (the pre-fix behavior) overstates the cash value of the trade by
+    // ~100x. This mirrors IBKR's own documented "bond trade value" factor
+    // and is a universal fixed-income convention, not broker-specific
+    // guesswork — see docs/csv-formats.md for details and a worked example.
+    const isBond = assetCategory.toUpperCase() === "BOND";
+    const effectiveUnitPrice = isBond ? tradePrice / 100 : tradePrice;
+
     const totalLocal =
-      (type === "SELL" ? 1 : -1) * quantity * multiplier * tradePrice;
+      (type === "SELL" ? 1 : -1) * quantity * multiplier * effectiveUnitPrice;
     const totalEUR = Math.abs(totalLocal) / ecbRate;
 
     // --- Commission FX (independent lookup, per-decision) ---
