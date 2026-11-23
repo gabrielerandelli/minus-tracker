@@ -267,3 +267,115 @@ describe("QA regression (2026-10): a reversal row never rescales OTHER, unrelate
     expect(parser.warnings).toEqual([]);
   });
 });
+
+describe("QA regression (2026-11): Withholding Tax correction/reversal row sharing the same (ISIN, Date, CurrencyPrimary) join key as the original debit nets against it, instead of doubling via Math.abs()", () => {
+  // Unlike a Dividends reversal (which lands on a different Date and so
+  // never shares a join key with the payment it corrects — see the QA
+  // regression above), a Withholding Tax correction/reversal row is
+  // reported by IBKR against the SAME (ISIN, Date, CurrencyPrimary) key as
+  // the debit it corrects. That key already pins it to the one specific
+  // withholding event, so netting same-key rows here cannot smear a
+  // correction's effect onto any other, unrelated withholding event: a
+  // different date, ISIN, or currency is simply a different key.
+  const snapshot = { USD: { "2024-04-10": 1.2 }, EUR: {} };
+
+  it("a full reversal (-18.00 then +18.00) nets withholdingTax to 0, not double the original debit", () => {
+    const csv = [
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND,120.00",
+      "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND - US TAX,-18.00",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND - US TAX CORRECTION (REVERSAL),18.00",
+      TRADES_HEADER,
+      TRADES_ROW,
+    ].join("\n");
+
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(1);
+    const row = parser.incomeRows[0];
+    expect(row.grossAmount).toBeCloseTo(120.0 / 1.2, 6);
+    expect(row.withholdingTax).toBeCloseTo(0, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+
+  it("a partial correction (-18.00 then +6.00) nets withholdingTax to the true remaining amount, not the sum of both rows' magnitudes", () => {
+    const csv = [
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND,120.00",
+      "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND - US TAX,-18.00",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND - US TAX PARTIAL CORRECTION,6.00",
+      TRADES_HEADER,
+      TRADES_ROW,
+    ].join("\n");
+
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(1);
+    expect(parser.incomeRows[0].withholdingTax).toBeCloseTo(12.0 / 1.2, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+
+  it("a single negative debit row with no correction/reversal at all is completely unaffected by the fix", () => {
+    const csv = [
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND,120.00",
+      "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND - US TAX,-18.00",
+      TRADES_HEADER,
+      TRADES_ROW,
+    ].join("\n");
+
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(1);
+    expect(parser.incomeRows[0].withholdingTax).toBeCloseTo(18.0 / 1.2, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+
+  it("an over-correction (-18.00 then +25.00, reversing more than the original debit) floors withholdingTax at 0 instead of reporting the overshoot's magnitude as withheld tax", () => {
+    // Net raw amount is -18 + 25 = +7: the account received more back than
+    // was withheld. Math.abs() of that net would wrongly report 7 (minus FX)
+    // as withheld tax; Math.max(0, -net) correctly reports 0, since a net
+    // credit back to the account is not a foreign tax paid and cannot be
+    // claimed as one in Quadro RM.
+    const csv = [
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND,120.00",
+      "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND - US TAX,-18.00",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND - US TAX OVER-CORRECTION,25.00",
+      TRADES_HEADER,
+      TRADES_ROW,
+    ].join("\n");
+
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(1);
+    expect(parser.incomeRows[0].withholdingTax).toBeCloseTo(0, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+
+  it("a lone positive-Amount Withholding Tax row with no debit to offset floors to 0, not to its own positive magnitude", () => {
+    // A standalone non-negative row under a key with nothing else to net
+    // against (e.g. the matching debit's original export isn't present)
+    // nets to a positive total on its own. Math.abs() would report that
+    // positive amount as withheld tax; Math.max(0, -net) floors it at 0,
+    // since a positive net has no sane meaning as tax actually withheld.
+    const csv = [
+      "Dividends,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Dividends,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND,120.00",
+      "Withholding Tax,Header,CurrencyPrimary,ISIN,Symbol,Date,Description,Amount",
+      "Withholding Tax,Data,USD,US0378331005,AAPL,20240410,APPLE INC CASH DIVIDEND - US TAX CORRECTION,15.00",
+      TRADES_HEADER,
+      TRADES_ROW,
+    ].join("\n");
+
+    const parser = new IBKRParser(snapshot);
+    parser.parse(csv);
+    expect(parser.incomeRows).toHaveLength(1);
+    expect(parser.incomeRows[0].withholdingTax).toBeCloseTo(0, 6);
+    expect(parser.warnings).toEqual([]);
+  });
+});

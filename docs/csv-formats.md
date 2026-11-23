@@ -68,6 +68,15 @@ netting it against same-ISIN/currency dividends would risk rescaling *other*, un
 for the same instrument (e.g. a quarterly dividend payer where only one quarter is ever
 reversed). A negative-amount `Bond` `Interest` row is excluded the same way.
 
+A `Withholding Tax` row's `Amount` is normally negative (a debit); IBKR reports a later
+correction/reversal of that same withholding as a positive `Amount` sharing the exact same
+(ISIN, Date, `CurrencyPrimary`) key as the debit it corrects. Unlike the `Dividends` case above,
+these same-key rows are netted together (not excluded): the key already includes `Date`, so a
+same-key reversal can only be about that one specific withholding event, not some unrelated
+payment. A full reversal nets the reported withholding to 0, a partial correction nets it to the
+true remaining amount, and an over-correction (or a standalone non-negative row with nothing to
+net against) is floored at 0 rather than reported as withheld tax.
+
 ## Next steps
 
 - [CLI Usage](cli-usage.md) — validate and calculate against your CSV
