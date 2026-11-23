@@ -60,6 +60,15 @@ For instruments like options and futures, trade value is computed applying the o
 `Multiplier` column (e.g. 100 for a standard equity option), which defaults to 1 when the column
 is absent.
 
+If the same `ISIN` appears on `Trades` rows with more than one distinct `AssetCategory` (e.g. a
+stock's own rows and an option/future row sharing the underlying's ISIN — some real exports leave
+an option's own ISIN blank and a pipeline backfills it with the underlying's), only the dominant
+`AssetCategory` for that ISIN — the one with the most rows, ties broken by whichever was
+encountered first in the file — is kept; the rest are excluded with a warning naming both
+categories and their row counts. `Calculator` matches lots purely by ISIN, so without this guard
+a 1-contract option lot could silently cross-match against the stock's per-share lots as if 1
+contract equalled 1 share, fabricating a gain or loss. Run `validate` to see which `AssetCategory`
+was kept/dropped for an affected ISIN.
 For `BOND` rows, `TradePrice` is treated as a **percentage of face/par value** (e.g. a
 `TradePrice` of `98` means "98% of par"), not an absolute per-unit cash price — the standard
 bond-market quoting convention, also reflected in IBKR's own documentation. `Quantity` is read as

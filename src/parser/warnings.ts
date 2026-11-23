@@ -39,7 +39,30 @@ export type WarningEntry =
     }
   | { code: "MISSING_ISIN_INCOME"; row: number }
   | { code: "ORPHAN_WITHHOLDING"; isin: string; date: string }
-  | { code: "UNMATCHED_WITHHOLDING"; row: number; section: IBKRSection };
+  | { code: "UNMATCHED_WITHHOLDING"; row: number; section: IBKRSection }
+  | {
+      // The same ISIN appears across more than one distinct AssetCategory
+      // value in the Trades section's Data rows (e.g. a STK row and an OPT
+      // row sharing the underlying's ISIN — common in real IBKR exports,
+      // which often leave an option's own ISIN blank and some pipelines
+      // backfill it with the underlying's). Calculator's lot-matching is
+      // keyed purely on isin with no concept of AssetCategory, so left
+      // unresolved this would silently cross-match contracts against shares
+      // as if 1 unit of one equalled 1 unit of the other. The parser keeps
+      // only the "dominant" AssetCategory for that isin (the one with the
+      // most Data rows; ties broken by first-AssetCategory-encountered in
+      // the file) and drops the rest — this warning names the isin and
+      // which AssetCategory was kept vs. dropped, with each side's row
+      // count so the "why" (dominance by row count, or the tie-break) is
+      // visible without re-reading the file.
+      code: "MIXED_ASSET_CATEGORY_ISIN";
+      isin: string;
+      keptCategory: string;
+      droppedCategory: string;
+      keptRows: number;
+      droppedRows: number;
+      section?: IBKRSection;
+    };
 
 export function warningToEnglish(w: WarningEntry): string {
   switch (w.code) {
@@ -77,5 +100,17 @@ export function warningToEnglish(w: WarningEntry): string {
       return `Withholding row for ${w.isin} on ${w.date}: no matching income row — skipped`;
     case "UNMATCHED_WITHHOLDING":
       return `${w.section} row ${w.row}: withholding tax with no matching income row — skipped`;
+    case "MIXED_ASSET_CATEGORY_ISIN": {
+      const tieNote =
+        w.keptRows === w.droppedRows
+          ? " (tie on row count — first AssetCategory encountered in the file was kept)"
+          : "";
+      return (
+        `ISIN ${w.isin}: mixed AssetCategory values in Trades (${w.keptCategory}: ` +
+        `${w.keptRows} row(s), ${w.droppedCategory}: ${w.droppedRows} row(s)) — kept ` +
+        `${w.keptCategory} as the dominant instrument, dropped ${w.droppedCategory} ` +
+        `rows as the minority/likely-unrelated instrument${tieNote}`
+      );
+    }
   }
 }
