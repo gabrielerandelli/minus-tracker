@@ -377,7 +377,18 @@ export class Classifier {
       throw new ClassificationError("SIDECAR_VERSION");
     }
 
-    return (parsed as { classifications: ClassificationMap }).classifications;
+    const classifications = (parsed as Record<string, unknown>)[
+      "classifications"
+    ];
+    if (
+      typeof classifications !== "object" ||
+      classifications === null ||
+      Array.isArray(classifications)
+    ) {
+      throw new ClassificationError("SIDECAR_MALFORMED");
+    }
+
+    return classifications as ClassificationMap;
   }
 
   async classify(

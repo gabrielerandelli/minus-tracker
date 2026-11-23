@@ -404,6 +404,26 @@ export class IBKRParser implements Parser {
 
     const tradePrice = parseNumericField(get("TradePrice"));
 
+    // A strictly negative TradePrice is real market history (e.g. CME WTI
+    // crude oil futures settled at -$37.63/barrel on 2020-04-20) but breaks
+    // the Transaction.totalLocal/totalEUR sign contract documented in
+    // types.ts: totalEUR is always forced non-negative via Math.abs() below,
+    // so a SELL executed at a negative price would be silently treated as
+    // proceeds received instead of the economic loss it actually represents
+    // (the seller must pay to close the position). Rather than inventing new
+    // signed cost-basis/proceeds math for negative-price derivative
+    // settlements — untested against any Agenzia Entrate FAQ case — skip the
+    // row like the other not-safely-interpretable cases above. A TradePrice
+    // of exactly 0 is unaffected (e.g. a worthless expired option).
+    if (tradePrice < 0) {
+      this._warningEntries.push({
+        code: "NEGATIVE_TRADE_PRICE",
+        row: rowCounter,
+        section: "Trades",
+      });
+      return undefined;
+    }
+
     // --- Multiplier (optional column) ---
     // For instruments quoted per underlying unit (options: per-share
     // premium; futures: per-unit price), TradePrice alone understates the
