@@ -463,6 +463,58 @@ describe("regression: Multiplier column absent, blank, non-numeric, zero, or neg
   });
 });
 
+describe("regression (QA-found bug): BOND Trades rows scale TradePrice as a percent-of-par, not an absolute per-unit price", () => {
+  // A BOND's TradePrice is quoted as a percentage of face/par value — e.g.
+  // TradePrice=98 means "98% of par" — and Quantity is the face/par value
+  // of the position, not a share count. Before this fix, the parser treated
+  // TradePrice as an absolute per-unit cash price for every AssetCategory
+  // (same formula used for STK), which overstated a bond trade's cash value
+  // by ~100x (quantity * tradePrice instead of quantity * tradePrice/100).
+  //
+  // Real economics here: 10,000 face value bought at 98% of par = 9,800 EUR
+  // cash cost; sold at 102% of par = 10,200 EUR cash proceeds; real gain =
+  // 400 EUR. The pre-fix formula instead computed a cost of 980,000 EUR and
+  // proceeds of 1,020,000 EUR, a gain of 40,000 EUR — 100x too large.
+  const BOND_HEADER =
+    "Trades,Header,DataDiscriminator,AssetCategory,ISIN,TradeDate,Buy/Sell,Quantity,TradePrice,CurrencyPrimary,IBCommission,IBCommissionCurrency,Description,Symbol";
+  const csv = [
+    BOND_HEADER,
+    "Trades,Data,Order,BOND,XX0000000BND1,20240101,BUY,10000,98,EUR,0,EUR,Fake Govt Bond 2030,FAKEBND",
+    "Trades,Data,Order,BOND,XX0000000BND1,20240601,SELL,10000,102,EUR,0,EUR,Fake Govt Bond 2030,FAKEBND",
+  ].join("\n");
+
+  it("scales TradePrice by /100 for a BOND row, yielding the real cash cost/proceeds in totalEUR", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    expect(transactions).toHaveLength(2);
+    expect(transactions[0].totalEUR).toBeCloseTo(9800, 6);
+    expect(transactions[1].totalEUR).toBeCloseTo(10200, 6);
+    // pricePerUnit keeps the raw quoted percent-of-par figure from the row —
+    // the /100 scaling is folded into totalLocal/totalEUR only, same
+    // convention as the Multiplier column above.
+    expect(transactions[0].pricePerUnit).toBe(98);
+    expect(transactions[1].pricePerUnit).toBe(102);
+  });
+
+  it("produces the correct real-economics gain (400 EUR, not the pre-fix 40,000 EUR) via Calculator.calculateGains", () => {
+    const parser = new IBKRParser();
+    const transactions = parser.parse(csv);
+    const calculator = new Calculator(transactions, parser.warnings);
+    const report = calculator.calculateGains("FIFO");
+    expect(report.lots).toHaveLength(1);
+    expect(report.lots[0].gainLossEUR).toBeCloseTo(400, 6);
+    expect(report.plusvalenze).toBeCloseTo(400, 6);
+  });
+
+  it("a non-BOND AssetCategory (e.g. STK) is unaffected by the percent-of-par scaling", () => {
+    const stkCsv = [
+      BOND_HEADER,
+      "Trades,Data,Order,STK,IE00BK5BQT80,20240102,BUY,10,95.00,EUR,-1.00,EUR,VANGUARD FTSE ALL-WORLD,VWCE",
+    ].join("\n");
+    const parser = new IBKRParser();
+    const transactions = parser.parse(stkCsv);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].totalEUR).toBeCloseTo(950, 6);
 describe("regression: FUT Trades row with a negative TradePrice (real negative-settlement history, e.g. CME WTI crude oil 2020-04-20) is skipped, not silently sign-flipped (QA-found bug)", () => {
   // A futures contract bought at +20.00/unit, then later closed at a
   // genuinely negative settlement price (-37.63/unit) — real market

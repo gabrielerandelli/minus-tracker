@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`IBKRParser` overstated a `BOND` trade's cost/proceeds basis by roughly 100x.**
+  `parseTradesRow()` (`src/parser/ibkr.ts`) computed every `Trades`-section row's cash value as
+  `quantity * multiplier * tradePrice`, treating `TradePrice` as an absolute per-unit cash price —
+  correct for a stock, and correct for an option/future once scaled by the optional `Multiplier`
+  column, but wrong for a `BOND` row. Bond prices are quoted as a **percentage of face/par value**
+  (e.g. a `TradePrice` of `98` means "98% of par"), the standard bond-market convention also
+  reflected in IBKR's own documentation, and `Quantity` for a bond trade is the face/par value of
+  the position rather than a share count — this parser had no special-casing for either. A
+  realistic repro: 10,000 face value of a bond bought at 98% of par and sold at 102% of par has a
+  true economic gain of 400 EUR (9,800 EUR cost, 10,200 EUR proceeds), but the pre-fix formula read
+  `Quantity=10000` and `TradePrice=98`/`102` as absolute per-unit prices, computing a cost of
+  980,000 EUR and proceeds of 1,020,000 EUR — a reported gain of 40,000 EUR, 100x too large. Since
+  this library's `Classifier` already models government and corporate bonds as first-class taxed
+  asset classes (`src/classifier/index.ts`) and `IBKRParser` already recognizes bond *interest*
+  rows (`parseInterestRow`), a bond *trade* reaching `Calculator.calculateGains()` with a wildly
+  wrong basis was a real, live path, not dead code. Fixed by scaling `TradePrice` by `/100` before
+  computing `totalLocal`/`totalEUR` whenever `AssetCategory === "BOND"`; every other asset category
+  (`STK`, `OPT`, `FUT`, …) is unaffected, and `Transaction.pricePerUnit` keeps the raw quoted
+  percent-of-par figure from the row (same convention already used for the `Multiplier` column —
+  the scaling is folded into `totalLocal`/`totalEUR` only). No public API changed (`DEGIROParser`,
+  `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`, `Classifier` are all unchanged). New
+  regression tests in `test/ibkr-parser-trades.test.ts` cover: the 100x-overstatement repro against
+  the corrected 400 EUR real-economics gain, `pricePerUnit` staying the raw percent-of-par figure,
+  and a non-`BOND` row confirming the scaling is bond-specific.
 - **A hand-edited or partially-written `*.classify.json` sidecar with the right `version` but a
   missing/`null` `"classifications"` field crashed `Classifier.load()`/`.classify()` with a raw,
   unhandled `TypeError` instead of the documented `ClassificationError`.** `Classifier.load()`
