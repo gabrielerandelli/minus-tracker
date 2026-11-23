@@ -59,7 +59,7 @@ interface IBKRWithholdingCandidate {
   isin: string;
   date: string;
   currency: string;
-  amount: number; // absolute value, in source currency
+  amount: number; // signed, in source currency — see parseWithholdingRow
   row: number;
 }
 
@@ -334,9 +334,21 @@ export class IBKRParser implements Parser {
       });
     }
 
+    // amountEUR is signed (see parseWithholdingRow): a charge is negative, a
+    // same-key reversal/correction is positive, so summing nets them exactly
+    // against each other instead of doubling. The raw per-key sum is still a
+    // signed net cash flow at this point (negative = net tax withheld), so it
+    // is converted to a non-negative credit below, right before use.
     const totalsByKey = new Map<string, number>();
     for (const cw of convertedWithholding) {
       totalsByKey.set(cw.key, (totalsByKey.get(cw.key) ?? 0) + cw.amountEUR);
+    }
+    for (const [key, netAmount] of totalsByKey) {
+      // A negative net (more charged than reversed) is the real tax credit;
+      // a zero or positive net (fully/over reversed) means no net tax was
+      // ultimately withheld, so the credit floors at 0 rather than going
+      // negative.
+      totalsByKey.set(key, Math.max(0, -netAmount));
     }
 
     // --- FX-convert income candidates (Dividends + qualifying Interest) independently ---
@@ -706,6 +718,30 @@ export class IBKRParser implements Parser {
    * ISIN is not validated here — a blank ISIN simply fails to match any
    * income row's key downstream and surfaces as the same
    * `UNMATCHED_WITHHOLDING` orphan warning every other unmatched row gets.
+   *
+   * `amount` is kept **signed** here (not `Math.abs()`'d) on purpose. A real
+   * IBKR export reports a genuine withholding charge as a NEGATIVE `Amount`
+   * (cash outflow). A correction/reversal row undoing a previously reported
+   * charge is reported with the OPPOSITE sign — i.e. positive, since it
+   * undoes a negative — and it shares the SAME `(ISIN, Date,
+   * CurrencyPrimary)` key as the charge it reverses, which is the realistic
+   * shape of a Withholding Tax correction (contrast this with
+   * `parseDividendsRow`'s reversal above, which is realistically posted on a
+   * *later* date and so does not share its own row's join key — that is why
+   * that fix excludes the row instead of netting it).
+   *
+   * Taking `Math.abs()` per-row here, before the `totalsByKey` aggregation a
+   * few lines above in `parse()`, would turn a charge/reversal pair that
+   * should cancel to (near) zero into two same-sign amounts that *sum*
+   * instead — silently doubling the foreign tax credit reported for that
+   * dividend in the Quadro RM dichiarazione export. Keeping the sign through
+   * FX conversion and letting `totalsByKey` sum the raw signed amounts nets a
+   * same-key reversal against its exact charge correctly, with no risk of
+   * smearing that reversal onto any *other* key (date is already part of the
+   * key). The final per-key total is turned back into a non-negative credit
+   * (`Math.max(0, -total)`) right after the aggregation above, since a net
+   * cash *inflow* for a key (an over-correction) means no net tax was
+   * ultimately withheld, not a negative credit.
    */
   private parseWithholdingRow(
     row: string[],
@@ -721,7 +757,7 @@ export class IBKRParser implements Parser {
     const currency = get("CurrencyPrimary");
     const isoDate = ibkrDate(get("Date"));
     const rawAmount = parseNumericField(get("Amount"));
-    const amount = Math.abs(isNaN(rawAmount) ? 0 : rawAmount);
+    const amount = isNaN(rawAmount) ? 0 : rawAmount;
 
     return { isin, date: isoDate, currency, amount, row: rowCounter };
   }
