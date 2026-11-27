@@ -50,6 +50,52 @@ function httpsPost(
   });
 }
 
+/**
+ * ISO 3166-1 alpha-2 country codes. ISIN prefixes are assigned by national
+ * numbering agencies and (with a handful of documented exceptions, see
+ * `isCountryCodePrefix` below) are exactly these two-letter country codes —
+ * so this doubles as the set of ISIN prefixes that actually identify an
+ * issuer's country. Deliberately broader than `GOVT_BOND_WHITELIST`: it only
+ * needs to tell "this prefix is some real country" from "this prefix is not
+ * a country at all", not which countries are Art. 68 co.5 TUIR-whitelisted.
+ */
+const ISO_3166_1_ALPHA2 = new Set([
+  "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU",
+  "AW", "AX", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL",
+  "BM", "BN", "BO", "BQ", "BR", "BS", "BT", "BV", "BW", "BY", "BZ", "CA", "CC",
+  "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN", "CO", "CR", "CU", "CV",
+  "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE", "EG",
+  "EH", "ER", "ES", "ET", "FI", "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD",
+  "GE", "GF", "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT",
+  "GU", "GW", "GY", "HK", "HM", "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IM",
+  "IN", "IO", "IQ", "IR", "IS", "IT", "JE", "JM", "JO", "JP", "KE", "KG", "KH",
+  "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC", "LI", "LK",
+  "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME", "MF", "MG", "MH",
+  "MK", "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU", "MV", "MW",
+  "MX", "MY", "MZ", "NA", "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR",
+  "NU", "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM", "PN", "PR",
+  "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS", "RU", "RW", "SA", "SB", "SC",
+  "SD", "SE", "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS",
+  "ST", "SV", "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TL",
+  "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY",
+  "UZ", "VA", "VC", "VE", "VG", "VI", "VN", "VU", "WF", "WS", "YE", "YT", "ZA",
+  "ZM", "ZW",
+]);
+
+/**
+ * Whether an ISIN's two-letter prefix identifies a real issuer country.
+ *
+ * ISO 6166 reserves a few two-letter prefixes for securities registered
+ * through a numbering agency that is not a national one — most notably
+ * `XS`, used for internationally syndicated issues (incl. a large share of
+ * sovereign Eurobonds) cleared through Euroclear/Clearstream. Those prefixes
+ * say nothing about who issued the security, so they must never be used to
+ * infer Art. 68 co.5 TUIR whitelist eligibility.
+ */
+function isCountryCodePrefix(prefix: string): boolean {
+  return ISO_3166_1_ALPHA2.has(prefix);
+}
+
 const GOVT_BOND_WHITELIST = new Set([
   "IT",
   "DE",
@@ -220,6 +266,40 @@ function classifyByType(
 ): ClassificationEntry {
   if (securityType === "Government Bond") {
     const prefix = isin.slice(0, 2).toUpperCase();
+
+    if (!isCountryCodePrefix(prefix)) {
+      // The ISIN prefix is not an issuer country at all (e.g. "XS" =
+      // Euroclear/Clearstream international registration — the standard
+      // prefix for internationally-placed sovereign Eurobonds), so it
+      // cannot answer the Art. 68 co.5 TUIR whitelist question. Guessing
+      // either way would be wrong: defaulting to "whitelisted" could claim
+      // an unearned 12.5% rate, and falling through to the generic
+      // unrecognized-type path would mislabel a real redditi-di-capitale
+      // government bond as a Bucket B "Stock" at 0% — hiding it from
+      // Quadro RM entirely. Instead, flag it the same way the
+      // unrecognized-type branch below does (a warning + manual review)
+      // while still correctly recording it as a Bucket A government bond,
+      // defaulting to the standard (non-whitelisted) 26% rate, which never
+      // overstates the taxpayer's benefit while this is unresolved.
+      warnings.push(
+        `Government bond ${isin} (${product}) has ISIN prefix "${prefix}", which is not ` +
+          `an issuer country code (e.g. "XS" denotes Euroclear/Clearstream international ` +
+          `registration, not a country) — Art. 68 co.5 TUIR whitelist status cannot be ` +
+          `determined from the ISIN alone. Defaulted to the standard 26% rate (not ` +
+          `whitelisted); please verify the issuer's country and classify manually.`,
+      );
+      return {
+        product,
+        assetClass: "GovtBondOther",
+        bucketGain: "A",
+        bucketLoss: "B",
+        taxRate: 0.26,
+        whiteListed: null,
+        confirmedByUser: false,
+        source: "openfigi",
+      };
+    }
+
     const whiteListed = GOVT_BOND_WHITELIST.has(prefix);
     return {
       product,

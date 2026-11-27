@@ -35,4 +35,19 @@ Italian law requires that **redditi diversi** (individual stocks, derivatives, c
 `IBKRParser` (v0.11.0) is **beta**: the column spec has not yet been validated against a real
 IBKR export — see [Interactive Brokers CSV Format](csv-formats.md#interactive-brokers-csv-format-beta).
 
+**Government bonds with a non-country ISIN prefix (e.g. `XS`) are flagged for manual
+classification, not auto-whitelisted or auto-excluded.** `Classifier.classify()` determines Art.
+68 co. 5 TUIR whitelist eligibility (12.5% vs. the standard 26% rate) from the issuer's country,
+inferred from the ISIN's first two characters. That inference is impossible for ISINs whose
+prefix is a numbering-agency/depository code rather than a country code — most notably `XS`, the
+ISO 6166 prefix for securities registered through Euroclear/Clearstream, which is the standard
+prefix for internationally-syndicated sovereign Eurobonds (including bonds from whitelisted
+governments placed internationally rather than domestically). For these ISINs, `classify()` now
+pushes a warning naming the ISIN, still correctly records the entry as a Bucket A government bond
+(so the gain is never silently dropped from the Quadro RM export), and defaults to the standard
+26% rate with `whiteListed: null` rather than guessing a specific verdict either way. If you hold
+such a bond and have confirmed the issuer is on the Art. 68 co. 5 TUIR whitelist, override its
+classification manually (`ClassifyOptions.overrides`, or edit the `*.classify.json` sidecar entry)
+to `GovtBondWL` / `taxRate: 0.125`.
+
 [← Back to README](../README.md) · [All docs](README.md)

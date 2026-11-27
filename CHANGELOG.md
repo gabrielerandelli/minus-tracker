@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Classifier.classify()` silently misclassified government bonds with a non-country ISIN
+  prefix, defaulting them to the wrong Art. 68 co. 5 TUIR whitelist tax rate.** When OpenFIGI
+  reports a security's type as `"Government Bond"`, `classifyByType()` (`src/classifier/index.ts`)
+  inferred the issuer's country — which determines whether the preferential 12.5% whitelist rate
+  or the standard 26% rate applies — purely from the ISIN's first two characters, looked up
+  directly against `GOVT_BOND_WHITELIST`. That assumption breaks for ISINs starting with `XS`: ISO
+  6166 reserves `XS` for securities registered through Euroclear/Clearstream (the international
+  central securities depositories), not for any country, and it is the standard ISIN prefix for
+  internationally-syndicated sovereign Eurobonds — including bonds from whitelisted governments
+  (e.g. France, Germany) placed internationally rather than through their domestic market. Because
+  `XS` was never in `GOVT_BOND_WHITELIST`, any such bond was confidently classified as
+  `GovtBondOther` / `taxRate: 0.26` / `whiteListed: false`, while the economically identical
+  domestic-market tranche of the same bond (a country-prefixed ISIN, e.g. `FR...`) correctly
+  resolved to `GovtBondWL` / `taxRate: 0.125` / `whiteListed: true` — the same whitelisted issuer
+  silently taxed two different ways depending only on which clearing system issued the security's
+  identifier, a number that flows directly into the real Quadro RM tax-filing export
+  (`buildQuadroRM`, `src/dichiarazione/engine.ts`) if left unfixed. Confirmed via the real public
+  API (`Classifier.classify()`, with the OpenFIGI HTTP call mocked to its injectable `_httpPost`
+  parameter so no network access was needed): an `XS`-prefixed France Eurobond and an `FR`-prefixed
+  France domestic bond, both reported by OpenFIGI as `"Government Bond"`, resolved to two different
+  tax rates for the same issuer. Fixed by validating the ISIN prefix against a real ISO 3166-1
+  alpha-2 country-code list before using it to decide whitelist status, rather than trusting any
+  two-letter prefix to be a country code: when the prefix is not a real country code (`XS` and any
+  other non-country numbering-agency prefix), `classifyByType()` no longer asserts a specific
+  whitelist verdict it cannot support. It pushes a new warning naming the ISIN and asking for
+  manual review — the same "flag for manual review" convention the pre-existing "Unrecognized
+  type" fallback already uses — but, unlike that generic fallback (which would mislabel the entry
+  as a 0%-taxed Bucket B `Stock` and hide a real *redditi di capitale* gain from Quadro RM
+  entirely), it still correctly returns `assetClass: "GovtBondOther"` / `bucketGain: "A"` /
+  `bucketLoss: "B"`, defaults to the standard, tax-conservative `taxRate: 0.26` rather than
+  guessing the more favorable 12.5% without evidence, and records `whiteListed: null` (the field
+  already supports `boolean | null`) instead of a fabricated `true`/`false`. Real country-code
+  ISINs (including every entry already in `GOVT_BOND_WHITELIST`) are completely unaffected. No
+  public API changed (`DEGIROParser`, `Calculator.calculateGains('LIFO'|'FIFO')`, `IBKRParser`,
+  `Classifier` are all unchanged) — the fix only changes what `classifyByType()` does internally
+  for a `"Government Bond"` result with a non-country ISIN prefix. New regression tests in
+  `test/regression-xs-isin-govtbond-whitelist.test.ts` cover: an `XS`-prefixed Eurobond no longer
+  getting a confident `whiteListed: false` verdict (and the same issuer's `FR`-prefixed domestic
+  bond still resolving correctly), the invariant that only the two legal Bucket A tax rates
+  (`0.26`/`0.125`) are ever produced for a Government Bond result, and the manual-review warning
+  being written to the `*.classify.json` sidecar. See `docs/faq.md`'s "Known Limitations" section
+  for user-facing guidance on overriding the classification once the issuer's whitelist status is
+  confirmed.
 - **`roundHalfUp` (the internal cent-rounding helper shared by `Calculator.calculateGains()` and
   the Quadro RT/RM Dichiarazione engine) silently rounded a true half-cent tie DOWN instead of
   UP, under-reporting the headline taxable gain/loss by one cent.** The helper, duplicated
